@@ -1,77 +1,59 @@
-import re
-import subprocess
 import numpy as np
 import pandas as pd
 import networkx as nx
-from networkx.drawing.nx_agraph import graphviz_layout
 from interval import interval
-from io import StringIO
 from IPython.display import display
 
-from datruf_utils import (run_command,
-                          make_line,
+from datruf_utils import (make_line,
                           interval_len,
                           subtract_interval)
 
+# -----------------------------------------------------------------------
+# TODO: is it better to not use datruf but only data needed as arguments?
+# -----------------------------------------------------------------------
 
-def calculate_cover_set(tr_intervals, alignments, read_len, show_grid):
-    alignments = alignments.assign(distance=lambda x: x["abpos"] - x["bbpos"]).sort_values(by="abpos", kind="mergesort").sort_values(by="distance", kind="mergesort")
+
+def calc_cover_set(datruf):
+    datruf.alignments = (datruf.alignments
+                         .assign(distance=lambda x: x["abpos"] - x["bbpos"])
+                         .sort_values(by="abpos", kind="mergesort")
+                         .sort_values(by="distance", kind="mergesort"))   # TODO: should be sorted beforehand?
+
     uncovered_intervals = interval()
-    for intvl in tr_intervals:
+    for intvl in datruf.tr_intervals:
         uncovered_intervals |= interval[intvl]
-    cover_set = []
-    shapes = []
-    for alignment in alignments.iterrows():
+
+    cover_set = set()
+    for alignment in datruf.alignments.iterrows():
         ab, ae, bb, be = alignment[1][["abpos", "aepos", "bbpos", "bepos"]]
-        if not (0.95 <= float(ae - ab) / (be - bb) <= 1.05):   # abnormal slope
-            color = 'yellow'
+        if not (0.95 <= float(ae - ab) / (be - bb) <= 1.05):   # abnormal slope (TODO: proper?)
+            pass
         elif ab - be <= 20:   # TR alignment
             intersect = interval[bb, ae] & uncovered_intervals
             short_intervals = interval()
             for intvl in intersect.components:
                 if interval_len(intvl) <= 20:
                     short_intervals |= intvl
-            intersect = subtract_interval(intersect, short_intervals, length_threshold=0)
+            intersect = subtract_interval(intersect, short_intervals, length_threshold=0)   # TODO: meaning?
 
-            # TODO: inspect whether codes below are OK or not
+            # TODO: inspect whether codes below are still proper or not
             flag_deletion = False
             if len(intersect) == 1 and ((bb == intersect[0][0]) != (ae == intersect[-1][1])):
                 flag_deletion = True
                 
-            #display(alignment)
-            #print(uncovered_intervals)
-            #print(intersect)
-            #print(flag_deletion)
-            
             if (not flag_deletion and intersect != interval()) or (interval_len(intersect) >= 1.5 * (ab - bb)):   # outer TR, or more than 1 units are in the uncovered regions
-                cover_set.append((bb, ae, ab, be))    # NOTE: be careful with the order!
+                cover_set.add((bb, ae, ab, be))    # NOTE: be careful with the order!
                 uncovered_intervals = subtract_interval(uncovered_intervals, interval[bb, ae], length_threshold=100)
-                color = 'red'   # TR alignment and cover set
-            else:
-                color = 'blue'   # TR alignment but not cover set
-        else:
-            color = 'black'   # not TR alignment
-            
-        #print(color)
-        shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': ab, 'y0': bb, 'x1': ae, 'y1': be, 'line': {'width': 1, 'color': color}})   # alignments
-        
-        if show_grid is True:
-            line_width = 0.2
-            shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': ab, 'y0': 0, 'x1': ab, 'y1': read_len, 'line': {'width': line_width, 'color': 'green'}})
-            shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': ae, 'y0': 0, 'x1': ae, 'y1': read_len, 'line': {'width': line_width, 'color': 'green'}})
-            shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': 0, 'y0': bb, 'x1': read_len, 'y1': bb, 'line': {'width': line_width, 'color': 'green'}})
-            shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': 0, 'y0': be, 'x1': read_len, 'y1': be, 'line': {'width': line_width, 'color': 'green'}})
 
-    return (alignments, cover_set, shapes)
+    return cover_set
 
 
-def calculate_min_cover_set(cover_set):
-    cover_set = sorted(cover_set)   # by bbpos
+def calc_min_cover_set(cover_set):
+    cover_set = sorted(list(cover_set))   # by bbpos
     flanking_length = 100   # for suppressing fluctuation due to the sequencing error
     min_cover_set = set()
     index = 0
     furthest_point = 0
-    shapes = []
     while index < len(cover_set):
         next_index = -1
         next_furthest = furthest_point
@@ -94,12 +76,9 @@ def calculate_min_cover_set(cover_set):
         else:
             bb, ae, ab, be = cover_set[next_index]
             min_cover_set.add((ab, ae, bb, be))
-            shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': ab, 'y0': bb, 'x1': ae, 'y1': be, 'line': {'width': 3, 'color': 'purple'}})   # minimum cover set
             index = next_index + 1
             furthest_point = next_furthest
-    min_cover_set = sorted(list(min_cover_set))
-    #print(min_cover_set)
-    return (min_cover_set, shapes)
+    return min_cover_set
 
 
 def take_consensus(aseqs, bseqs, symbols):
@@ -111,7 +90,7 @@ def take_consensus(aseqs, bseqs, symbols):
     for i in range(len(backbone) - 1):
         DAG.add_edge("%s:%f" % (backbone[i], i + 1), "%s:%f" % (backbone[i + 1], i + 2), weight=1)   # NOTE: *backbone coordinate is 1-index*
         backbone_path.append("%s:%f" % (backbone[i], i + 1))
-    backbone_path.append("%s:%f" % (backbone[i + 1], i + 2))
+    backbone_path.append("%s:%f" % (backbone[-1], len(backbone)))
     #print("backbone_path:", backbone_path)
     last_coordinate = len(backbone) + 1   # [0, last_coordinate]　is used for node coordinates ([1, last_coordinate - 1] is backbone's interval)
     
@@ -138,7 +117,7 @@ def take_consensus(aseqs, bseqs, symbols):
             #print(bseq[k], symbol[k], aseq[k])
             #print("b_index:", b_index)
                         
-            if symb == '|':
+            if symb == 'M':
                 if branch_start_node == "":   # first match
                     if len(bases_between_matches) == 0:   # first base is first match
                         pass
@@ -242,101 +221,105 @@ def take_consensus(aseqs, bseqs, symbols):
         #print("---")
         backbone_path = new_path
     
-    # Draw
-    plt.figure(figsize=(18,10))
-    plt.axis("off")
-    #pos = nx.spectral_layout(DAG)
-    #pos = nx.circular_layout(DAG)
-    #pos = graphviz_layout(DAG, prog="dot")
-    pos = graphviz_layout(DAG, prog="neato")
-    edge_weights = nx.get_edge_attributes(DAG, 'weight')
-    nx.draw_networkx(DAG, pos, with_labels=False, node_size=1, font_size=1)   # TODO: output as dot file
-    #nx.draw_networkx_edge_labels(DAG, pos, edge_labels=edge_weights)
-    
+    return DAG
     # Calculate maximum weighted path
 
 
-def generate_path_trace(paths):   # and also calculate average distance(s) (and also take consensu of the units) TODO: divide the functions
-    shapes = []
-    for path in paths:
-        aseqs = []
-        bseqs = []
-        symbols = []
-        unit_aseq = ""
-        unit_bseq = ""
-        unit_symbol = ""
-        
-        ab, ae, bb, be, aseq, bseq, symbol = path
-        aend = ab
-        bend = bb
-        astart = aend
-        bstart = bend
-        distance_list = [aend - bend]
-        unit_borders = [bb, ab]
-        reflection_point = ab
-        prev_edge = -1   # 1 for match/mismatch, 0 for in/del
-        for i in range(len(aseq)):
-            unit_aseq += aseq[i]
-            unit_bseq += bseq[i]
-            unit_symbol += symbol[i]
-            
-            if symbol[i] == '|':
-                aend += 1
-                bend += 1
-                distance_list.append(aend - bend)
-                flag_prev_match = 1
-                prev_edge = 1
-                if i == len(aseq) - 1:
-                    shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': astart, 'y0': bstart, 'x1': aend, 'y1': bend, 'line': {'color': 'black', 'width': 1}})
-            else:
-                if flag_prev_match == 1:
-                    shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': astart, 'y0': bstart, 'x1': aend, 'y1': bend, 'line': {'color': 'black', 'width': 1}})
-                    flag_prev_match = 0
-                astart = aend
-                bstart = bend
-                if aseq[i] == '-':
-                    bend += 1
-                    prev_edge = 0
-                    col = 'blue'
-                elif bseq[i] == '-':
-                    aend += 1
-                    prev_edge = 0
-                    col = 'blue'
-                else:
-                    aend += 1
-                    bend += 1
-                    prev_edge = 1
-                    col = 'red'
-                shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': astart, 'y0': bstart, 'x1': aend, 'y1': bend, 'line': {'color': col, 'width': 1}})
-                distance_list.append(aend - bend)
-                astart = aend
-                bstart = bend
-            if bend > reflection_point:
-                aseqs.append(unit_aseq[:-1])
-                bseqs.append(unit_bseq[:-1])
-                symbols.append(unit_symbol[:-1])
-                unit_aseq = aseq[i]
-                unit_bseq = bseq[i]
-                unit_symbol = symbol[i]
-                
-                if prev_edge == 1:
-                    unit_borders.append(aend - 1)
-                    reflection_point = aend - 1
-                elif prev_edge == 0:
-                    unit_borders.append(aend)
-                    reflection_point = aend
-        print("ab:", ab, "ae:", ae, "bb:", bb, "be:", be, "ab-bb:", ab - bb, "mean:", int(np.mean(distance_list)), "median:", int(np.median(distance_list)))
+# During the trace,
+# 1) calculate average/median distance from diagonal
+# 2) divide path into unit paths
+# 3) generate shapes of the path (if plot is True)
+# 4) generate the reflecting snake of the path (if snake is True)   # this is part of 2)
+def trace_path(path, plot=False, snake=False):
+    if plot is True:
+        shapes = []
 
-        # Reflecting snake
-        #print(unit_borders)
+    # divide [aseq|bseq|symbol] -> [aseq|bseq|symbols]s
+    aseqs = []
+    bseqs = []
+    symbols = []
 
-        shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': unit_borders[0], 'y0': unit_borders[0], 'x1': unit_borders[1], 'y1': unit_borders[0], 'line': {'width': 0.2, 'color': 'green'}})
-        for i in range(1, len(unit_borders) - 1):
-            shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': unit_borders[i], 'y0': unit_borders[i - 1], 'x1': unit_borders[i], 'y1': unit_borders[i], 'line': {'width': 0.2, 'color': 'green'}})
-            shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': unit_borders[i], 'y0': unit_borders[i], 'x1': unit_borders[i + 1], 'y1': unit_borders[i], 'line': {'width': 0.2, 'color': 'green'}})
-        shapes.append({'type': 'line', 'xref': 'x', 'yref': 'y', 'x0': unit_borders[-1], 'y0': unit_borders[-2], 'x1': unit_borders[-1], 'y1': unit_borders[-1], 'line': {'width': 0.2, 'color': 'green'}})
-        
-        # Cut out modules (units) and take consensus
-        #take_consensus(aseqs, bseqs, symbols)#, unit_borders)
+    # instances of divided data
+    unit_aseq = ""
+    unit_bseq = ""
+    unit_symbol = ""
 
-    return shapes
+    ab, ae, bb, be, aseq, bseq, symbol = path
+    apos = ab   # current a-coordinate in the path
+    bpos = bb
+    # coordinate of start position of a series of edges of identical type
+    # these are used for alignment path plot
+    start_apos = ab
+    start_bpos = bb
+
+    reflection_points = [bb, ab]   # equal to border points of units
+    reflection_point = ab
+    distance_list = [ab - bb]   # from diagonal to each point in the path
+
+    for i in range(len(symbol) - 1):
+        unit_aseq += aseq[i]
+        unit_bseq += bseq[i]
+        unit_symbol += symbol[i]
+
+        # TODO: change symbol into M/N/I/D
+
+        if symbol[i] in ('M', 'N', 'D'):
+            apos += 1
+        if symbol[i] in ('M', 'N', 'I'):
+            bpos += 1
+
+        if plot is True and symbol[i] != symbol[i + 1]:   # in the next step, edge type will change
+            shapes.append(make_line(start_apos, start_bpos, apos, bpos, 'black', 1))   # TODO: change color
+            start_apos = apos
+            start_bpos = bpos
+
+        distance_list.append(apos - bpos)
+
+        if bpos == reflection_point and symbol[i + 1] != 'D':   # in the next step, bpos will step over current reflection point
+            aseqs.append(unit_aseq)
+            bseqs.append(unit_bseq)
+            symbols.append(unit_symbol)
+            reflection_points.append(apos)
+            unit_aseq = ""
+            unit_bseq = ""
+            unit_symbol = ""
+            reflection_point = apos
+
+    unit_aseq += aseq[-1]
+    unit_bseq += bseq[-1]
+    unit_symbol += symbol[-1]
+
+    if symbol[i] in ('M', 'N', 'D'):
+        apos += 1
+    if symbol[i] in ('M', 'N', 'I'):
+        bpos += 1
+
+    if plot is True:
+        shapes.append(make_line(start_apos, start_bpos, apos, bpos, 'black', 1))   # TODO: change color
+
+    distance_list.append(apos - bpos)
+
+    if bpos == reflection_point:
+        aseqs.append(unit_aseq)
+        bseqs.append(unit_bseq)
+        symbols.append(unit_symbol)
+        reflection_points.append(apos)
+
+    # TODO: decide whether partial aseq|bseq|symbol should be added into aseqs|bseqs|symbols
+
+    print("ab:", ab, "ae:", ae, "bb:", bb, "be:", be, "ab-bb:", ab - bb, "mean:", int(np.mean(distance_list)), "median:", int(np.median(distance_list)))
+
+    # Reflecting snake
+    #print(unit_borders)
+    if snake is True:
+        shapes.append(make_line(reflection_points[0], reflection_points[0], reflection_points[1], reflection_points[0], 'green', 0.2))
+        for i in range(1, len(reflection_points) - 1):
+            shapes.append(make_line(reflection_points[i], reflection_points[i - 1], reflection_points[i], reflection_points[i], 'green', 0.2))
+            shapes.append(make_line(reflection_points[i], reflection_points[i], reflection_points[i + 1], reflection_points[i], 'green', 0.2))
+        shapes.append(make_line(reflection_points[-1], reflection_points[-2], reflection_points[-1], reflection_points[-1], 'green', 0.2))
+
+    divided_path = (ab, ae, bb, be, aseqs, bseqs, symbols)
+    if plot is True:
+        return (divided_path, shapes)
+    else:
+        return (divided_path, int(np.mean(distance_list)))

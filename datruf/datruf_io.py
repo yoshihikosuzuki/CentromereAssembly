@@ -1,10 +1,6 @@
-import os
 import re
-import subprocess
 import numpy as np
 import pandas as pd
-import networkx as nx
-from networkx.drawing.nx_agraph import graphviz_layout
 from interval import interval
 from io import StringIO
 from IPython.display import display
@@ -15,17 +11,55 @@ from datruf_utils import (run_command,
                           subtract_interval)
 
 
-def load_tr_intervals(db_file, read_id):   # TODO: move to another file ("datruf_io.py" or something like that)   # TODO: make 1 read version (load data using read_id) and all read version (already loaded)
-    dbdump = subprocess.check_output("DBdump -mtan %s %d | awk '$1 == \"T0\" {print $0}'" % (db_file, read_id), shell=True).decode('utf-8').strip().split(' ')
-    return [(int(dbdump[1 + 2 * (i + 1)]), int(dbdump[1 + 2 * (i + 1) + 1])) for i in range(int(dbdump[1]))]   # [(start_pos, end_pos), ...]
+# Object datruf is either Viewer or Runner
+def load_tr_intervals(datruf):
+    command = ("DBdump -mtan %s %d | awk '$1 == \"T0\" {print $0}'"
+               % (datruf.db_file, datruf.read_id))
+    dbdump = run_command(command).strip().split(' ')
+    return [(int(dbdump[1 + 2 * (i + 1)]), int(dbdump[1 + 2 * (i + 1) + 1]))
+            for i in range(int(dbdump[1]))]   # [(start_pos, end_pos), ...]
 
 
-def load_alignments(db_file, las_file, read_id):
-    ladump = StringIO(subprocess.check_output("LAdump -c %s %s %s | awk '$1 == \"C\" {print $0}'" % (db_file, las_file, str(read_id)), shell=True).decode('utf-8'))#.strip().split('\n'))
-    return pd.read_csv(ladump, sep=" ", names=("abpos", "aepos", "bbpos", "bepos"))   # NOTE: index should be replaced from "C" to interger?
+def load_alignments(datruf):
+    command = ("LAdump -c %s %s %d | awk '$1 == \"C\" {print $0}'"
+               % (datruf.db_file, datruf.las_file, datruf.read_id))
+    ladump = StringIO(run_command(command))
+    # NOTE: index should be replaced from "C" to interger?
+    return pd.read_csv(ladump, sep=" ",
+                       names=("abpos", "aepos", "bbpos", "bepos"))
+
+""" TODO: is it better to sort alignments here?
+    datruf.alignments = (datruf.alignments
+                         .assign(distance=lambda x: x["abpos"] - x["bbpos"])
+                         .sort_values(by="abpos", kind="mergesort")
+                         .sort_values(by="distance", kind="mergesort"))
+"""
 
 
-def load_paths(lashow, min_cover_set):   # TODO: modify LAshow4pathplot so that only aligned regions are output
+def convert_symbol(aseq, bseq, symbols):
+    converted = ""
+    for i in range(len(symbols)):
+        if symbols[i] == '|':   # TODO: replace is faster?
+            symbol = "M"
+        else:
+            if aseq[i] == '-':
+                symbol = "I"
+            elif bseq[i] == '-':
+                symbol = "D"
+            else:
+                symbol = "N"
+        converted += symbol
+    return converted
+
+
+def load_paths(datruf):   # TODO: modify LAshow4pathplot so that only aligned regions are output
+    # Load paths of alignments in the minimum cover set
+    command = ("LAshow4pathplot -a %s %s %d | sed 's/,//g'"
+               "| awk -F'[' 'NF == 1 {print $1} NF == 2 {print $2}'"
+               "| awk -F']' '{print $1}'"
+               % (datruf.db_file, datruf.las_file, datruf.read_id))
+    lashow = run_command(command).strip().split('\n')
+
     paths = []
     flag_first = True
     for line in lashow:
@@ -37,10 +71,10 @@ def load_paths(lashow, min_cover_set):   # TODO: modify LAshow4pathplot so that 
                 aseq = aseq[prefix_cut : len(aseq) - suffix_cut]
                 bseq = bseq[prefix_cut : len(bseq) - suffix_cut]
                 symbols = symbols[:len(symbols) - suffix_cut]
-                paths.append((ab, ae, bb, be, aseq, bseq, symbols))
+                paths.append((ab, ae, bb, be, aseq, bseq, convert_symbol(aseq, bseq, symbols)))
                 #print(ab, ae, bb, be, len(aseq))
             ab, ae, bb, be = list(map(int, data[2:6]))
-            if (ab, ae, bb, be) in min_cover_set:
+            if (ab, ae, bb, be) in datruf.min_cover_set:
                 flag_add = True
             else:
                 flag_add = False
@@ -80,6 +114,8 @@ def load_paths(lashow, min_cover_set):   # TODO: modify LAshow4pathplot so that 
         aseq = aseq[prefix_cut:len(aseq) - suffix_cut]
         bseq = bseq[prefix_cut:len(bseq) - suffix_cut]
         symbols = symbols[:len(symbols) - suffix_cut]
-        paths.append((ab, ae, bb, be, aseq, bseq, symbols))
+        paths.append((ab, ae, bb, be, aseq, bseq, convert_symbol(aseq, bseq, symbols)))   # TODO: change to dict?
+
+    # TODO: change symbol from [|*] to [MNID]
         
     return paths
