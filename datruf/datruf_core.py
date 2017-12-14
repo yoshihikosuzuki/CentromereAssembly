@@ -14,11 +14,6 @@ from datruf_utils import (make_line,
 
 
 def calc_cover_set(datruf):
-    datruf.alignments = (datruf.alignments
-                         .assign(distance=lambda x: x["abpos"] - x["bbpos"])
-                         .sort_values(by="abpos", kind="mergesort")
-                         .sort_values(by="distance", kind="mergesort"))   # TODO: should be sorted beforehand?
-
     uncovered_intervals = interval()
     for intvl in datruf.tr_intervals:
         uncovered_intervals |= interval[intvl]
@@ -26,24 +21,28 @@ def calc_cover_set(datruf):
     cover_set = set()
     for alignment in datruf.alignments.iterrows():
         ab, ae, bb, be = alignment[1][["abpos", "aepos", "bbpos", "bepos"]]
-        if not (0.95 <= float(ae - ab) / (be - bb) <= 1.05):   # abnormal slope (TODO: proper?)
-            pass
-        elif ab - be <= 20:   # TR alignment
-            intersect = interval[bb, ae] & uncovered_intervals
-            short_intervals = interval()
-            for intvl in intersect.components:
-                if interval_len(intvl) <= 20:
-                    short_intervals |= intvl
-            intersect = subtract_interval(intersect, short_intervals, length_threshold=0)   # TODO: meaning?
+        if not (0.95 <= float(ae - ab) / (be - bb) <= 1.05):   # abnormal slope   # TODO: is this still necessary? (path tracing is enough?)
+            continue
+        if ab - be > 20:   # not TR alignment
+            continue
 
-            # TODO: inspect whether codes below are still proper or not
-            flag_deletion = False
-            if len(intersect) == 1 and ((bb == intersect[0][0]) != (ae == intersect[-1][1])):
-                flag_deletion = True
+        intersect = interval[bb, ae] & uncovered_intervals
+        short_intervals = interval()
+        for intvl in intersect.components:
+            if interval_len(intvl) <= 20:
+                short_intervals |= intvl
+        intersect = subtract_interval(intersect, short_intervals, length_threshold=0)   # TODO: meaning?
 
-            if (not flag_deletion and intersect != interval()) or (interval_len(intersect) >= 1.5 * (ab - bb)):   # outer TR, or more than 1 units are in the uncovered regions
-                cover_set.add((bb, ae, ab, be))    # NOTE: be careful with the order!
-                uncovered_intervals = subtract_interval(uncovered_intervals, interval[bb, ae], length_threshold=100)
+        # TODO: inspect whether codes below are still proper or not
+        flag_deletion = False
+        if len(intersect) == 1 and ((bb == intersect[0][0]) != (ae == intersect[-1][1])):
+            flag_deletion = True
+
+        if (not flag_deletion and intersect != interval()) or (interval_len(intersect) >= 1.5 * (ab - bb)):   # outer TR, or more than 1 units are in the uncovered regions
+            cover_set.add((bb, ae, ab, be))    # NOTE: be careful with the order!
+            uncovered_intervals = subtract_interval(uncovered_intervals, interval[bb, ae], length_threshold=100)
+            if uncovered_intervals == interval():
+                break
 
     return cover_set
 
@@ -104,15 +103,20 @@ class Path:
     def split_alignment(self, plot=False, snake=False):
         # split entire alignment into all unit-vs-unit alignments
         ret = trace_alignment(self, plot=plot, snake=snake)
+
         if plot is True:
             self.unit_alignments, self.unit_len, self.shapes = ret
         else:
             self.unit_alignments, self.unit_len = ret
 
-        # Determine raw unit sequences
+        # Determine raw unit sequences   # XXX: determine the only one full-length unit sequence when there is no unit_alignments (i.e. shorter than duplication) (to do this in trace_alignment is better?)
         self.unit_seqs = [unit_alignment.bseq.replace('-', '')
                           for unit_alignment in self.unit_alignments]
-        self.unit_seqs.append(self.unit_alignments[-1].aseq.replace('-', ''))
+        # Some alignments contain only 1 full-length unit
+        # (i.e. a little shorter than duplication)
+        # Both unit sequence and consensus are not reported for such alignments
+        if len(self.unit_alignments) >= 1:
+            self.unit_seqs.append(self.unit_alignments[-1].aseq.replace('-', ''))
 
     def unit_consensus(self):
         self.DAG = take_consensus(self.unit_alignments)   # TODO: return consensus sequence
@@ -178,9 +182,9 @@ def trace_alignment(path, plot=False, snake=False):
 
     # TODO: remaining partial aseq|bseq|symbol should be added?
 
-    print("ab:", ab, "ae:", ae, "bb:", bb, "be:", be, "ab-bb:", ab - bb,
-          "mean:", int(np.mean(distance_list)),
-          "median:", int(np.median(distance_list)))
+    #print("ab:", ab, "ae:", ae, "bb:", bb, "be:", be, "ab-bb:", ab - bb,
+    #      "mean:", int(np.mean(distance_list)),
+    #      "median:", int(np.median(distance_list)))
 
     # Reflecting snake
     if snake is True:
@@ -197,14 +201,17 @@ def trace_alignment(path, plot=False, snake=False):
         # Final vertical line
         shapes.append(make_line(rp[-1], rp[-2], rp[-1], rp[-1], col, width))
 
-    ret = [unit_alignments, int(np.mean(distance_list))]
+    estimate_unit_length = ({"border": ab - bb,
+                             "mean": int(np.mean(distance_list)),
+                             "median": int(np.median(distance_list))})
+
+    ret = [unit_alignments, estimate_unit_length]
     if plot is True:
         ret.append(shapes)
     return ret
 
 
 def take_consensus(unit_alignments):
-
     aseqs = [x.aseq for x in unit_alignments]
     bseqs = [x.bseq for x in unit_alignments]
     symbols = [x.symbol for x in unit_alignments]

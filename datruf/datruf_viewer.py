@@ -44,7 +44,8 @@ class Viewer:
             self.tr_intervals = load_tr_intervals(self)
 
         if not hasattr(self, 'alignments'):
-            # pd.DataFrame([abpos, aepos, bbpos, bepos(, distance)])
+            # pd.DataFrame([abpos, aepos, bbpos, bepos, distance])
+            # sorted by distance -> abpos
             self.alignments = load_alignments(self)
 
         if not hasattr(self, 'cover_set'):
@@ -226,15 +227,19 @@ class Viewer:
         self._load_paths()
 
         for path in self.paths:
+            # Shorter than duplication
+            if len(path.unit_alignments) == 0:
+                continue
+
             path.unit_consensus()
 
-            # Show DAG
+            # Show DAG   # TODO: show partial graph
             plt.figure(figsize=(18, 10))
             plt.axis("off")
             #pos = nx.spectral_layout(DAG)
             #pos = nx.circular_layout(DAG)
             #pos = graphviz_layout(DAG, prog="dot")
             pos = graphviz_layout(path.DAG, prog="neato")
-            edge_weights = nx.get_edge_attributes(path.DAG, 'weight')
             nx.draw_networkx(path.DAG, pos, with_labels=False, node_size=1, font_size=1)   # TODO: output as dot file
+            #edge_weights = nx.get_edge_attributes(path.DAG, 'weight')
             #nx.draw_networkx_edge_labels(DAG, pos, edge_labels=edge_weights)

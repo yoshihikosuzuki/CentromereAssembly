@@ -1,4 +1,5 @@
 import re
+from collections import defaultdict
 import numpy as np
 import pandas as pd
 from interval import interval
@@ -6,34 +7,109 @@ from io import StringIO
 from IPython.display import display
 
 from datruf_utils import (run_command,
+                          add_element,
                           make_line,
                           interval_len,
                           subtract_interval)
 
+from datruf_core import (Alignment,
+                         Path)
 
-# Object datruf is either Viewer or Runner
+
+# Extract TR intervals information of reads from DBdump output
+def load_dbdump(datruf):
+    tr_intervals_all = defaultdict(dict)
+    columns = ("dbid", "start", "end")
+    counter = 0
+    with open(datruf.dbdump, 'r') as f:
+        for line in f:
+            data = line.strip().split(' ')
+            if data[0] == "R":
+                dbid = int(data[1])
+                if dbid > datruf.end_dbid:
+                    break
+            elif data[0] == "T0" and int(data[1]) > 0:
+                if dbid < datruf.start_dbid:
+                    continue
+                for i in range(int(data[1])):
+                    start = int(data[1 + 2 * (i + 1)])
+                    end = int(data[1 + 2 * (i + 1) + 1])
+                    add_element(tr_intervals_all, columns, counter,
+                                [dbid, start, end])
+                    counter += 1
+
+    tr_intervals_all = pd.DataFrame.from_dict(tr_intervals_all)
+    tr_intervals_all = tr_intervals_all.loc[:, columns]
+    return tr_intervals_all
+
+
+# Extract alignments information of reads from LAdump output
+def load_ladump(datruf):
+    alignments_all = defaultdict(dict)
+    columns = ("dbid", "abpos", "aepos", "bbpos", "bepos")
+    counter = 0
+    with open(datruf.ladump, 'r') as f:
+        for line in f:
+            data = line.strip().split(' ')
+            if data[0] == "P":
+                dbid = int(data[1])
+                if dbid > datruf.end_dbid:
+                    break
+            elif data[0] == "C":
+                if dbid < datruf.start_dbid:
+                    continue
+                add_element(alignments_all, columns, counter,
+                            [dbid] + list(map(int, data[1:5])))
+                counter += 1
+
+    alignments_all = pd.DataFrame.from_dict(alignments_all)
+    alignments_all = alignments_all.loc[:, columns]
+    return alignments_all
+
+
+# Load TR intervals of single read
+# If those of all reads are already stored, use that data
+# Otherwise, call DBdump
 def load_tr_intervals(datruf):
-    command = ("DBdump -mtan %s %d | awk '$1 == \"T0\" {print $0}'"
-               % (datruf.db_file, datruf.read_id))
-    dbdump = run_command(command).strip().split(' ')
-    return [(int(dbdump[1 + 2 * (i + 1)]), int(dbdump[1 + 2 * (i + 1) + 1]))
-            for i in range(int(dbdump[1]))]   # [(start_pos, end_pos), ...]
+    if hasattr(datruf, "tr_intervals_all"):
+        all_data = datruf.tr_intervals_all
+        tr_intervals = all_data[all_data["dbid"] == datruf.read_id]
+        tr_intervals = ([] if len(tr_intervals) == 0
+                        else list(tr_intervals
+                                  .apply(lambda x: (x["start"], x["end"]),
+                                         axis=1)))
+    else:
+        command = ("DBdump -mtan %s %d | awk '$1 == \"T0\" {print $0}'"
+                   % (datruf.db_file, datruf.read_id))
+        dbdump = run_command(command).strip().split(' ')
+
+        tr_intervals = [(int(dbdump[1 + 2 * (i + 1)]),
+                         int(dbdump[1 + 2 * (i + 1) + 1]))
+                        for i in range(int(dbdump[1]))]
+
+    # [(start_pos, end_pos), ...]
+    return tr_intervals
 
 
+# Load alignments of single read like TR intervals
 def load_alignments(datruf):
-    command = ("LAdump -c %s %s %d | awk '$1 == \"C\" {print $0}'"
-               % (datruf.db_file, datruf.las_file, datruf.read_id))
-    ladump = StringIO(run_command(command))
-    # NOTE: index should be replaced from "C" to interger?
-    return pd.read_csv(ladump, sep=" ",
-                       names=("abpos", "aepos", "bbpos", "bepos"))
+    if hasattr(datruf, "alignments_all"):
+        all_data = datruf.alignments_all
+        alignments = all_data[all_data["dbid"] == datruf.read_id]
+    else:
+        command = ("LAdump -c %s %s %d | awk '$1 == \"C\" {print $0}'"
+                   % (datruf.db_file, datruf.las_file, datruf.read_id))
+        ladump = StringIO(run_command(command))
 
-""" TODO: is it better to sort alignments here?
-    datruf.alignments = (datruf.alignments
-                         .assign(distance=lambda x: x["abpos"] - x["bbpos"])
-                         .sort_values(by="abpos", kind="mergesort")
-                         .sort_values(by="distance", kind="mergesort"))
-"""
+        alignments = pd.read_csv(ladump, sep=" ",
+                                 names=("abpos", "aepos", "bbpos", "bepos"))
+
+    alignments = (alignments
+                  .assign(distance=lambda x: x["abpos"] - x["bbpos"])
+                  .sort_values(by="abpos", kind="mergesort")
+                  .sort_values(by="distance", kind="mergesort")
+                  .reset_index(drop=True))
+    return alignments
 
 
 def convert_symbol(aseq, bseq, symbols):
@@ -91,6 +167,8 @@ def load_paths(datruf):   # TODO: modify LAshow4pathplot so that only aligned re
             if not flag_add:
                 continue
             data = data[0]
+            if len(data) == 0:   # empty line due to "]"
+                continue
             if counter % 3 == 0:
                 aseq += data
                 if '.' in data:
