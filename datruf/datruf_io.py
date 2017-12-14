@@ -2,15 +2,10 @@ import re
 from collections import defaultdict
 import numpy as np
 import pandas as pd
-from interval import interval
 from io import StringIO
-from IPython.display import display
 
 from datruf_utils import (run_command,
-                          add_element,
-                          make_line,
-                          interval_len,
-                          subtract_interval)
+                          add_element)
 
 from datruf_core import (Alignment,
                          Path)
@@ -87,7 +82,6 @@ def load_tr_intervals(datruf):
                          int(dbdump[1 + 2 * (i + 1) + 1]))
                         for i in range(int(dbdump[1]))]
 
-    # [(start_pos, end_pos), ...]
     return tr_intervals
 
 
@@ -115,7 +109,7 @@ def load_alignments(datruf):
 def convert_symbol(aseq, bseq, symbols):
     converted = ""
     for i in range(len(symbols)):
-        if symbols[i] == '|':   # TODO: replace is faster?
+        if symbols[i] == '|':
             symbol = "M"
         else:
             if aseq[i] == '-':

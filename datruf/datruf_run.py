@@ -2,8 +2,6 @@ import argparse
 import os
 import numpy as np
 import pandas as pd
-from interval import interval
-from IPython.display import display
 
 from datruf_io import (load_dbdump,
                        load_ladump,

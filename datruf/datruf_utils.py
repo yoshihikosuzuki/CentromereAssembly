@@ -5,8 +5,9 @@ from interval import interval
 
 def run_command(command):
     try:
+        # TODO: fix LAdump's bug and then comment-in
         out = subprocess.check_output(command, shell=True)#,
-                                      #stderr=subprocess.STDOUT)   # TODO: fix LAdump's bug and then comment-in
+                                      #stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as proc:
         print(proc.output.decode('utf-8'))
         sys.exit(1)

@@ -2,15 +2,10 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 from interval import interval
-from IPython.display import display
 
 from datruf_utils import (make_line,
                           interval_len,
                           subtract_interval)
-
-# -----------------------------------------------------------------------
-# TODO: is it better to not use datruf but only data needed as arguments?
-# -----------------------------------------------------------------------
 
 
 def calc_cover_set(datruf):
