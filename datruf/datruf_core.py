@@ -40,7 +40,7 @@ def calc_cover_set(datruf):
             flag_deletion = False
             if len(intersect) == 1 and ((bb == intersect[0][0]) != (ae == intersect[-1][1])):
                 flag_deletion = True
-                
+
             if (not flag_deletion and intersect != interval()) or (interval_len(intersect) >= 1.5 * (ab - bb)):   # outer TR, or more than 1 units are in the uncovered regions
                 cover_set.add((bb, ae, ab, be))    # NOTE: be careful with the order!
                 uncovered_intervals = subtract_interval(uncovered_intervals, interval[bb, ae], length_threshold=100)
@@ -81,7 +81,134 @@ def calc_min_cover_set(cover_set):
     return min_cover_set
 
 
-def take_consensus(aseqs, bseqs, symbols):
+class Alignment:
+    def __init__(self, aseq, bseq, symbol):
+        self.aseq = aseq
+        self.bseq = bseq
+        self.symbol = symbol
+
+
+class Path:
+    """
+    Alignments whose paths are to be inspected. They normally belong to
+    (minimum) cover set.
+    """
+
+    def __init__(self, ab, ae, bb, be, alignment):
+        self.ab = ab
+        self.ae = ae
+        self.bb = bb
+        self.be = be
+        self.alignment = alignment   # entire alignment
+
+    def split_alignment(self, plot=False, snake=False):
+        # split entire alignment into all unit-vs-unit alignments
+        ret = trace_alignment(self, plot=plot, snake=snake)
+        if plot is True:
+            self.unit_alignments, self.unit_len, self.shapes = ret
+        else:
+            self.unit_alignments, self.unit_len = ret
+
+        # Determine raw unit sequences
+        self.unit_seqs = [unit_alignment.bseq.replace('-', '')
+                          for unit_alignment in self.unit_alignments]
+        self.unit_seqs.append(self.unit_alignments[-1].aseq.replace('-', ''))
+
+    def unit_consensus(self):
+        self.DAG = take_consensus(self.unit_alignments)   # TODO: return consensus sequence
+
+
+# During the trace,
+# 1) calculate average/median distance from diagonal
+# 2) divide path into unit paths
+# 3) generate shapes of the path (if plot is True)
+# 4) generate the reflecting snake of the path (if snake is True)
+def trace_alignment(path, plot=False, snake=False):
+    ab, ae, bb, be, alignment = path.ab, path.ae, path.bb, path.be, path.alignment
+    aseq, bseq, symbol = alignment.aseq, alignment.bseq, alignment.symbol
+
+    unit_alignments = []
+
+    # instances of divided data
+    unit_aseq = ""
+    unit_bseq = ""
+    unit_symbol = ""
+
+    apos = ab   # current a-coordinate in the path
+    bpos = bb
+    distance_list = [ab - bb]   # from diagonal to each point in the path
+    reflection_points = [bb, ab]   # equal to border points of units
+    reflection_point = ab
+
+    if plot is True:
+        shapes = []
+        # coordinate of start position of a series of edges of identical type
+        # these are used for alignment path plot
+        start_apos = ab
+        start_bpos = bb
+
+    for i in range(len(symbol)):
+        unit_aseq += aseq[i]
+        unit_bseq += bseq[i]
+        unit_symbol += symbol[i]
+
+        if symbol[i] in ('M', 'N', 'D'):
+            apos += 1
+        if symbol[i] in ('M', 'N', 'I'):
+            bpos += 1
+
+        # If the type of edge will change (or no edge) in the next step,
+        # then add a line consisting of continuous edges of same direction
+        if plot is True and (i == len(symbol) - 1
+                             or abs(ord(symbol[i]) - ord(symbol[i + 1])) > 1):
+            shapes.append(make_line(start_apos, start_bpos, apos, bpos, 'black', 1))   # TODO: change color
+            start_apos = apos
+            start_bpos = bpos
+
+        distance_list.append(apos - bpos)
+
+        # If bpos will step over current reflection point in the next step,
+        # then add a reflection point
+        if bpos == reflection_point and (i == len(symbol) - 1
+                                         or symbol[i + 1] != 'D'):
+            unit_alignments.append(Alignment(unit_aseq, unit_bseq, unit_symbol))
+            unit_aseq = unit_bseq = unit_symbol = ""
+            reflection_points.append(apos)
+            reflection_point = apos
+
+    # TODO: remaining partial aseq|bseq|symbol should be added?
+
+    print("ab:", ab, "ae:", ae, "bb:", bb, "be:", be, "ab-bb:", ab - bb,
+          "mean:", int(np.mean(distance_list)),
+          "median:", int(np.median(distance_list)))
+
+    # Reflecting snake
+    if snake is True:
+        col = 'green'
+        width = 0.2
+        rp = reflection_points
+        # Initial horizontal line
+        shapes.append(make_line(rp[0], rp[0], rp[1], rp[0], col, width))
+        for i in range(1, len(rp) - 1):
+            # Vertical line
+            shapes.append(make_line(rp[i], rp[i - 1], rp[i], rp[i], col, width))
+            # Horizontal line
+            shapes.append(make_line(rp[i], rp[i], rp[i + 1], rp[i], col, width))
+        # Final vertical line
+        shapes.append(make_line(rp[-1], rp[-2], rp[-1], rp[-1], col, width))
+
+    ret = [unit_alignments, int(np.mean(distance_list))]
+    if plot is True:
+        ret.append(shapes)
+    return ret
+
+
+def take_consensus(unit_alignments):
+
+    aseqs = [x.aseq for x in unit_alignments]
+    bseqs = [x.bseq for x in unit_alignments]
+    symbols = [x.symbol for x in unit_alignments]
+
     DAG = nx.DiGraph()
     
     # Add backbone
@@ -223,103 +350,3 @@ def take_consensus(aseqs, bseqs, symbols):
     
     return DAG
     # Calculate maximum weighted path
-
-
-# During the trace,
-# 1) calculate average/median distance from diagonal
-# 2) divide path into unit paths
-# 3) generate shapes of the path (if plot is True)
-# 4) generate the reflecting snake of the path (if snake is True)   # this is part of 2)
-def trace_path(path, plot=False, snake=False):
-    if plot is True:
-        shapes = []
-
-    # divide [aseq|bseq|symbol] -> [aseq|bseq|symbols]s
-    aseqs = []
-    bseqs = []
-    symbols = []
-
-    # instances of divided data
-    unit_aseq = ""
-    unit_bseq = ""
-    unit_symbol = ""
-
-    ab, ae, bb, be, aseq, bseq, symbol = path
-    apos = ab   # current a-coordinate in the path
-    bpos = bb
-    # coordinate of start position of a series of edges of identical type
-    # these are used for alignment path plot
-    start_apos = ab
-    start_bpos = bb
-
-    reflection_points = [bb, ab]   # equal to border points of units
-    reflection_point = ab
-    distance_list = [ab - bb]   # from diagonal to each point in the path
-
-    for i in range(len(symbol) - 1):
-        unit_aseq += aseq[i]
-        unit_bseq += bseq[i]
-        unit_symbol += symbol[i]
-
-        # TODO: change symbol into M/N/I/D
-
-        if symbol[i] in ('M', 'N', 'D'):
-            apos += 1
-        if symbol[i] in ('M', 'N', 'I'):
-            bpos += 1
-
-        if plot is True and symbol[i] != symbol[i + 1]:   # in the next step, edge type will change
-            shapes.append(make_line(start_apos, start_bpos, apos, bpos, 'black', 1))   # TODO: change color
-            start_apos = apos
-            start_bpos = bpos
-
-        distance_list.append(apos - bpos)
-
-        if bpos == reflection_point and symbol[i + 1] != 'D':   # in the next step, bpos will step over current reflection point
-            aseqs.append(unit_aseq)
-            bseqs.append(unit_bseq)
-            symbols.append(unit_symbol)
-            reflection_points.append(apos)
-            unit_aseq = ""
-            unit_bseq = ""
-            unit_symbol = ""
-            reflection_point = apos
-
-    unit_aseq += aseq[-1]
-    unit_bseq += bseq[-1]
-    unit_symbol += symbol[-1]
-
-    if symbol[i] in ('M', 'N', 'D'):
-        apos += 1
-    if symbol[i] in ('M', 'N', 'I'):
-        bpos += 1
-
-    if plot is True:
-        shapes.append(make_line(start_apos, start_bpos, apos, bpos, 'black', 1))   # TODO: change color
-
-    distance_list.append(apos - bpos)
-
-    if bpos == reflection_point:
-        aseqs.append(unit_aseq)
-        bseqs.append(unit_bseq)
-        symbols.append(unit_symbol)
-        reflection_points.append(apos)
-
-    # TODO: decide whether partial aseq|bseq|symbol should be added into aseqs|bseqs|symbols
-
-    print("ab:", ab, "ae:", ae, "bb:", bb, "be:", be, "ab-bb:", ab - bb, "mean:", int(np.mean(distance_list)), "median:", int(np.median(distance_list)))
-
-    # Reflecting snake
-    #print(unit_borders)
-    if snake is True:
-        shapes.append(make_line(reflection_points[0], reflection_points[0], reflection_points[1], reflection_points[0], 'green', 0.2))
-        for i in range(1, len(reflection_points) - 1):
-            shapes.append(make_line(reflection_points[i], reflection_points[i - 1], reflection_points[i], reflection_points[i], 'green', 0.2))
-            shapes.append(make_line(reflection_points[i], reflection_points[i], reflection_points[i + 1], reflection_points[i], 'green', 0.2))
-        shapes.append(make_line(reflection_points[-1], reflection_points[-2], reflection_points[-1], reflection_points[-1], 'green', 0.2))
-
-    divided_path = (ab, ae, bb, be, aseqs, bseqs, symbols)
-    if plot is True:
-        return (divided_path, shapes)
-    else:
-        return (divided_path, int(np.mean(distance_list)))

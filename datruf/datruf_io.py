@@ -71,7 +71,8 @@ def load_paths(datruf):   # TODO: modify LAshow4pathplot so that only aligned re
                 aseq = aseq[prefix_cut : len(aseq) - suffix_cut]
                 bseq = bseq[prefix_cut : len(bseq) - suffix_cut]
                 symbols = symbols[:len(symbols) - suffix_cut]
-                paths.append((ab, ae, bb, be, aseq, bseq, convert_symbol(aseq, bseq, symbols)))
+                #paths.append((ab, ae, bb, be, aseq, bseq, convert_symbol(aseq, bseq, symbols)))
+                paths.append(Path(ab, ae, bb, be, Alignment(aseq, bseq, convert_symbol(aseq, bseq, symbols))))
                 #print(ab, ae, bb, be, len(aseq))
             ab, ae, bb, be = list(map(int, data[2:6]))
             if (ab, ae, bb, be) in datruf.min_cover_set:
@@ -109,13 +110,12 @@ def load_paths(datruf):   # TODO: modify LAshow4pathplot so that only aligned re
                     else:
                         suffix_cut += len(data) - re.search(r'\.+', data).span()[0]
             counter += 1
-           
+
     if flag_add:
         aseq = aseq[prefix_cut:len(aseq) - suffix_cut]
         bseq = bseq[prefix_cut:len(bseq) - suffix_cut]
         symbols = symbols[:len(symbols) - suffix_cut]
-        paths.append((ab, ae, bb, be, aseq, bseq, convert_symbol(aseq, bseq, symbols)))   # TODO: change to dict?
+        #paths.append((ab, ae, bb, be, aseq, bseq, convert_symbol(aseq, bseq, symbols)))   # TODO: change to dict?
+        paths.append(Path(ab, ae, bb, be, Alignment(aseq, bseq, convert_symbol(aseq, bseq, symbols))))
 
-    # TODO: change symbol from [|*] to [MNID]
-        
     return paths

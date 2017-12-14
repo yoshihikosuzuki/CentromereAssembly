@@ -12,9 +12,7 @@ from datruf_io import (load_tr_intervals,
                        load_paths)
 
 from datruf_core import (calc_cover_set,
-                         calc_min_cover_set,
-                         take_consensus,
-                         trace_path)
+                         calc_min_cover_set)
 
 from datruf_utils import (run_command,
                           make_line)
@@ -57,12 +55,20 @@ class Viewer:
             # set((ab, ae, bb, be), ...)
             self.min_cover_set = calc_min_cover_set(self.cover_set)
 
-    def _load_paths(self):
-        self._calc_cover_set()
+    def _load_paths(self, plot=False, snake=False):
+        self._calc_cover_set()   # load_paths needs min_cover_set
 
         if not hasattr(self, 'paths'):
-            # [(ab, ae, bb, be, aseq, bseq, symbols), ...]
-            self.paths = load_paths(self)
+            # [Path, ...]
+            self.paths = load_paths(self)   # only alignments are loaded
+
+        for path in self.paths:
+            if plot is True:
+                if not hasattr(path, 'shapes'):
+                    path.split_alignment(plot=True, snake=snake)
+            else:
+                if not hasattr(path, 'unit_alignments'):
+                    path.split_alignment()
 
     def set_read(self, read_id):
         # Initialize
@@ -185,26 +191,23 @@ class Viewer:
         py.iplot(go.Figure(data=[trace1, trace2, trace3, trace4],
                            layout=layout))
 
-    def path_plot(self, snake=True):   # TODO: make a class for path
-        self._load_paths()
+    def path_plot(self, snake=True):
+        self._load_paths(plot=True, snake=snake)
 
         # diagonal
         shapes = [make_line(0, 0, self.read_len, self.read_len, 'yellow', 3)]
-        # path trace
-        self.divided_paths = []
+        # path trace (and reflecting snakes)
         for path in self.paths:
-            divided_path, add_shapes = trace_path(path, plot=True, snake=snake)
-            self.divided_paths.append(divided_path)
-            shapes.extend(add_shapes)
+            shapes.extend(path.shapes)
 
-        # Show path(s) (and reflecting snake(s))
-        trace1 = go.Scatter(x=[x[0] for x in self.paths],
-                            y=[x[2] for x in self.paths],
+        # Show alignment paths (and snakes)
+        trace1 = go.Scatter(x=[x.ab for x in self.paths],
+                            y=[x.bb for x in self.paths],
                             mode='markers',
                             name="start")
 
-        trace2 = go.Scatter(x=[x[1] for x in self.paths],
-                            y=[x[3] for x in self.paths],
+        trace2 = go.Scatter(x=[x.ae for x in self.paths],
+                            y=[x.be for x in self.paths],
                             mode='markers',
                             name="end")
 
@@ -221,15 +224,9 @@ class Viewer:
 
     def consensus(self):
         self._load_paths()
-        
-        if not hasattr(self, 'divided_paths'):
-            self.divided_paths = []
-            for path in self.paths:
-                divided_path, dist = trace_path(path, plot=False)
-                self.divided_paths.append(divided_path)
 
-        for path in self.divided_paths:
-            DAG = take_consensus(*path[4:])
+        for path in self.paths:
+            path.unit_consensus()
 
             # Show DAG
             plt.figure(figsize=(18, 10))
@@ -237,7 +234,7 @@ class Viewer:
             #pos = nx.spectral_layout(DAG)
             #pos = nx.circular_layout(DAG)
             #pos = graphviz_layout(DAG, prog="dot")
-            pos = graphviz_layout(DAG, prog="neato")
-            edge_weights = nx.get_edge_attributes(DAG, 'weight')
-            nx.draw_networkx(DAG, pos, with_labels=False, node_size=1, font_size=1)   # TODO: output as dot file
+            pos = graphviz_layout(path.DAG, prog="neato")
+            edge_weights = nx.get_edge_attributes(path.DAG, 'weight')
+            nx.draw_networkx(path.DAG, pos, with_labels=False, node_size=1, font_size=1)   # TODO: output as dot file
             #nx.draw_networkx_edge_labels(DAG, pos, edge_labels=edge_weights)
