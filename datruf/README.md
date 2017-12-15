@@ -4,7 +4,7 @@ Datruf analyzes relatively long (>100 bp unit size) tandem repeats using datande
 
 Datruf consists of three parts:
 
-* **Runner** executes datruf with many number of reads and output the results.
+* **Runner** applies core algorithm of datruf to arbitrary number of reads without visualization and output the results into a file.
 
 * **Viewer** receives one read ID and draw figures that are not told by Runner but help understand the sequence structure of the read.
 
