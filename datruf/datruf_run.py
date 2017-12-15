@@ -1,7 +1,9 @@
 import argparse
 import os
+from collections import defaultdict
 import numpy as np
 import pandas as pd
+from multiprocessing import Pool
 
 from datruf_io import (load_dbdump,
                        load_ladump,
@@ -12,7 +14,8 @@ from datruf_io import (load_dbdump,
 from datruf_core import (calc_cover_set,
                          calc_min_cover_set)
 
-from datruf_utils import (run_command)
+from datruf_utils import (run_command,
+                          add_element)
 
 
 class Runner():
@@ -29,6 +32,8 @@ class Runner():
     algorithm. Alignment paths are loaded on-the-fly in both modes due
     to its huge size.
     """
+
+    columns = ("dbid", "start", "end", "unit length")
 
     def __init__(self, args):
         for attr in list(vars(args).keys()):
@@ -56,12 +61,14 @@ class Runner():
                        % (self.db_file, self.las_file, self.ladump))
             run_command(command)
 
-    def run(self):
-        if not self.on_the_fly:   # load dump data beforehand
+    def run(self, on_the_fly=False):
+        if not on_the_fly:   # load dump data beforehand
             self._check_dump()
             self.tr_intervals_all = load_dbdump(self)
             self.alignments_all = load_ladump(self)
 
+        result = defaultdict(dict)
+        count = 0
         for read_id in range(self.start_dbid, self.end_dbid + 1):
             self.read_id = read_id
 
@@ -96,13 +103,62 @@ class Runner():
 
             for path in self.paths:
                 path.split_alignment()
-                print(self.read_id, path.bb, path.ae, path.unit_len["border"], path.unit_len["mean"], path.unit_len["median"])   # TODO: use dataframe
+
+                # Add result into pd.DataFrame
+                add_element(result, Runner.columns, count,
+                            (self.read_id,
+                             path.bb,
+                             path.ae,
+                             path.unit_len["mean"]))   # NOTE: border, mean, median
+                count += 1
+
+        result = pd.DataFrame.from_dict(result)
+        return result
+
+
+def run_runner(args):
+    r, on_the_fly = args
+    return r.run(on_the_fly=on_the_fly)
 
 
 def main():
-    r = Runner(load_args())
-    r.run()
-    # TODO: parallelization (both inside this (multiprocessing) and outside this (by shell script))
+    args = load_args()
+    on_the_fly = args.on_the_fly
+    n_core = args.n_core
+    out_file = args.out_file
+    del args.on_the_fly
+    del args.n_core
+    del args.out_file
+
+    if n_core == 1:
+        r = Runner(args)
+        results = r.run(on_the_fly=on_the_fly)
+    else:
+        r_tmp = Runner(args)   # only for adjusting dbids
+        start_dbid = r_tmp.start_dbid
+        end_dbid = r_tmp.end_dbid
+        del r_tmp
+
+        # Generate split Runners
+        unit_nread = -(-(end_dbid - start_dbid + 1) // n_core)
+        r = []
+        for i in range(n_core):
+            args.start_dbid = start_dbid + i * unit_nread
+            args.end_dbid = min(end_dbid,
+                                start_dbid + (i + 1) * unit_nread - 1)
+            r.append((Runner(args), on_the_fly))
+
+        # Parallely execute and then merge results
+        exe_pool = Pool(n_core)
+        results = pd.DataFrame()
+        for result in exe_pool.imap(run_runner, r):
+            print(result)
+            results = pd.concat([results, result])
+
+        results = (results.sort_values(by="dbid")
+                   .reset_index(drop=True))
+
+    results.loc[:, Runner.columns].to_csv(out_file, sep="\t")
 
 
 def load_args():
@@ -126,20 +182,25 @@ def load_args():
 
     parser.add_argument("--out_file",
                         type=str,
-                        default="datander_result",
+                        default="datruf_result",
                         help="")
 
     parser.add_argument("--start_dbid",
                         type=int,
-                        default=18,
+                        default=1,
                         help=("Start read ID, which is used in DAZZ_DB."
                               "<= 1 for starting from the first read. [1]"))
 
     parser.add_argument("--end_dbid",
                         type=int,
-                        default=30,
+                        default=100,
                         help=("End read ID. < 1 for ending at the last read. "
                               "[-1]"))
+
+    parser.add_argument("--n_core",
+                        type=int,
+                        default=1,
+                        help=("Degree of parallelization. [1]"))
 
     parser.add_argument("--on_the_fly",
                         action="store_true",

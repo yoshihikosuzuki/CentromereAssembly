@@ -19,13 +19,12 @@ class Plotter():
     using add_result(). The format of input file must be as follows (separater
     is a tab):
 
-        dbid	header	start	end	unit length	unit sequence
-    0	20	L416/2699/0_6897 RQ=0.826	5	6897	13	AAGAGAGAAAGAG
-    1	53	L416/4303/0_23522 RQ=0.866	1	20823	10	AGAATAACAT
+        dbid	start	end	unit length	unit sequence
+    0	20	5	6897	13	AAGAGAGAAAGAG
+    1	53	1	20823	10	AGAATAACAT
     """
 
     columns = ("dbid",
-               "header",   # TODO: remove header?
                "method",
                "start",
                "end",
@@ -55,8 +54,8 @@ class Plotter():
                         .reset_index(drop=True)
                         .loc[:, Plotter.columns])
 
-    def show_results(self):
-        display(self.results)
+    def get_results(self):
+        return self.results
 
     # Histogram of the frequency of unit length
     def plot_unit_frequency(self):
@@ -80,3 +79,8 @@ class Plotter():
                                       range=[0, 2000]))
 
         py.iplot(go.Figure(data=data, layout=layout))
+
+
+
+
+    # TODO: venn diagram, scatter plot

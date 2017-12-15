@@ -198,7 +198,7 @@ def trace_alignment(path, plot=False, snake=False):
 
     estimate_unit_length = ({"border": ab - bb,
                              "mean": int(np.mean(distance_list)),
-                             "median": int(np.median(distance_list))})
+                             "median": int(np.median(distance_list))})   # XXX: this is tentative treatment for comparison
 
     ret = [unit_alignments, estimate_unit_length]
     if plot is True:

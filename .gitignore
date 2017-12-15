@@ -1,6 +1,6 @@
 __pycache__/
 .ipynb_checkpoints
-data/
 datander_dmel/
+datruf_result
 datruf_run/
 mock_simulation/
