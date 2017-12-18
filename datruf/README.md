@@ -1,14 +1,14 @@
 # datruf
 
-Datruf analyzes relatively long (>100 bp unit size) tandem repeats using datander in DAMASKER software developed by Dr. Gene Myers.
+Datruf analyzes tandem repeats with relatively long (>100 bp unit size) using output of datander in DAMASKER software developed by Dr. Gene Myers.
 
 Datruf consists of three parts:
 
-* **Runner** applies core algorithm of datruf to arbitrary number of reads without visualization and output the results into a file.
+* **Runner** applies core algorithm of datruf to arbitrary number of reads without visualization and output the results (read ID, start/end position of tandem repeat, estimated unit length, borders of units, consensus unit sequence) into a file.
 
-* **Viewer** receives one read ID and draw figures that are not told by Runner but help understand the sequence structure of the read.
+* **Viewer** receives one read ID and draw figures that are not told by Runner but help to understand the sequence structure of the read.
 
-* **Plotter** requires results of datruf or other software for tandem repeat analysis (TRF, mTR, ...) and draws figures for comparison of these results.
+* **Plotter** requires results of datruf and/or other software for tandem repeat analysis (TRF, mTR, ...) and draws figures useful for comparison of these results.
 
 ## How to use
 
