@@ -1,6 +1,6 @@
 # datruf
 
-Datruf analyzes tandem repeats with relatively long (>100 bp unit size) using output of datander in DAMASKER software developed by Dr. Gene Myers.
+Datruf analyzes tandem repeats with relatively long unit size (mainly >100 bp) using output of datander in DAMASKER software developed by Dr. Gene Myers.
 
 Datruf consists of three parts:
 
