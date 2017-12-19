@@ -16,24 +16,26 @@ def calc_cover_set(datruf):
     cover_set = set()
     for alignment in datruf.alignments.iterrows():
         ab, ae, bb, be = alignment[1][["abpos", "aepos", "bbpos", "bepos"]]
-        if not (0.95 <= float(ae - ab) / (be - bb) <= 1.05):   # abnormal slope   # TODO: is this still necessary? (path tracing is enough?)
+        if not (0.95 <= float(ae - ab) / (be - bb) <= 1.05):   # abnormal slope
             continue
         if ab - be > 20:   # not TR alignment
             continue
 
+        # Remove short interval
         intersect = interval[bb, ae] & uncovered_intervals
         short_intervals = interval()
         for intvl in intersect.components:
-            if interval_len(intvl) <= 20:
+            if interval_len(intvl) <= 500:
                 short_intervals |= intvl
-        intersect = subtract_interval(intersect, short_intervals, length_threshold=0)   # TODO: meaning?
+        intersect = subtract_interval(intersect, short_intervals, length_threshold=0)
 
-        # TODO: inspect whether codes below are still proper or not
+        # Detect deletion around only 1 border
         flag_deletion = False
         if len(intersect) == 1 and ((bb == intersect[0][0]) != (ae == intersect[-1][1])):
             flag_deletion = True
 
-        if (not flag_deletion and intersect != interval()) or (interval_len(intersect) >= 1.5 * (ab - bb)):   # outer TR, or more than 1 units are in the uncovered regions
+        # Outer TR, or more than 1 units are in the uncovered regions
+        if (not flag_deletion and intersect != interval()) or (interval_len(intersect) >= 1.5 * (ab - bb)):
             cover_set.add((bb, ae, ab, be))    # NOTE: be careful with the order!
             uncovered_intervals = subtract_interval(uncovered_intervals, interval[bb, ae], length_threshold=100)
             if uncovered_intervals == interval():
@@ -160,7 +162,7 @@ def trace_alignment(path, plot=False, snake=False):
         # then add a line consisting of continuous edges of same direction
         if plot is True and (i == len(symbol) - 1
                              or abs(ord(symbol[i]) - ord(symbol[i + 1])) > 1):
-            shapes.append(make_line(start_apos, start_bpos, apos, bpos, 'black', 1))   # TODO: change color
+            shapes.append(make_line(start_apos, start_bpos, apos, bpos, 'black', 1))
             start_apos = apos
             start_bpos = bpos
 
@@ -206,7 +208,7 @@ def trace_alignment(path, plot=False, snake=False):
     return ret
 
 
-def take_consensus(unit_alignments):
+def take_consensus(unit_alignments):   # TODO: refactoring
     aseqs = [x.aseq for x in unit_alignments]
     bseqs = [x.bseq for x in unit_alignments]
     symbols = [x.symbol for x in unit_alignments]
@@ -217,7 +219,7 @@ def take_consensus(unit_alignments):
     backbone = bseqs[0].replace('-', '')
     backbone_path = []
     for i in range(len(backbone) - 1):
-        DAG.add_edge("%s:%f" % (backbone[i], i + 1), "%s:%f" % (backbone[i + 1], i + 2), weight=1)   # NOTE: *backbone coordinate is 1-index*
+        DAG.add_edge("%s:%f" % (backbone[i], i + 1), "%s:%f" % (backbone[i + 1], i + 2), weight=1)   # backbone coordinate is 1-index
         backbone_path.append("%s:%f" % (backbone[i], i + 1))
     backbone_path.append("%s:%f" % (backbone[-1], len(backbone)))
     #print("backbone_path:", backbone_path)
