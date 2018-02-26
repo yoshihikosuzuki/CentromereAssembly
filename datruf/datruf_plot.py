@@ -106,6 +106,7 @@ class Plotter():
 
         py.iplot(go.Figure(data=data, layout=layout))
 
+    # Scatter plot of estimated unit lengths between 2 methods
     def plot_unit_length(self, methods=["datander", "TRF"]):
         if len(methods) != 2:
             return
@@ -178,11 +179,13 @@ class Plotter():
 
         py.iplot(go.Figure(data=[trace], layout=layout))
 
-        # NOTE: limits estimated unit length >50 bp in both methods
+        # Histogram of the ratio between the estimated unit lengths
+        # NOTE: only >50 bp estimated lengths in both methods
         trace = go.Histogram(x=[x[1] / x[0] for x in out
                                 if x[0] >= 50 and x[1] >= 50],
                              xbins=dict(start=0, end=5, size=0.01))
-        layout = go.Layout(xaxis=dict(title="Ratio of length (%s / %s)" % (methods[1], methods[0]),
+        layout = go.Layout(xaxis=dict(title="Ratio of length (%s / %s)"
+                                      % (methods[1], methods[0]),
                                       range=[0, 5]),
                            yaxis=dict(title="Frequency"),
                            hovermode='closest',

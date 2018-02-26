@@ -3,5 +3,7 @@ __pycache__/
 datander_dmel/
 datruf_result
 datruf/For development.ipynb
+datruf/Clustering large real data.ipynb
+datruf/DPMM.ipynb
 datruf_run/
 mock_simulation/

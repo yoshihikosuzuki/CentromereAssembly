@@ -102,9 +102,9 @@ class Path:
         ret = trace_alignment(self, plot=plot, snake=snake)
 
         if plot is True:
-            self.unit_alignments, self.unit_len, self.shapes = ret
+            self.unit_alignments, self.shapes = ret
         else:
-            self.unit_alignments, self.unit_len = ret
+            self.unit_alignments = ret
 
         # Determine raw unit sequences   # XXX: determine the only one full-length unit sequence when there is no unit_alignments (i.e. shorter than duplication) (to do this in trace_alignment is better?)
         self.unit_seqs = [unit_alignment.bseq.replace('-', '')
@@ -116,7 +116,41 @@ class Path:
             self.unit_seqs.append(self.unit_alignments[-1].aseq.replace('-', ''))
 
     def unit_consensus(self):
-        self.DAG = take_consensus(self.unit_alignments)   # TODO: return consensus sequence
+        self.DAG = take_consensus(self.unit_alignments)
+        # NOTE: currently this does not return a consensus seuqnence but just
+        # a DAG, but we now have Consed and we are not going to implement this
+        # function
+
+    def write_unit_seqs(self, read_id, path_count, out_file):
+        # Filter by coefficient of variation of the unit lengths
+        unit_lens = [len(unit_seq) for unit_seq in self.unit_seqs]
+
+        # Discard TRs with only 1 full-length unit because we cannot
+        # calculate CV
+        if len(unit_lens) < 2:
+            #print("less than 2! %d %d" % (self.read_id, path_count))
+            return False
+
+        cv = np.std(unit_lens, ddof=1) / np.mean(unit_lens)
+        #print(read_id, path_count)
+        #print(unit_lengths)
+        #print(cv)
+        #print("---")
+        if cv >= 0.1:
+            return False
+
+        self.mean_unit_len = int(np.mean(unit_lens))
+
+        # Print (full-length) unit sequences
+        for unit_count, unit_seq in enumerate(self.unit_seqs):
+            out_file.write(">%d-%d/%d/0_%d\n%s\n"
+                           % (read_id,
+                              path_count,
+                              unit_count,
+                              len(unit_seq),
+                              unit_seq))
+
+        return True
 
 
 # During the trace,
@@ -137,8 +171,8 @@ def trace_alignment(path, plot=False, snake=False):
 
     apos = ab   # current a-coordinate in the path
     bpos = bb
-    distance_list = [ab - bb]   # from diagonal to each point in the path
-    reflection_points = [bb, ab]   # equal to border points of units
+    #distance_list = [ab - bb]   # from diagonal to each point in the path
+    reflection_points = [bb, ab]   # equal to border points of units   # TODO: return this to Path as well
     reflection_point = ab
 
     if plot is True:
@@ -166,7 +200,7 @@ def trace_alignment(path, plot=False, snake=False):
             start_apos = apos
             start_bpos = bpos
 
-        distance_list.append(apos - bpos)
+        #distance_list.append(apos - bpos)
 
         # If bpos will step over current reflection point in the next step,
         # then add a reflection point
@@ -198,17 +232,18 @@ def trace_alignment(path, plot=False, snake=False):
         # Final vertical line
         shapes.append(make_line(rp[-1], rp[-2], rp[-1], rp[-1], col, width))
 
-    estimate_unit_length = ({"border": ab - bb,
-                             "mean": int(np.mean(distance_list)),
-                             "median": int(np.median(distance_list))})   # XXX: this is tentative treatment for comparison
+    #estimate_unit_length = ({"border": ab - bb,
+    #                         "mean": int(np.mean(distance_list)),
+    #                         "median": int(np.median(distance_list))})
 
-    ret = [unit_alignments, estimate_unit_length]
+    #ret = [unit_alignments, estimate_unit_length]
+    ret = unit_alignments
     if plot is True:
-        ret.append(shapes)
+        ret = [ret, shapes]
     return ret
 
 
-def take_consensus(unit_alignments):   # TODO: refactoring
+def take_consensus(unit_alignments):   # TODO: refactor though this will not be used any more
     aseqs = [x.aseq for x in unit_alignments]
     bseqs = [x.bseq for x in unit_alignments]
     symbols = [x.symbol for x in unit_alignments]

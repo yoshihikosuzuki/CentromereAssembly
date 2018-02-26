@@ -1,7 +1,6 @@
 import argparse
 import os
 from collections import defaultdict
-import numpy as np
 import pandas as pd
 from multiprocessing import Pool
 
@@ -63,17 +62,22 @@ class Runner():
             run_command(command)
 
     def run(self):
-        if not self.on_the_fly:   # load dump data beforehand
+        if not self.on_the_fly:
+            # Load dump data beforehand
             self._check_dump()
             self.tr_intervals_all = load_dbdump(self)
+            if len(self.tr_intervals_all) == 0:
+                return None
             self.alignments_all = load_ladump(self)
+
+        out_units_fname_split = "%s.%d" % (self.out_units_fname,
+                                           os.getpid())
+        out_units_file = open(out_units_fname_split, 'w')
 
         result = defaultdict(dict)
         count = 0
         for read_id in range(self.start_dbid, self.end_dbid + 1):
             self.read_id = read_id
-
-            #print(self.read_id)
 
             # [(start, end), ...]
             self.tr_intervals = load_tr_intervals(self)
@@ -106,7 +110,7 @@ class Runner():
                 continue
 
             # [Path, ...]
-            self.paths = load_paths(self)   # only alignments are loaded
+            self.paths = load_paths(self)
 
             #print("---")
             #print(self.read_id)
@@ -115,19 +119,25 @@ class Runner():
             #print(self.cover_set)
             #print(self.min_cover_set)
 
-            for path in self.paths:
+            for path_count, path in enumerate(self.paths):
                 path.split_alignment()
 
-                # Add result into pd.DataFrame
-                add_element(result, Runner.columns, count,
-                            (self.read_id,
-                             path.bb,
-                             path.ae,
-                             path.unit_len["mean"]))   # NOTE: border, mean, median
-                count += 1
+                # Filter results by CV of unit lengths and output the units
+                # if specified
+                if path.write_unit_seqs(read_id, path_count, out_units_file):
+                    # Add result into pd.DataFrame
+                    add_element(result, Runner.columns, count,
+                                (self.read_id,
+                                 path.bb,
+                                 path.ae,
+                                 path.mean_unit_len))
+                                 #path.unit_len["mean"]))   # NOTE: border, mean, median
+                    count += 1
+
+        out_units_file.close()
 
         result = pd.DataFrame.from_dict(result)
-        return result
+        return (out_units_fname_split, result)
 
 
 def run_runner(r):
@@ -137,15 +147,20 @@ def run_runner(r):
 def main():
     args = load_args()
     n_core = args.n_core
-    out_file = args.out_file
+    out_main_fname = args.out_main_fname
     del args.n_core
-    del args.out_file
+    del args.out_main_fname
+
+    out_units_fnames = ""
 
     if n_core == 1:
         r = Runner(args)
-        results = r.run()
+        ret = r.run()
+        if ret is None:
+            return
+        out_units_fnames, results = ret
     else:
-        r_tmp = Runner(args)   # only for adjusting dbids
+        r_tmp = Runner(args)   # only for the setting of dbids
         start_dbid = r_tmp.start_dbid
         end_dbid = r_tmp.end_dbid
         del r_tmp
@@ -165,13 +180,25 @@ def main():
         # Parallely execute and then merge results
         exe_pool = Pool(n_core)
         results = pd.DataFrame()
-        for result in exe_pool.imap(run_runner, r):
-            results = pd.concat([results, result])
+        for ret in exe_pool.imap(run_runner, r):
+            if ret is not None:
+                out_units_fname_split, result = ret
+                results = pd.concat([results, result])
+                out_units_fnames += out_units_fname_split + " "
+
+        if len(results) == 0:
+            return
 
         results = (results.sort_values(by="dbid", kind="mergesort")
                    .reset_index(drop=True))
 
-    results.loc[:, Runner.columns].to_csv(out_file, sep="\t")
+    results.loc[:, Runner.columns].to_csv(out_main_fname, sep="\t")
+    command = ("cat %s > %s; rm %s" % (out_units_fnames,
+                                       args.out_units_fname,
+                                       out_units_fnames))
+    #command = ("cat %s > %s" % (out_units_fnames,
+    #                            args.out_units_fname))   # keep tmp files
+    run_command(command)
 
 
 def load_args():
@@ -199,11 +226,6 @@ def load_args():
                               "does not exist. In <on_the_fly> mode, this "
                               "is not used. [datander_ladump]"))
 
-    parser.add_argument("--out_file",
-                        type=str,
-                        default="datruf_result",
-                        help="A file for outputting results. [datruf_result]")
-
     parser.add_argument("--start_dbid",
                         type=int,
                         default=1,
@@ -222,11 +244,25 @@ def load_args():
                         default=1,
                         help=("Degree of parallelization. [1]"))
 
+    parser.add_argument("--out_main_fname",
+                        type=str,
+                        default="datruf_result",
+                        help=("Write main results to this file. "
+                              "[datruf_result]"))
+
+    parser.add_argument("--out_units_fname",   # TODO: implement sh to distribute datruf_run into multiple HPC nodes
+                        type=str,
+                        default="datruf_units.fasta",
+                        help=("Write unit sequences to this file. "
+                              "[datruf_units.fasta]"))
+
     parser.add_argument("--only_interval",
                         action="store_true",
                         default=False,
                         help=("Stop calculation just after obtaining TR "
-                              "intervals. [False]"))
+                              "intervals. Also filtering by CV of the unit  "
+                              "lengths is not applied. "
+                              "[False]"))
 
     parser.add_argument("--on_the_fly",
                         action="store_true",

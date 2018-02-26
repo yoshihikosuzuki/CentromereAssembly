@@ -34,7 +34,8 @@ def load_dbdump(datruf):
                     counter += 1
 
     tr_intervals_all = pd.DataFrame.from_dict(tr_intervals_all)
-    tr_intervals_all = tr_intervals_all.loc[:, columns]
+    if len(tr_intervals_all) != 0:
+        tr_intervals_all = tr_intervals_all.loc[:, columns]
     return tr_intervals_all
 
 
@@ -58,6 +59,7 @@ def load_ladump(datruf):
                 counter += 1
 
     alignments_all = pd.DataFrame.from_dict(alignments_all)
+
     alignments_all = alignments_all.loc[:, columns]
     return alignments_all
 
