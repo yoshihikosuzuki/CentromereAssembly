@@ -1,4 +1,5 @@
 import argparse
+import numpy as np
 
 from datruf_utils import run_command
 
@@ -15,9 +16,12 @@ def main():
         args.end_dbid = max_dbid
 
     n_dbid_part = -(-args.end_dbid // args.n_distribute)
+    n_digit = int(np.log10(args.n_distribute) + 1)
 
     for i in range(args.n_distribute):
-        script_fname = "run_datruf.slurm.%d" % (i + 1)
+        idx = str(i + 1).zfill(n_digit)
+
+        script_fname = "run_datruf.slurm.%s" % idx
         with open(script_fname, 'w') as f:
             f.write(
 """#!/bin/bash
@@ -38,8 +42,8 @@ python %s --start_dbid %d --end_dbid %d --n_core %d --out_main_fname %s --out_un
                    args.start_dbid + i * n_dbid_part,
                    args.start_dbid + (i + 1) * n_dbid_part - 1,
                    args.n_core,
-                   args.out_main_fname + "." + str(i + 1),
-                   args.out_units_fname + "." + str(i + 1),
+                   args.out_main_fname + "." + idx,
+                   args.out_units_fname + "." + idx,
                    args.db_file,
                    args.las_file))
 
@@ -47,18 +51,21 @@ python %s --start_dbid %d --end_dbid %d --n_core %d --out_main_fname %s --out_un
         run_command(command)
 
     print("After finishing all jobs, you have to run following commands:\n"
-          "$ cat %s.* > %s\n"
-          "$ cat %s.* > %s.cat\n"
-          "$ awk -F'\\t' 'NR == 1 {print $0} $1 != \"\" {print $0}' %s.cat > %s\n"
-          "$ rm %s.*; rm %s.*"
-          % (args.out_units_fname,
-             args.out_units_fname,
-             args.out_main_fname,
-             args.out_main_fname,
-             args.out_main_fname,
-             args.out_main_fname,
-             args.out_units_fname,
-             args.out_main_fname,))
+          "$ bash finalize_datruf.sh")
+
+    with open("finalize_datruf.sh", 'w') as f:
+        f.write("cat %s.* > %s\n"
+                "cat %s.* > %s.cat\n"
+                "awk -F'\\t' 'NR == 1 {print $0} $1 != \"\" {print $0}' %s.cat > %s\n"
+                "rm %s.*; rm %s.*\n"
+                % (args.out_units_fname,
+                   args.out_units_fname,
+                   args.out_main_fname,
+                   args.out_main_fname,
+                   args.out_main_fname,
+                   args.out_main_fname,
+                   args.out_units_fname,
+                   args.out_main_fname,))
 
 
 def load_args():
