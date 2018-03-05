@@ -1,6 +1,6 @@
+import argparse
 import copy
 import random
-import time
 import pickle
 from multiprocessing import Pool
 from collections import defaultdict
@@ -61,8 +61,8 @@ class Cluster:
 class Clustering:
     def __init__(self,
                  data,
-                 alpha=1.,
-                 n_parallel=1,
+                 alpha,
+                 n_parallel,
                  start_from_one_cluster=True):
         self.x = data   # observed units
         self.alpha = alpha   # concentration hyperparameter
@@ -129,6 +129,14 @@ class Clustering:
         logp += sum([cluster.log_factorial + cluster.likelihood
                      for cluster in list(self.c.values())])
         return logp
+
+    def plot_transition(self, start=0, end=None, figsize=(10, 8)):
+        fig, ax1 = plt.subplots(figsize=figsize)
+        ax1.plot([x[0] for x in self.posterior_ncluster[start:end]], color='r')
+        ax2 = ax1.twinx()
+        ax2.plot([x[1] for x in self.posterior_ncluster[start:end]], color='b')
+        plt.grid(False)
+        plt.show()
 
     # Make a new cluster with a single data
     # Cluster index is same as the data index
@@ -476,46 +484,121 @@ class Clustering:
 
             self.posterior_ncluster.append((logp_post, len(self.c)))
 
-    def plot_transition(self, start=0, end=None, figsize=(10, 8)):
-        fig, ax1 = plt.subplots(figsize=figsize)
-        ax1.plot([x[0] for x in self.posterior_ncluster[start:end]], color='r')
-        ax2 = ax1.twinx()
-        ax2.plot([x[1] for x in self.posterior_ncluster[start:end]], color='b')
-        plt.grid(False)
-        plt.show()
+
+def run_sampling(clustering, sampling_type, n_iteration, verbose, out_cluster_pickle):
+    # TODO: change to split sampling iterations for every 10000 iterations and output temporary files
+
+    if sampling_type == "sm":
+        clustering.do_split_merge_sampling(iterations=n_iteration, verbose=verbose)
+    elif sampling_type == "gibbs":
+        clustering.do_gibbs_sampling(iterations=n_iteration, verbose=verbose)
+    else:   # both
+        # Run split-merge MCMC until convergence and then run Gibbs sampling until convergence
+        total_iteration = 0
+        no_update = 0
+        # TODO: make a function "run_sampling_unitl_convergence"
+        while no_update > 10000 or total_iteration > n_iteration:   # TODO: adjust according to data size
+            if not clustering.do_split_merge_sampling(iterations=1, verbose=verbose):   # TODO: make sampling functions with only single iteration and use them
+                no_update += 1
+            else:
+                no_update = 0
+            total_iteration += 1
+        no_update = 0
+        while no_update > 10000 or total_iteration > n_iteration:   # TODO: adjust according to data size
+            if not clustering.do_gibbs_sampling(iterations=1, verbose=verbose):
+                no_update += 1
+            else:
+                no_update = 0
+            total_iteration += 1
+
+    with open(out_cluster_pickle, 'wb') as f:
+        pickle.dump(clustering, f)
 
 
-#@profile
+def initialize_clustering(vmatrix_fname, alpha, n_parallel):
+    return Clustering(load_vmatrix(vmatrix_fname), alpha, n_parallel)
+
+
+def load_clustering(pkl_fname, n_parallel):
+    with open(pkl_fname, mode='rb') as f:
+        clustering = pickle.load(f)
+    clustering.n_parallel = n_parallel
+
+    print("[INFORMATION] loaded clustering")
+    print("[INFORMATION] alpha = %f, N = %d, L = %d, %d iterations so far" % (clustering.alpha, clustering.N, clustering.L, len(clustering.posterior_ncluster) - 1))
+    print("[INFORMATION] # of clusters = %d (max posterior), %d (current)" % (len(set(clustering.max_s)), len(clustering.c)))
+
+    return clustering
+
+
 def main():
-    
-    v = np.full((93, 888), 93, dtype=int)   # TODO: why discrepancy between len(out_seqs ) and width of consed output?
+    args = load_args()
 
-    root_dir = "/home/ysuzuki/work/RepeatAssembly/datruf_run/dmel/backup/"
-    with open('%speak_small/peak.3.unit.1.seqs.V' % (root_dir), 'r') as f:
-        for i, line in enumerate(f):
-            v[i, :] = list(map(int, list(line.strip())))
+    # Prepare clustering object
+    if args.vmatrix_fname is not None:
+        clustering = initialize_clustering(args.vmatrix_fname, args.alpha, args.n_parallel)
+    else:
+        clustering = load_clustering(args.in_cluster_pickle, args.n_parallel)
 
-    data = v.T
-    
-    """
-    root_dir = "/home/ysuzuki/work/RepeatAssembly/datruf_run/dmel/"
-    vmatrix = load_vmatrix(root_dir + "backup/peak/peak.3.unit.1.seqs.V")
-    """
-    real = Clustering(data=data, n_parallel=1)
-    t0 = time.time()
-    real.do_split_merge_sampling(iterations=1000, verbose=True)
-    t1 = time.time()
-    #print(t1 - t0)
+    # Update the clustering in a specified way
+    run_sampling(clustering, args.sampling_type, args.n_iteration, args.verbose, args.out_cluster_pickle)
 
-    #print(real.calculate_posterior())
-    #print(real.s)
-    #real.plot_transition(figsize=(10, 8))
-    #for post, nc in real.posterior_ncluster:
-    #    print(post, nc)
 
-    #with open("out_cluster.pkl", 'wb') as f:
-    #    pickle.dump(real, f)
+def load_args():
+    parser = argparse.ArgumentParser(
+        description=("Dirichlet process mixture model for unit sequence "
+                     "clustering."))
+
+    parser.add_argument(
+        "--vmatrix_fname",
+        default=None,
+        help=("Input variant matrix generated by Consed"))
+
+    parser.add_argument(
+        "--in_cluster_pickle",
+        default="clustering.pkl",
+        help=("Input pickle file of a clustering [clustering.pkl]"))
+
+    parser.add_argument(
+        "--out_cluster_pickle",
+        default="clustering.pkl",
+        help=("Output pickle file of a clustering [clustering.pkl]"))
+
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=1.,
+        help=("Concentration hyperparameter in DPMM [1.]"))
+
+    parser.add_argument(
+        "--sampling_type",
+        default="sm",
+        choices=["sm", "gibbs", "both"],
+        help=("Sampling method in DPMM. Split-merge MCMC (sm), Gibbs "
+              "sampling (gibbs), or both of them (both). [sm]"))
+
+    parser.add_argument(
+        "--n_iteration",
+        type=int,
+        default=1000,
+        help=("Number of iterations in DPMM [1000]"))
+
+    parser.add_argument(
+        "--n_parallel",
+        type=int,
+        default=1,
+        help=("Number of proposals in each Split-merge MCMC sampling "
+              "iteration. The same number of processes will be used. [1]"))
+
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        default=False,
+        help=("Verbose mode [False]"))
+
+    args = parser.parse_args()
+    return args
 
 
 if __name__ == "__main__":
-    main()   # TODO: load function of pickle cluster data   # TODO: write pickle cluster data for every 100000 iterations
+    main()
