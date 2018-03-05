@@ -6,5 +6,7 @@ datruf/For development.ipynb
 datruf/Clustering large real data.ipynb
 datruf/DPMM.ipynb
 dacenter/*.ipynb
+dacenter/*.pkl
+dacenter/sbatch_*
 datruf_run/
 mock_simulation/

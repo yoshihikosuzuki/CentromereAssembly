@@ -19,7 +19,7 @@ import plotly.offline as py
 import plotly.graph_objs as go
 
 plt.style.use('ggplot')
-py.init_notebook_mode()
+#py.init_notebook_mode()   # TODO: this makes pickle in multiprocessing failed. try not to use or separate plotter
 
 
 def load_units(fasta_fname):
