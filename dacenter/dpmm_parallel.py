@@ -63,10 +63,12 @@ class Clustering:
     def __init__(self,
                  data,
                  alpha,
+                 n_parallel,
                  start_from_one_cluster=True,
                  verbose=False):
         self.x = data   # observed units
         self.alpha = alpha   # concentration hyperparameter
+        self.n_parallel = n_parallel   # degree of parallel proposals in each iteration
         self.verbose = verbose
 
         self.N, self.L = self.x.shape   # number of units and variant sites
@@ -394,6 +396,84 @@ class Clustering:
 
         return max_post_updated
 
+    def split_merge_sampling_parallel(self):
+        # Calculate multiple independent proposals in parallel (***OBSOLETE because multiprocessing for each iteration is too time-consuming***)
+        args = []
+        x_remaining = set(range(self.N))
+        while len(args) < self.n_parallel and len(x_remaining) >= 2:
+            # Sample two distinct data
+            init_i, init_j = random.sample(x_remaining, k=2)
+            x_remaining.remove(init_i)
+            x_remaining.remove(init_j)
+
+            # NOTE: distinguish between split and merge by "len(c_idx_old)"
+            if self.s[init_i] == self.s[init_j]:   # split
+                c_idx_old = [self.s[init_i]]
+            else:   # merge
+                c_idx_old = [self.s[init_i], self.s[init_j]]
+
+            x_restricted = [i for i in list(x_remaining) if self.s[i] in c_idx_old]
+            for i in x_restricted:
+                x_remaining.remove(i)
+
+            args.append((c_idx_old, init_i, init_j, x_restricted))
+
+        # Reflect every accepted proposals on this launch state
+        s_launch = self.s.copy()
+        c_launch = copy.deepcopy(self.c)
+
+        updated = False
+        exe_pool = Pool(len(args))
+        for accepted, changes, c_idx_old in exe_pool.imap(self._split_merge_sampling, args):
+            if accepted:
+                # if split:
+                #    cluster_new = [new cluster 0 induced by init_i, new cluster 1 induced by init_j]
+                #    x_split = [[indices of x in new cluster 0], [indices of x in new cluster 1]]
+                # if merge:
+                #    cluster_new = [new merged cluster]
+                #    x_split = [x_restricted]
+                cluster_new, x_split = changes
+
+                # Update master <c_launch> and <s_launch>
+                for i, cluster in enumerate(cluster_new):   # i = 0, 1 if split; i = 0 if merge
+                    c_idx = max(list(c_launch.keys())) + 1
+                    c_launch[c_idx] = cluster
+                    for idx in x_split[i]:   # if merge, s_changes == [x_restricted]
+                        s_launch[idx] = c_idx
+                for c_idx in c_idx_old:
+                    del c_launch[c_idx]
+
+                # delete previously-rejected information
+                for c_idx in c_idx_old:
+                    if c_idx in self.rejected_merge_pairs:
+                        del self.rejected_merge_pairs[c_idx]
+
+                updated = True
+            else:
+                if len(c_idx_old) == 2:   # add to the rejected-pair list
+                    self.rejected_merge_pairs[c_idx_old[0]].add(c_idx_old[1])
+                    self.rejected_merge_pairs[c_idx_old[1]].add(c_idx_old[0])
+        exe_pool.close()
+
+        max_post_updated = False
+
+        if updated:   # at least one proposal was accepted
+            self.c = copy.deepcopy(c_launch)
+            self.s = s_launch.copy()
+
+            logp_post = self.calculate_posterior()
+            self.posterior_ncluster.append((logp_post, len(self.c)))
+            if self.max_post < logp_post:   # max posterior is updated
+                self.max_post = logp_post
+                self.max_s = self.s.copy()
+                max_post_updated = True
+                if self.verbose:
+                    print("posterior: %f -> %f" % (self.max_post, logp_post))
+        else:
+            self.posterior_ncluster.append(self.posterior_ncluster[-1])
+
+        return max_post_updated
+
     def gibbs_sampling(self):
         # Drop 1 assignment in s
         r = random.randint(0, self.N - 1)
@@ -460,15 +540,17 @@ class Clustering:
         return max_post_updated
 
 
-def initialize_clustering(vmatrix_fname, alpha=1., verbose=False):
+def initialize_clustering(vmatrix_fname, alpha=1., n_parallel=1, verbose=False):
     return Clustering(load_vmatrix(vmatrix_fname),
                       alpha,
+                      n_parallel,
                       verbose=verbose)
 
 
-def load_clustering(pkl_fname, verbose=False):
+def load_clustering(pkl_fname, n_parallel=1, verbose=False):
     with open(pkl_fname, mode='rb') as f:
         clustering = pickle.load(f)
+    clustering.n_parallel = n_parallel
     clustering.verbose = verbose
 
     print("[INFO] loaded clustering")
@@ -521,6 +603,7 @@ def run_sampling(clustering,
                 t_block_start = time.time()
 
             updated = clustering.split_merge_sampling()
+            #updated = clustering.split_merge_sampling_parallel()   # multiple proposals (obsolete; too slow)
 
             if sampling_type == "both":
                 # Check convergence
@@ -573,9 +656,11 @@ def main():
     if args.vmatrix_fname is not None:
         clustering = initialize_clustering(args.vmatrix_fname,
                                            args.alpha,
+                                           args.n_parallel,
                                            args.verbose)
     else:
         clustering = load_clustering(args.in_cluster_pickle,
+                                     args.n_parallel,
                                      args.verbose)
 
     # Update the clustering in a specified way
@@ -644,6 +729,13 @@ def load_args():
               "the posterior probability in Gibbs sampling. This is the "
               "threshold for convergence. This value depends on inputs. "
               "This is used only in the \"both\" mode. [100000]"))
+
+    parser.add_argument(
+        "--n_parallel",
+        type=int,
+        default=1,
+        help=("Number of proposals in each Split-merge MCMC sampling "
+              "iteration. The same number of processes will be used. [1]"))
 
     parser.add_argument(
         "--verbose",
