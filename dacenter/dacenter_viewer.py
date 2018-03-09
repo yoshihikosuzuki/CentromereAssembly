@@ -14,6 +14,42 @@ plt.style.use('ggplot')
 py.init_notebook_mode()
 
 
+
+    def estimate_peaks(self, min_len=50, max_len=450, band_width=10):
+        # TODO: how to determine min/max_len? peak + density threshold?
+    
+        unit_lens = np.array([len(x[1]) for x in units])
+    
+        if visualize:
+            data = [go.Histogram(x=unit_lens,
+                                 xbins=dict(start=20, size=1))]
+            layout = go.Layout(xaxis=dict(title="Unit length"),
+                               yaxis=dict(title="Frequency"))
+            py.iplot(go.Figure(data=data, layout=layout))
+    
+        ul = unit_lens[(min_len < unit_lens) & (unit_lens < max_len)]
+        ls = np.linspace(min_len, max_len, max_len - min_len + 1, dtype=int)
+    
+        kde = KernelDensity(kernel='gaussian', bandwidth=band_width).fit(ul.reshape(-1, 1))
+        dens = np.exp(kde.score_samples(ls.reshape(-1, 1)))
+    
+        if visualize:
+            data = [go.Scatter(x=ls, y=dens)]
+            layout = go.Layout(xaxis=dict(title="Unit length"),
+                               yaxis=dict(title="Density"))
+            py.iplot(go.Figure(data=data, layout=layout))
+    
+        # Naive peak detection
+        peaks = []
+        for i in range(1, len(dens) - 1):
+            if (dens[i - 1] < dens[i]) and (dens[i] > dens[i + 1]):
+                peaks.append(ls[i])
+                print("[INFO] peak detected:", ls[i], dens[i])
+    
+        return peaks
+
+
+
 class Viewer:
     def __init__(self, clustering_pickle):
         self.clustering = load_clustering(clustering_pickle)   # TODO: cope with other types of clustering

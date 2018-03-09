@@ -31,7 +31,7 @@ def load_vmatrix(in_fname):
     return vmatrix.T
 
 
-class Cluster:
+class DPMMCluster:
     def __init__(self, alpha, L):
         self.alpha = alpha   # concentration hyperparameter
         self.log_gamma = gammaln(self.alpha) - 2. * gammaln(0.5 * self.alpha)   # constant
@@ -75,7 +75,7 @@ class Cluster:
         self.likelihood = logp
 
 
-class Clustering:
+class DPMM:
     def __init__(self,
                  data,
                  alpha,
@@ -121,7 +121,7 @@ class Clustering:
     def _init_clusters(self, start_from_one_cluster):
         if start_from_one_cluster:
             # All data belong to single cluster
-            cluster = Cluster(self.alpha, self.L)
+            cluster = DPMMCluster(self.alpha, self.L)
             c_idx = 0
             self.c[c_idx] = cluster
             for i in range(self.N):
@@ -130,7 +130,7 @@ class Clustering:
         else:
             # Each data belongs to distinct cluster
             for i in range(self.N):
-                cluster = Cluster(self.alpha, self.L)
+                cluster = DPMMCluster(self.alpha, self.L)
                 self.c[i] = cluster
                 self.c[i].add(self.x[i])
                 self.s[i] = i
@@ -150,7 +150,7 @@ class Clustering:
         # Restore clusters from max_s
         for idx, c_idx in enumerate(self.s):
             if c_idx not in self.c:
-                cluster = Cluster(self.alpha, self.L)
+                cluster = DPMMCluster(self.alpha, self.L)
                 self.c[c_idx] = cluster
             self.c[c_idx].add(self.x[idx])
 
@@ -177,7 +177,7 @@ class Clustering:
     # Make a new cluster with a single data
     # Cluster index is same as the data index
     def _make_new_cluster(self, idx, s, c):
-        cluster = Cluster(self.alpha, self.L)
+        cluster = DPMMCluster(self.alpha, self.L)
         c[idx] = cluster
         c[idx].add(self.x[idx])
         s[idx] = idx
@@ -462,7 +462,7 @@ class Clustering:
                     c_idx = list(self.c.keys())[i]
                 else:   # new cluster
                     c_idx = max(list(self.c.keys())) + 1
-                    cluster = Cluster(self.alpha, self.L)
+                    cluster = DPMMCluster(self.alpha, self.L)
                     self.c[c_idx] = cluster
                 break
 
@@ -496,7 +496,7 @@ class Clustering:
 
 
 def initialize_clustering(vmatrix_fname, alpha=1., verbose=False):
-    return Clustering(load_vmatrix(vmatrix_fname),
+    return DPMM(load_vmatrix(vmatrix_fname),
                 alpha,
                 verbose=verbose)
 
