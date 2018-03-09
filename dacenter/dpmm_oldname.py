@@ -1,3 +1,4 @@
+import argparse
 import copy
 import random
 import time
@@ -5,9 +6,32 @@ import pickle
 from collections import defaultdict
 import numpy as np
 from scipy.special import gammaln
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from datruf_utils import run_command
+
+plt.style.use('ggplot')
 
 
-class DPMMCluster:
+# TODO: This is temporary workaround. In the future, prepare interface of DPMM and merge with Clustering in dacenter_unit.py
+def load_vmatrix(in_fname):
+    N = int(run_command("awk 'NR == 1 {print length($1)}' %s"
+                        % in_fname))
+    L = int(run_command("cat %s | wc -l" % in_fname))
+
+    # TODO: last column of vmatrix is always 0 (i.e. consensus seuqence?). should remove it?
+
+    vmatrix = np.zeros((L, N), dtype=int)
+    with open(in_fname, 'r') as f:
+        for i, line in enumerate(f):
+            vmatrix[i, :] = list(map(int, list(line.strip())))
+
+    # Keep the matrix as the [UNITS, VARIANTS] form
+    return vmatrix.T
+
+
+class Cluster:
     def __init__(self, alpha, L):
         self.alpha = alpha   # concentration hyperparameter
         self.log_gamma = gammaln(self.alpha) - 2. * gammaln(0.5 * self.alpha)   # constant
@@ -51,19 +75,20 @@ class DPMMCluster:
         self.likelihood = logp
 
 
-class DPMM:
+class Clustering:
     def __init__(self,
-                 vmatrix,
-                 alpha=1.,
+                 data,
+                 alpha,
+                 start_from_one_cluster=True,
                  verbose=False):
-        self.x = vmatrix   # observed units
+        self.x = data   # observed units
         self.alpha = alpha   # concentration hyperparameter
         self.verbose = verbose
 
         self.N, self.L = self.x.shape   # number of units and variant sites
         self.s = np.zeros(self.N, dtype=int)   # cluster assignment of x
         self.c = {}   # clusters
-        self._init_clusters()
+        self._init_clusters(start_from_one_cluster)
 
         # Pairs of clusters whose merge proposal was rejected before
         # This is used to avoid redundant calculations of the acceptance rate
@@ -93,14 +118,22 @@ class DPMM:
         self.max_s = self.s.copy()   # initial clustering
         self.posterior_ncluster = [(self.max_post, len(self.c))]
 
-    def _init_clusters(self):
-        # All data belong to single cluster
-        cluster = DPMMCluster(self.alpha, self.L)
-        c_idx = 0
-        self.c[c_idx] = cluster
-        for i in range(self.N):
-            self.c[c_idx].add(self.x[i])
-            self.s[i] = c_idx
+    def _init_clusters(self, start_from_one_cluster):
+        if start_from_one_cluster:
+            # All data belong to single cluster
+            cluster = Cluster(self.alpha, self.L)
+            c_idx = 0
+            self.c[c_idx] = cluster
+            for i in range(self.N):
+                self.c[c_idx].add(self.x[i])
+                self.s[i] = c_idx
+        else:
+            # Each data belongs to distinct cluster
+            for i in range(self.N):
+                cluster = Cluster(self.alpha, self.L)
+                self.c[i] = cluster
+                self.c[i].add(self.x[i])
+                self.s[i] = i
 
     def show_clusters(self, c):
         for i, cluster in c.items():
@@ -117,7 +150,7 @@ class DPMM:
         # Restore clusters from max_s
         for idx, c_idx in enumerate(self.s):
             if c_idx not in self.c:
-                cluster = DPMMCluster(self.alpha, self.L)
+                cluster = Cluster(self.alpha, self.L)
                 self.c[c_idx] = cluster
             self.c[c_idx].add(self.x[idx])
 
@@ -133,10 +166,18 @@ class DPMM:
                      for cluster in list(self.c.values())])
         return logp
 
+    def plot_transition(self, start=0, end=None, figsize=(10, 8)):
+        fig, ax1 = plt.subplots(figsize=figsize)
+        ax1.plot([x[0] for x in self.posterior_ncluster[start:end]], color='r')
+        ax2 = ax1.twinx()
+        ax2.plot([x[1] for x in self.posterior_ncluster[start:end]], color='b')
+        plt.grid(False)
+        plt.show()
+
     # Make a new cluster with a single data
     # Cluster index is same as the data index
     def _make_new_cluster(self, idx, s, c):
-        cluster = DPMMCluster(self.alpha, self.L)
+        cluster = Cluster(self.alpha, self.L)
         c[idx] = cluster
         c[idx].add(self.x[idx])
         s[idx] = idx
@@ -386,7 +427,7 @@ class DPMM:
 
             self.posterior_ncluster.append(self.posterior_ncluster[-1])
 
-        return self.posterior_ncluster[-1][1] != self.posterior_ncluster[-2][1] #max_post_updated   # XXX: not max post but change on # of clusters
+        return max_post_updated
 
     def gibbs_sampling(self):
         # Drop 1 assignment in s
@@ -421,7 +462,7 @@ class DPMM:
                     c_idx = list(self.c.keys())[i]
                 else:   # new cluster
                     c_idx = max(list(self.c.keys())) + 1
-                    cluster = DPMMCluster(self.alpha, self.L)
+                    cluster = Cluster(self.alpha, self.L)
                     self.c[c_idx] = cluster
                 break
 
@@ -453,33 +494,214 @@ class DPMM:
 
         return max_post_updated
 
-    def run_sampling(self,
-                     n_iteration,
-                     converge_threshold_sm=10000,
-                     converge_threshold_gibbs=100000):
+
+def initialize_clustering(vmatrix_fname, alpha=1., verbose=False):
+    return Clustering(load_vmatrix(vmatrix_fname),
+                alpha,
+                verbose=verbose)
+
+
+def load_clustering(pkl_fname, start_from_max_s=False, verbose=False):
+    with open(pkl_fname, mode='rb') as f:
+        clustering = pickle.load(f)
+    if start_from_max_s:
+        clustering.rollback_to_max_posterior()
+    clustering.verbose = verbose
+
+    print("[INFO] loaded clustering")
+    print("[INFO] alpha = %f, N = %d, L = %d, %d iterations so far"
+          % (clustering.alpha,
+             clustering.N,
+             clustering.L,
+             len(clustering.posterior_ncluster) - 1))
+    print("[INFO] # of clusters = %d (max posterior), %d (current)"
+          % (len(set(clustering.max_s)),
+             len(clustering.c)))
+
+    return clustering
+
+
+def run_sampling(clustering,
+                 sampling_type,
+                 n_iteration,
+                 converge_threshold_sm=10000,
+                 converge_threshold_gibbs=100000,
+                 verbose=False,
+                 out_cluster_pickle="clustering.pkl"):
+
+    def output_clustering():
+        with open(out_cluster_pickle, 'wb') as f:
+            pickle.dump(clustering, f)
+
+    if sampling_type == "both":
         sm_converge = False
         gibbs_converge = False
         no_update = 0
 
-        for iteration in range(n_iteration):
-            if not sm_converge:
-                updated = self.split_merge_sampling()
+    t_start = time.time()
+    t_block_start = time.time()
+
+    for iteration in range(n_iteration):
+        if verbose:
+            print("## --- step %d --- ##" % iteration)
+            print("s =", clustering.s)
+            print("c =", list(clustering.c.keys()))
+
+        if ((sampling_type == "sm" or
+             (sampling_type == "both" and not sm_converge))):
+
+            # Output temporary pickle files for every 10,000 iterations
+            if iteration != 0 and iteration % 10000 == 0:
+                t_block_end = time.time()
+                output_clustering()
+                print("[INFO] Write clustering pickle (SM; %f second for this 10,000 iterations)" % (t_block_end - t_block_start))
+                t_block_start = time.time()
+
+            updated = clustering.split_merge_sampling()
+
+            if sampling_type == "both":
+                # Check convergence
                 if not updated:
                     no_update += 1
-                    if no_update >= converge_threshold_sm:
+                    if no_update >= converge_threshold_sm:   # TODO: avoid "pseudo-converge" in the very beggining iterations
                         sm_converge = True
-                        #self.rollback_to_max_posterior()   # XXX: no rollback after sm, but convergence criterion is no update on "# of clusters"
+                        clustering.rollback_to_max_posterior()
                         no_update = 0
+                        print("[INFO] SM converged at %d iterations" % (iteration + 1))   # TODO: output to different pickle files for SM and Gibbs
+                        t_block_start = time.time()
                 else:
                     no_update = 0
-            elif not gibbs_converge:
-                updated = self.gibbs_sampling()
+
+        elif ((sampling_type == "gibbs" or
+               (sampling_type == "both" and not gibbs_converge))):
+
+            # Output temporary pickle files for every 100,000 iterations
+            if iteration != 0 and iteration % 100000 == 0:
+                t_block_end = time.time()
+                output_clustering()
+                print("[INFO] Write clustering pickle (Gibbs; %f second for this 100,000 iterations)" % (t_block_end - t_block_start))
+                t_block_start = time.time()
+
+            updated = clustering.gibbs_sampling()
+
+            if sampling_type == "both":
+                # Check convergence
                 if not updated:
                     no_update += 1
                     if no_update >= converge_threshold_gibbs:
                         gibbs_converge = True
-                        self.rollback_to_max_posterior()
+                        clustering.rollback_to_max_posterior()
+                        print("[INFO] Gibbs converged at %d iterations" % (iteration + 1))   # TODO: output to different pickle files for SM and Gibbs
                 else:
                     no_update = 0
+
         else:   # both sm and gibbs are converged in the both mode
-            return
+            break
+
+    # Output final clustering
+    output_clustering()
+
+    t_end = time.time()
+    print("[INFO] Finished in %f second" % (t_end - t_start))
+
+
+def main():
+    args = load_args()
+
+    # Prepare clustering object
+    if args.vmatrix_fname is not None:
+        clustering = initialize_clustering(args.vmatrix_fname,
+                                           args.alpha,
+                                           args.verbose)
+    else:
+        clustering = load_clustering(args.in_cluster_pickle,
+                                     args.start_from_max_s,
+                                     args.verbose)
+
+    # Update the clustering in a specified way
+    run_sampling(clustering,
+                 args.sampling_type,
+                 args.n_iteration,
+                 converge_threshold_sm=args.converge_sm,
+                 converge_threshold_gibbs=args.converge_gibbs,
+                 verbose=args.verbose,
+                 out_cluster_pickle=args.out_cluster_pickle)
+
+
+def load_args():
+    parser = argparse.ArgumentParser(
+        description=("Dirichlet process mixture model for unit sequence "
+                     "clustering."))
+
+    parser.add_argument(
+        "--vmatrix_fname",
+        default=None,
+        help=("Input variant matrix generated by Consed"))
+
+    parser.add_argument(
+        "--in_cluster_pickle",
+        default="clustering.pkl",
+        help=("Input pickle file of a clustering [clustering.pkl]"))
+
+    parser.add_argument(
+        "--out_cluster_pickle",
+        default="clustering.pkl",
+        help=("Output pickle file of a clustering [clustering.pkl]"))
+
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=1.,
+        help=("Concentration hyperparameter in DPMM [1.]"))
+
+    parser.add_argument(
+        "--sampling_type",
+        default="sm",
+        choices=["sm", "gibbs", "both"],
+        help=("Sampling method in DPMM. Split-merge MCMC (sm), Gibbs "
+              "sampling (gibbs), or both of them (both). [sm]"))
+
+    parser.add_argument(
+        "--n_iteration",
+        type=int,
+        default=10000,
+        help=("Number of iterations in DPMM [10000]"))
+
+    parser.add_argument(
+        "--converge_sm",
+        type=int,
+        default=10000,
+        help=("Maximum number of consecuitive iterations with no update on "
+              "the posterior probability in Split-merge MCMC. This is the "
+              "threshold for convergence. This value depends on inputs. "
+              "This is used only in the \"both\" mode. [10000]"))
+
+    parser.add_argument(
+        "--converge_gibbs",
+        type=int,
+        default=100000,
+        help=("Maximum number of consecuitive iterations with no update on "
+              "the posterior probability in Gibbs sampling. This is the "
+              "threshold for convergence. This value depends on inputs. "
+              "This is used only in the \"both\" mode. [100000]"))
+
+    parser.add_argument(
+        "--start_from_max_s",
+        action="store_true",
+        default=False,
+        help=("Continue sampling from the clustering with the highest "
+              "posterior probability so far. Use this when manually "
+              "changing the sampling type from sm to gibbs. [False]"))
+
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        default=False,
+        help=("Verbose mode [False]"))
+
+    args = parser.parse_args()
+    return args
+
+
+if __name__ == "__main__":
+    main()
