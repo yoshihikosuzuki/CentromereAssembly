@@ -206,17 +206,15 @@ def load_args():
         description="Run datruf with many reads")
 
     parser.add_argument(
-        "-d",
         "db_file",
         help="DAZZ_DB file")
 
     parser.add_argument(
-        "-l",
         "las_file",
         help="output of TANmask")
 
     parser.add_argument(
-        "-D"
+        "-d",
         "--dbdump",
         type=str,
         default="datander_dbdump",
@@ -225,7 +223,7 @@ def load_args():
               "<on_the_fly> mode, this is not used. [datander_dbdump]"))
 
     parser.add_argument(
-        "-L",
+        "-l",
         "--ladump",
         type=str,
         default="datander_ladump",
