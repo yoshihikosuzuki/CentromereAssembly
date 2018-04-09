@@ -202,76 +202,87 @@ def main():
 
 
 def load_args():
-    parser = argparse.ArgumentParser(description="Run datruf with many reads")
+    parser = argparse.ArgumentParser(
+        description="Run datruf with many reads")
 
-    parser.add_argument("db_file",
-                        help="DAZZ_DB file")
+    parser.add_argument(
+        "-d",
+        "db_file",
+        help="DAZZ_DB file")
 
-    parser.add_argument("las_file",
-                        help="output of TANmask")
+    parser.add_argument(
+        "-l",
+        "las_file",
+        help="output of TANmask")
 
-    parser.add_argument("--dbdump",
-                        type=str,
-                        default="datander_dbdump",
-                        help=("Output of `DBdump -r -h -mtan <db_file>`. "
-                              "This will be automatically generated if it "
-                              "does not exist. In <on_the_fly> mode, this "
-                              "is not used. [datander_dbdump]"))
+    parser.add_argument(
+        "-D"
+        "--dbdump",
+        type=str,
+        default="datander_dbdump",
+        help=("Output of `DBdump -r -h -mtan <db_file>`. This will be "
+              "automatically generated if it does not exist. In "
+              "<on_the_fly> mode, this is not used. [datander_dbdump]"))
 
-    parser.add_argument("--ladump",
-                        type=str,
-                        default="datander_ladump",
-                        help=("Output of `LAdump -c <db_file> <las_file>`. "
-                              "This will be automatically generated if it "
-                              "does not exist. In <on_the_fly> mode, this "
-                              "is not used. [datander_ladump]"))
+    parser.add_argument(
+        "-L",
+        "--ladump",
+        type=str,
+        default="datander_ladump",
+        help=("Output of `LAdump -c <db_file> <las_file>`. This will be "
+              "automatically generated if it does not exist. In "
+              "<on_the_fly> mode, this is not used. [datander_ladump]"))
 
-    parser.add_argument("--start_dbid",
-                        type=int,
-                        default=1,
-                        help=("Start read ID, which is used in DAZZ_DB. "
-                              "Set <= 1 for starting from the first read. "
-                              "[1]"))
+    parser.add_argument(
+        "-s",
+        "--start_dbid",
+        type=int,
+        default=1,
+        help=("Start read ID, which is used in DAZZ_DB. Set <= 1 to start "
+              "from the first read. [1]"))
 
-    parser.add_argument("--end_dbid",
-                        type=int,
-                        default=-1,
-                        help=("End read ID. Set < 1 for ending at the last "
-                              "read. [-1]"))
+    parser.add_argument(
+        "-e",
+        "--end_dbid",
+        type=int,
+        default=-1,
+        help=("End read ID. Set < 1 to end at the last read. [-1]"))
 
-    parser.add_argument("--n_core",
-                        type=int,
-                        default=1,
-                        help=("Degree of parallelization. [1]"))
+    parser.add_argument(
+        "-n",
+        "--n_core",
+        type=int,
+        default=1,
+        help=("Degree of parallelization. [1]"))
 
-    parser.add_argument("--out_main_fname",
-                        type=str,
-                        default="datruf_result",
-                        help=("Write main results to this file. "
-                              "[datruf_result]"))
+    parser.add_argument(
+        "-m",
+        "--out_main_fname",
+        type=str,
+        default="datruf_result",
+        help=("Write main results to this file. [datruf_result]"))
 
-    parser.add_argument("--out_units_fname",   # TODO: implement sh to distribute datruf_run into multiple HPC nodes
-                        type=str,
-                        default="datruf_units.fasta",
-                        help=("Write unit sequences to this file. "
-                              "[datruf_units.fasta]"))
+    parser.add_argument(
+        "-u",
+        "--out_units_fname",
+        type=str,
+        default="datruf_units.fasta",
+        help=("Write unit sequences to this file. [datruf_units.fasta]"))
 
-    parser.add_argument("--only_interval",
-                        action="store_true",
-                        default=False,
-                        help=("Stop calculation just after obtaining TR "
-                              "intervals. Also filtering by CV of the unit  "
-                              "lengths is not applied. "
-                              "[False]"))
+    parser.add_argument(
+        "--only_interval",
+        action="store_true",
+        default=False,
+        help=("Stop calculation just after obtaining TR intervals. Also "
+              "filtering by CV of the unit lengths is not applied. [False]"))
 
-    parser.add_argument("--on_the_fly",
-                        action="store_true",
-                        default=False,
-                        help=("Generate dump data for each read on the fly. "
-                              "This mode is very slow and used only when "
-                              "whole data are huge and one just wants to "
-                              "look at results of only several reads. "
-                              "[False]"))
+    parser.add_argument(
+        "--on_the_fly",
+        action="store_true",
+        default=False,
+        help=("Generate dump data for each read on the fly. This mode is very "
+              "slow and used only when whole data are huge and you just want "
+              "to look at results of only several reads. [False]"))
 
     return parser.parse_args()
 

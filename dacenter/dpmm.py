@@ -5,6 +5,9 @@ import pickle
 from collections import defaultdict
 import numpy as np
 from scipy.special import gammaln
+from sklearn import cluster
+from sklearn import mixture
+from sklearn import decomposition
 
 
 class DPMMCluster:
@@ -94,13 +97,22 @@ class DPMM:
         self.posterior_ncluster = [(self.max_post, len(self.c))]
 
     def _init_clusters(self):
+        """
         # All data belong to single cluster
         cluster = DPMMCluster(self.alpha, self.L)
         c_idx = 0
         self.c[c_idx] = cluster
-        for i in range(self.N):
-            self.c[c_idx].add(self.x[i])
-            self.s[i] = c_idx
+        for idx in range(self.N):
+            self.c[c_idx].add(self.x[idx])
+            self.s[idx] = c_idx
+        """
+
+        # K-means
+        self.s = cluster.KMeans(n_clusters=20).fit_predict(self.x)
+        for c_idx in set(self.s):
+            self.c[c_idx] = DPMMCluster(self.alpha, self.L)
+        for idx, c_idx in enumerate(self.s):
+            self.c[c_idx].add(self.x[idx])
 
     def show_clusters(self, c):
         for i, cluster in c.items():

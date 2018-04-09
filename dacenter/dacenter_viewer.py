@@ -1,8 +1,9 @@
 import pickle
 import numpy as np
-from scipy.spatial.distance import pdist
+from scipy.spatial.distance import pdist, squareform
 from scipy.cluster.hierarchy import linkage, dendrogram
 from sklearn.neighbors import KernelDensity
+from sklearn.decomposition import PCA, KernelPCA
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.offline as py
@@ -121,7 +122,32 @@ class ClusteringViewer:
 
     # Dendrogram of the representative units by Hamming distance and Ward's method
     def dendrogram_representatives(self):
-        hc_result = linkage(pdist(self.clustering.r_units, metric='hamming'), method='ward')
+        hc_result = linkage(pdist(list(self.clustering.r_units.values()), metric='hamming'), method='ward')
         plt.figure(figsize=(18, 10))
         dendrogram(hc_result)
+        plt.show()
+
+    # Scatter plot of raw units as 2D Hamming kernel PCA
+    def scatter_units(self, figsize=(12, 12), only_representatives=False):
+        # Add representative units into the variant matrix
+        vm = self.clustering.vmatrix.copy()
+        rm = np.zeros((len(self.clustering.r_units), self.clustering.L), dtype=int)
+        for i, r_unit in enumerate(sorted(self.clustering.r_units.items(), key=lambda x: x[0])):
+            rm[i] = r_unit[1]   # add in ascending order of cluster index
+        data = np.concatenate((vm, rm), axis=0)
+
+        coord = KernelPCA(n_components=2, kernel='precomputed').fit_transform(1 - squareform(pdist(data, metric='hamming')))
+
+        # NOTE: normal PCA gives almost same result because of sparsity
+        #coord = PCA(n_components=2).fit_transform(data)
+
+        fig, ax = plt.subplots(figsize=figsize)
+        for i, c_idx in enumerate(sorted(list(set(self.clustering.assignment)))):
+            col = "#%06X" % (int(0xFFFFFF / (len(set(self.clustering.assignment)) - 1) * i))
+            if not only_representatives:
+                ax.scatter(coord[np.where(self.clustering.assignment == c_idx)[0], 0], coord[np.where(self.clustering.assignment == c_idx)[0], 1], s=20, c=col, label=str(c_idx), marker=".")
+            marker = "$%s$" % c_idx if only_representatives else "*"
+            ax.scatter(coord[-(len(self.clustering.r_units) - i), 0], coord[-(len(self.clustering.r_units) - i), 1], s=500, c=col, marker=marker)   # representative units
+        if not only_representatives:
+            ax.legend(loc="upper right", bbox_to_anchor=(1.15, 1.0), prop={"size": 12})
         plt.show()

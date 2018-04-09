@@ -2,6 +2,7 @@ __pycache__/
 .ipynb_checkpoints
 datander_dmel/
 datruf_result
+datruf_units.fasta
 datruf/For development.ipynb
 datruf/Clustering large real data.ipynb
 datruf/DPMM.ipynb

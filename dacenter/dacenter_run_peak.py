@@ -245,11 +245,13 @@ def load_args():
         description=("Run dacenter for peak units detection."))
 
     parser.add_argument(
+        "-u",
         "--unit_fasta_fname",
         default=None,
         help=("Input fasta file of the unit sequences [None]"))
 
     parser.add_argument(
+        "-p",
         "--peaks_dir",
         default="peaks",
         help=("Given --unit_fasta_fname, dacenter will find peaks from units "
@@ -258,6 +260,7 @@ def load_args():
               "start-position alignment of the units for each peak. [peaks]"))
 
     parser.add_argument(
+        "-P",
         "--peak_fname_prefix",
         default="peak",
         help=("Prefix for output/input files of the peak units [peak]"))
