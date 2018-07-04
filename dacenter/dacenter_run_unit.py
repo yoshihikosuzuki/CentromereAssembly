@@ -123,6 +123,13 @@ class Clustering:
             cluster_size = cluster_units.shape[0]
             self.r_units[c_idx] = np.where(np.sum(cluster_units, axis=0) >= cluster_size // 2, 1, 0)
 
+    def generate_centroid_units(self):
+        self.c_units = {}
+        for c_idx in set(self.assignment):
+            cluster_units = self.vmatrix[np.where(self.assignment == c_idx)[0], :]
+            cluster_size = cluster_units.shape[0]
+            self.c_units[c_idx] = np.sum(cluster_units, axis=0) / cluster_size
+
     def output_representative_units(self, out_fname):
         with open(out_fname, 'w') as f:
             for c_idx, r_seq in self.r_units.items():

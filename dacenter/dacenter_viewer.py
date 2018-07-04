@@ -4,6 +4,7 @@ from scipy.spatial.distance import pdist, squareform
 from scipy.cluster.hierarchy import linkage, dendrogram
 from sklearn.neighbors import KernelDensity
 from sklearn.decomposition import PCA, KernelPCA
+from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.offline as py
@@ -128,18 +129,31 @@ class ClusteringViewer:
         plt.show()
 
     # Scatter plot of raw units as 2D Hamming kernel PCA
-    def scatter_units(self, figsize=(12, 12), only_representatives=False):
+    def scatter_units(self, figsize=(12, 12), center="consensus", method="tsne", only_representatives=False):
         # Add representative units into the variant matrix
         vm = self.clustering.vmatrix.copy()
-        rm = np.zeros((len(self.clustering.r_units), self.clustering.L), dtype=int)
-        for i, r_unit in enumerate(sorted(self.clustering.r_units.items(), key=lambda x: x[0])):
-            rm[i] = r_unit[1]   # add in ascending order of cluster index
-        data = np.concatenate((vm, rm), axis=0)
 
-        coord = KernelPCA(n_components=2, kernel='precomputed').fit_transform(1 - squareform(pdist(data, metric='hamming')))
+        if center == "consensus":
+            #if not hasattr(self.clustering, "r_units"):
+            self.clustering.generate_representative_units()
+            units = self.clustering.r_units
+        elif center == "centroid":
+            #if not hasattr(self.clustering, "c_units"):
+            self.clustering.generate_centroid_units()
+            units = self.clustering.c_units
 
-        # NOTE: normal PCA gives almost same result because of sparsity
-        #coord = PCA(n_components=2).fit_transform(data)
+        um = np.zeros((len(units), self.clustering.L), dtype=int)
+        for i, unit in enumerate(sorted(units.items(), key=lambda x: x[0])):
+            um[i] = unit[1]   # add in ascending order of cluster index
+        data = np.concatenate((vm, um), axis=0)
+
+        if method == "pca":
+            # NOTE: normal PCA gives almost same result because of sparsity
+            coord = PCA(n_components=2).fit_transform(data)
+        elif method == "kpca":
+            coord = KernelPCA(n_components=2, kernel='precomputed').fit_transform(1 - squareform(pdist(data, metric='hamming')))
+        elif method == "tsne":
+            coord = TSNE(n_components=2).fit_transform(data)
 
         fig, ax = plt.subplots(figsize=figsize)
         for i, c_idx in enumerate(sorted(list(set(self.clustering.assignment)))):
@@ -147,7 +161,7 @@ class ClusteringViewer:
             if not only_representatives:
                 ax.scatter(coord[np.where(self.clustering.assignment == c_idx)[0], 0], coord[np.where(self.clustering.assignment == c_idx)[0], 1], s=20, c=col, label=str(c_idx), marker=".")
             marker = "$%s$" % c_idx if only_representatives else "*"
-            ax.scatter(coord[-(len(self.clustering.r_units) - i), 0], coord[-(len(self.clustering.r_units) - i), 1], s=500, c=col, marker=marker)   # representative units
+            ax.scatter(coord[-(len(units) - i), 0], coord[-(len(units) - i), 1], s=500, c=col, marker=marker)   # representative units
         if not only_representatives:
             ax.legend(loc="upper right", bbox_to_anchor=(1.15, 1.0), prop={"size": 12})
         plt.show()
