@@ -15,4 +15,4 @@ Every module offers some visualization functions (examples will be shown here).
 
 ## Requirements
 
-Python must be version 3. You need to install modified DAMASKER and BITS submodules specified. BITS needs [pbcore](https://github.com/yoshihikosuzuki/pbcore) modified for python3.
+Python must be version 3. You need to install modified DAMASKER and BITS submodules specified.
