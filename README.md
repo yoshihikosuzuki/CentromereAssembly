@@ -13,4 +13,6 @@ A budle of python modules for centromere assembly with PacBio long reads:
 
 Every module offers some visualization functions (examples will be shown here).
 
-You need to install DAMASKER and BITS submodules specified. BITS needs modified [pbcore](https://github.com/yoshihikosuzuki/pbcore) if you are using python3.
+## Requirements
+
+Python must be version 3. You need to install modified DAMASKER and BITS submodules specified. BITS needs [pbcore](https://github.com/yoshihikosuzuki/pbcore) modified for python3.
