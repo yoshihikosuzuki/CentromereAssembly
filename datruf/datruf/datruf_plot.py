@@ -9,8 +9,8 @@ from matplotlib_venn import venn2, venn3
 import plotly.offline as py
 import plotly.graph_objs as go
 
-from datruf_utils import (make_line,
-                          interval_len)
+from .datruf_utils import (make_line,
+                           interval_len)
 
 plt.style.use('ggplot')
 py.init_notebook_mode()

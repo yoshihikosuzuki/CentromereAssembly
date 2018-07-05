@@ -11,10 +11,10 @@ import plotly.offline as py
 import plotly.graph_objs as go
 from collections import Counter
 
-from dacenter_run_peak import Peaks
-from dacenter_run_unit import Clustering
-from dpmm import DPMM, DPMMCluster
-#from dpmm_oldname import Clustering, Cluster
+from .dacenter_run_peak import Peaks
+from .dacenter_run_unit import Clustering
+from .dpmm import DPMM, DPMMCluster
+#from .dpmm_oldname import Clustering, Cluster
 
 plt.style.use('ggplot')
 py.init_notebook_mode()

@@ -4,11 +4,11 @@ import numpy as np
 import pandas as pd
 from io import StringIO
 
-from datruf_utils import (run_command,
-                          add_element)
+from .datruf_utils import (run_command,
+                           add_element)
 
-from datruf_core import (Alignment,
-                         Path)
+from .datruf_core import (Alignment,
+                          Path)
 
 
 # Extract TR intervals information of reads from DBdump output

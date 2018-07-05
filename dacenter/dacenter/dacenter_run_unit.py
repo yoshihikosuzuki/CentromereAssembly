@@ -8,8 +8,8 @@ from sklearn import cluster
 from sklearn import mixture
 from sklearn import decomposition
 
-from dpmm import DPMM, DPMMCluster
-from datruf_utils import run_command
+from .dpmm import DPMM, DPMMCluster
+from .datruf_utils import run_command
 
 
 class Clustering:

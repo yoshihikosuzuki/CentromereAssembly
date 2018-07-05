@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 
-from datruf_utils import run_command
+from .datruf_utils import run_command
 
 
 def main():

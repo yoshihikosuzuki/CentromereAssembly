@@ -3,9 +3,9 @@ import pandas as pd
 import networkx as nx
 from interval import interval
 
-from datruf_utils import (make_line,
-                          interval_len,
-                          subtract_interval)
+from .datruf_utils import (make_line,
+                           interval_len,
+                           subtract_interval)
 
 
 def calc_cover_set(datruf):

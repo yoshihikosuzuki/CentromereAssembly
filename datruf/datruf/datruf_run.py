@@ -4,17 +4,17 @@ from collections import defaultdict
 import pandas as pd
 from multiprocessing import Pool
 
-from datruf_io import (load_dbdump,
-                       load_ladump,
-                       load_tr_intervals,
-                       load_alignments,
-                       load_paths)
+from .datruf_io import (load_dbdump,
+                        load_ladump,
+                        load_tr_intervals,
+                        load_alignments,
+                        load_paths)
 
-from datruf_core import (calc_cover_set,
-                         calc_min_cover_set)
+from .datruf_core import (calc_cover_set,
+                          calc_min_cover_set)
 
-from datruf_utils import (run_command,
-                          add_element)
+from .datruf_utils import (run_command,
+                           add_element)
 
 
 class Runner():

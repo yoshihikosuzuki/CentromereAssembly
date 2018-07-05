@@ -1,21 +1,20 @@
 import os
 import networkx as nx
 from networkx.drawing.nx_agraph import graphviz_layout
-from IPython.display import display
 import matplotlib.pyplot as plt
 import matplotlib.image as img
 import plotly.offline as py
 import plotly.graph_objs as go
 
-from datruf_io import (load_tr_intervals,
-                       load_alignments,
-                       load_paths)
+from .datruf_io import (load_tr_intervals,
+                        load_alignments,
+                        load_paths)
 
-from datruf_core import (calc_cover_set,
-                         calc_min_cover_set)
+from .datruf_core import (calc_cover_set,
+                          calc_min_cover_set)
 
-from datruf_utils import (run_command,
-                          make_line)
+from .datruf_utils import (run_command,
+                           make_line)
 
 plt.style.use('ggplot')
 py.init_notebook_mode()
