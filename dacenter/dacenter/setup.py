@@ -9,9 +9,9 @@ with open('requirements.txt') as f:
 
 
 setup(
-    name="datruf",
+    name="dacenter",
     version="0.1.0",
-    description=("DAzzler Tandem Repeat Unit Finding module"),
+    description=("DAzzler CENTromere clustERing module"),
     long_description=readme,
     author="Yoshihiko Suzuki",
     author_email="ys.neoteny@gmail.com",
