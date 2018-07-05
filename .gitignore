@@ -4,8 +4,9 @@ datander_dmel/
 datruf_run/
 !datruf/*.ipynb
 dacenter/ipynb_tbmoved/
-
-
+develop/
+run/
+memo
 
 
 
