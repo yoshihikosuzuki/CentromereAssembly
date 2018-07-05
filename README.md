@@ -7,7 +7,7 @@ A bundle of python modules for centromere assembly with PacBio long reads:
 * dacenter
   * infers centromeric satellite repeat units (monomers) from all the tandem repeat units
   * performs clustering of the monomers at multiple, stage-specific resolusions
-  * assigns monomers in the reads into the representative (consensus) of the clusters
+  * assigns each monomer in the reads to a representative (consensus) of the clusters
 * dacembler
   * layouts the reads encoded with the representative monomers
 
