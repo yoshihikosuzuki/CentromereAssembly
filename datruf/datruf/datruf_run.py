@@ -4,6 +4,8 @@ from collections import defaultdict
 import pandas as pd
 from multiprocessing import Pool
 
+from BITS.utils import run_command
+
 from .datruf_io import (load_dbdump,
                         load_ladump,
                         load_tr_intervals,
@@ -12,9 +14,6 @@ from .datruf_io import (load_dbdump,
 
 from .datruf_core import (calc_cover_set,
                           calc_min_cover_set)
-
-from .datruf_utils import (run_command,
-                           add_element)
 
 
 class Runner():
@@ -74,8 +73,8 @@ class Runner():
                                            os.getpid())
         out_units_file = open(out_units_fname_split, 'w')
 
-        result = defaultdict(dict)
-        count = 0
+        result = {}
+        index = 0
         for read_id in range(self.start_dbid, self.end_dbid + 1):
             self.read_id = read_id
 
@@ -100,13 +99,8 @@ class Runner():
                 intervals = sorted([(x[2], x[1])
                                     for x in list(self.min_cover_set)])
                 for start, end in intervals:
-                    add_element(result,
-                                Runner.columns_only_interval,
-                                count,
-                                (self.read_id,
-                                 start,
-                                 end))
-                    count += 1
+                    result[index] = [self.read_id, start, end]
+                    index += 1
                 continue
 
             # [Path, ...]
@@ -125,18 +119,13 @@ class Runner():
                 # Filter results by CV of unit lengths and output the units
                 # if specified
                 if path.write_unit_seqs(read_id, path_count, out_units_file):
-                    # Add result into pd.DataFrame
-                    add_element(result, Runner.columns, count,
-                                (self.read_id,
-                                 path.bb,
-                                 path.ae,
-                                 path.mean_unit_len))
-                                 #path.unit_len["mean"]))   # NOTE: border, mean, median
-                    count += 1
+                    result[index] = [self.read_id, path.bb, path.ae, path.mean_unit_len]
+                    index += 1
 
         out_units_file.close()
 
-        result = pd.DataFrame.from_dict(result)
+        columns = Runner.columns_only_interval if self.only_interval else Runner.columns
+        result = pd.DataFrame.from_dict(result, orient="index", columns=columns)
         return (out_units_fname_split, result)
 
 

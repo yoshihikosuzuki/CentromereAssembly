@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 
-from .datruf_utils import run_command
+from BITS.utils import run_command
 
 
 def main():
@@ -35,7 +35,7 @@ def main():
 #SBATCH --mem-per-cpu=4000
 #SBATCH --partition=batch
 
-python %s --start_dbid %d --end_dbid %d --n_core %d --out_main_fname %s --out_units_fname %s %s %s
+%s --start_dbid %d --end_dbid %d --n_core %d --out_main_fname %s --out_units_fname %s %s %s
 """
                 % (args.n_core,
                    args.datruf_exec,
@@ -78,7 +78,7 @@ def load_args():
                         help="output of TANmask")
 
     parser.add_argument("--datruf_exec",
-                        default="/home/ysuzuki/work/RepeatAssembly/datruf/datruf_run.py",
+                        default="datruf_run.py",
                         help="Path to datruf_run.py")
 
     parser.add_argument("--dbdump",

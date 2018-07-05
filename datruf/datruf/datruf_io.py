@@ -4,8 +4,7 @@ import numpy as np
 import pandas as pd
 from io import StringIO
 
-from .datruf_utils import (run_command,
-                           add_element)
+from BITS.utils import run_command
 
 from .datruf_core import (Alignment,
                           Path)
@@ -13,9 +12,8 @@ from .datruf_core import (Alignment,
 
 # Extract TR intervals information of reads from DBdump output
 def load_dbdump(datruf):
-    tr_intervals_all = defaultdict(dict)
-    columns = ("dbid", "start", "end")
-    counter = 0
+    tr_intervals_all = {}
+    index = 0
     with open(datruf.dbdump, 'r') as f:
         for line in f:
             data = line.strip().split(' ')
@@ -29,21 +27,19 @@ def load_dbdump(datruf):
                 for i in range(int(data[1])):
                     start = int(data[1 + 2 * (i + 1)])
                     end = int(data[1 + 2 * (i + 1) + 1])
-                    add_element(tr_intervals_all, columns, counter,
-                                [dbid, start, end])
-                    counter += 1
+                    tr_intervals_all[index] = [dbid, start, end]
+                    index += 1
 
-    tr_intervals_all = pd.DataFrame.from_dict(tr_intervals_all)
-    if len(tr_intervals_all) != 0:
-        tr_intervals_all = tr_intervals_all.loc[:, columns]
+    tr_intervals_all = pd.DataFrame.from_dict(tr_intervals_all,
+                                              orient="index",
+                                              columns=("dbid", "start", "end"))
     return tr_intervals_all
 
 
 # Extract alignments information of reads from LAdump output
 def load_ladump(datruf):
-    alignments_all = defaultdict(dict)
-    columns = ("dbid", "abpos", "aepos", "bbpos", "bepos")
-    counter = 0
+    alignments_all = {}
+    index = 0
     with open(datruf.ladump, 'r') as f:
         for line in f:
             data = line.strip().split(' ')
@@ -54,13 +50,13 @@ def load_ladump(datruf):
             elif data[0] == "C":
                 if dbid < datruf.start_dbid:
                     continue
-                add_element(alignments_all, columns, counter,
-                            [dbid] + list(map(int, data[1:5])))
-                counter += 1
+                alignments_all[index] = [dbid] + list(map(int, data[1:5]))
+                index += 1
 
-    alignments_all = pd.DataFrame.from_dict(alignments_all)
+    alignments_all = pd.DataFrame.from_dict(alignments_all,
+                                            orient="index",
+                                            columns=("dbid", "abpos", "aepos", "bbpos", "bepos"))
 
-    alignments_all = alignments_all.loc[:, columns]
     return alignments_all
 
 
@@ -133,6 +129,10 @@ def load_paths(datruf):   # TODO: modify LAshow4pathplot so that only aligned re
     lashow = run_command(command).strip().split('\n')
 
     paths = []
+    aseq = bseq = symbols = ""   # just suppress warnings
+    ab = ae = bb = be = 0
+    prefix_cut = suffix_cut = 0
+    flag_add = False
     flag_first = True
     for line in lashow:
         data = line.strip().split('\t')
