@@ -1,6 +1,6 @@
 # CentromereAssembly
 
-A budle of python modules for centromere assembly with PacBio long reads:
+A bundle of python modules for centromere assembly with PacBio long reads:
 
 * datruf
   * detects tandem repeat regions (with datander by Gene Myers) and tandem repeat units
