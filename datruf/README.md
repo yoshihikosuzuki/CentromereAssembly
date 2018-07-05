@@ -1,6 +1,6 @@
-# datruf
+# DAzzler Tandem Repeat Unit Finding module
 
-Datruf analyzes tandem repeats with relatively long unit size (mainly >100 bp) using output of datander in DAMASKER software developed by Dr. Gene Myers.
+Datruf detects tandem repeat units from PacBio raw reads after datander module of DAMASKER by Gene Myers identifies the tandem repeat regions. The size of the tandem repeat units accurately infered by datruf is relatively long (basically >100 bp) due to the resolution of long-read alignment used. However, datruf is developed for centromere assembly, whose unit size is known to be generally long (e.g. 171 bp for human).
 
 Datruf consists of three parts:
 
@@ -8,7 +8,7 @@ Datruf consists of three parts:
 
 * **Viewer** receives one read ID and draw figures that are not told by Runner but help to understand the sequence structure of the read.
 
-* **Plotter** requires results of datruf and/or other software for tandem repeat analysis (TRF, mTR, ...) and draws figures useful for comparison of these results.
+* **Plotter** requires results of datruf and/or other software for tandem repeat analysis (TRF, mTR, etc.) and draws figures useful for comparison of these results.
 
 ## How to use
 
