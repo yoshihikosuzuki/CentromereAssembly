@@ -12,7 +12,6 @@ endef
 # Define rules for each file to be copied
 $(foreach FILE, $(DMEL_DB_OBJ), $(eval $(call COPY, $(FILE), $(addprefix $(ORIGINAL_DMEL_DB_DIR), $(FILE)))))
 
-
 ## Run datander
 
 #TAN.DMEL.las: DMEL.db

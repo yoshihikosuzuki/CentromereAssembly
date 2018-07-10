@@ -4,7 +4,7 @@
 develop/
 run/
 memo
-
+!clusterings.ipynb
 
 
 # Byte-compiled / optimized / DLL files
