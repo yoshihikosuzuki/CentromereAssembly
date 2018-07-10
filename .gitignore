@@ -1,10 +1,6 @@
-*.ipynb
-!datruf/*.ipynb
-*.pkl
 develop/
 run/
 memo
-!assets/
 
 
 # Byte-compiled / optimized / DLL files
