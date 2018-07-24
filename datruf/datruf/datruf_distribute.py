@@ -51,12 +51,12 @@ def main():
                 script = utils.sge_nize(script,
                                         job_name="run_datruf",
                                         n_core=args.n_core,
-                                        sync=False)
+                                        sync=False)   # TODO: add mem param, make it an option
             elif args.job_scheduler == "slurm":
                 script = utils.slurm_nize(script,
                                           job_name="run_datruf",
                                           n_core=args.n_core,
-                                          mem_per_cpu=4000,
+                                          mem_per_cpu=40000,
                                           wait=False)
             f.write(script)
 

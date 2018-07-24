@@ -24,6 +24,12 @@ class Viewer:
     Dot plot/alignment plot/alignment path plot viewer for one read.
     The 'read_id' (int) is same as the one used in DAZZ_DB.
     This viewer is assumed to be used in Jupyter Notebook for now.
+
+    Basic usage:
+        ```
+        from datruf_viewer import Viewer
+        v = Viewer(root_dir, db_file, las_file, out_dir, gepard_command)
+        v.show(read_id, path_plot=True, consensus=True)
     """
 
     def __init__(self, root_dir, db_file, las_file, out_dir, gepard):
@@ -68,6 +74,23 @@ class Viewer:
             else:
                 if not hasattr(path, 'unit_alignments'):
                     path.split_alignment()
+
+    def show(self, read_id, dot_plot=True, alignment_plot=True, path_plot=False, consensus=False):
+        """
+        All-in-one drawing function for a single read.
+        By default, this method generates only dot plot and alignment plot.
+        You can additionally plot alignment path plot and DAG of the units.
+        """
+
+        self.set_read(read_id)
+        if dot_plot:
+            self.dot_plot()
+        if alignment_plot:
+            self.alignment_plot()
+        if path_plot:
+            self.path_plot()
+        if consensus:
+            self.consensus()
 
     def set_read(self, read_id):
         # Initialize
