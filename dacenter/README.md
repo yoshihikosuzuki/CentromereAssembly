@@ -15,4 +15,4 @@ In addition, dacenter provides following visualizations:
 
 ## Usage
 
-See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/dacenter/docs/Usage.ipynb).
+See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/dacenter/docs/Usage.ipynb) (maybe a little bit slow to load due to its large file size ~40MB).
