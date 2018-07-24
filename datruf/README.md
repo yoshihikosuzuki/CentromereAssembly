@@ -12,4 +12,4 @@ Datruf consists of three parts:
 
 ## How to use
 
-Read [Jupyter notebook](http://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/datruf/Usage%20and%20examples.ipynb).
+See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/datruf/docs/Usage.ipynb).
