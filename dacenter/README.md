@@ -13,6 +13,6 @@ In addition, dacenter provides following visualizations:
 * Unit length histogram
 * Clustering details
 
-## How to use
+## Usage
 
-TBA
+See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/dacenter/docs/Usage.ipynb).
