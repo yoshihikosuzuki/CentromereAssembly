@@ -16,7 +16,7 @@ from .datruf_core import (calc_cover_set,
                           calc_min_cover_set)
 
 plt.style.use('ggplot')
-py.init_notebook_mode()
+py.init_notebook_mode(connected=True)
 
 
 class Viewer:

@@ -12,7 +12,7 @@ import plotly.graph_objs as go
 from BITS.utils import make_line, interval_len
 
 plt.style.use('ggplot')
-py.init_notebook_mode()
+py.init_notebook_mode(connected=True)
 
 
 class Plotter():
