@@ -17,7 +17,6 @@ from .dpmm import DPMM, DPMMCluster
 #from .dpmm_oldname import Clustering, Cluster
 
 plt.style.use('ggplot')
-py.init_notebook_mode()
 
 
 class PeaksViewer:

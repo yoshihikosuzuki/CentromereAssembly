@@ -2,9 +2,7 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict, Counter
 from interval import interval
-from IPython.display import display
 import matplotlib.pyplot as plt
-import matplotlib.image as img
 from matplotlib_venn import venn2, venn3
 import plotly.offline as py
 import plotly.graph_objs as go
@@ -12,7 +10,6 @@ import plotly.graph_objs as go
 from BITS.utils import make_line, interval_len
 
 plt.style.use('ggplot')
-py.init_notebook_mode(connected=True)
 
 
 class Plotter():

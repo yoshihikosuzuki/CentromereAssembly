@@ -16,7 +16,6 @@ from .datruf_core import (calc_cover_set,
                           calc_min_cover_set)
 
 plt.style.use('ggplot')
-py.init_notebook_mode(connected=True)
 
 
 class Viewer:
@@ -27,6 +26,7 @@ class Viewer:
 
     Basic usage:
         ```
+        py.init_notebook_mode(connected=True)
         from datruf_viewer import Viewer
         v = Viewer(root_dir, db_file, las_file, out_dir, gepard_command)
         v.show(read_id, path_plot=True, consensus=True)

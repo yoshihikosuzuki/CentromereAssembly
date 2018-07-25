@@ -1,6 +1,6 @@
 # DAzzler Tandem Repeat Unit Finding module
 
-Datruf detects tandem repeat units from PacBio raw reads after datander module of DAMASKER by Gene Myers identifies the tandem repeat regions. The size of the tandem repeat units accurately infered by datruf is relatively long (basically >100 bp) due to the resolution of long-read alignment used. However, datruf is developed for centromere assembly, whose unit size is known to be generally long (e.g. 171 bp for human).
+Datruf detects tandem repeats and unit sequences within them only from PacBio raw reads and without any other external information. Before using datruf, you must run the `HPC.TANmask` program of [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER) originally developed by Gene Myers and slightly modified for datruf, and must have `.db` file and `.las` file.  The minimum length of tandem repeat units accurately infered by datruf is relatively long (approximately >50 bp) due to the resolution of long-read alignment on which datander relies. However, datruf is developed mainly for (core) centromere assembly, whose unit size is known to be long in general (e.g. 171 bp alpha-satellite sequence of human).
 
 Datruf consists of three parts:
 
@@ -13,3 +13,9 @@ Datruf consists of three parts:
 ## How to use
 
 See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/datruf/docs/Usage.ipynb).
+
+
+<div>
+    <a href="https://plot.ly/~yoshihikosuzuki/61/?share_key=6N3XfWBMfdvI3ZL7oQz7jI" target="_blank" title="Nanopore 5S datander v2.1" style="display: block; text-align: center;"><img src="https://plot.ly/~yoshihikosuzuki/61.png?share_key=6N3XfWBMfdvI3ZL7oQz7jI" alt="Nanopore 5S datander v2.1" style="max-width: 100%;width: 725px;"  width="725" onerror="this.onerror=null;this.src='https://plot.ly/404.png';" /></a>
+    <script data-plotly="yoshihikosuzuki:61" sharekey-plotly="6N3XfWBMfdvI3ZL7oQz7jI" src="https://plot.ly/embed.js" async></script>
+</div>
