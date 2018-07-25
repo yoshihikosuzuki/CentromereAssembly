@@ -13,5 +13,3 @@ Datruf consists of three parts:
 ## How to use
 
 See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/datruf/docs/Usage.ipynb).
-
-<iframe width="900" height="800" frameborder="0" scrolling="no" src="//plot.ly/~yoshihikosuzuki/61.embed"></iframe>
