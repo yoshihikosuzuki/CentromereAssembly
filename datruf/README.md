@@ -14,8 +14,4 @@ Datruf consists of three parts:
 
 See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/datruf/docs/Usage.ipynb).
 
-
-<div>
-    <a href="https://plot.ly/~yoshihikosuzuki/61/?share_key=6N3XfWBMfdvI3ZL7oQz7jI" target="_blank" title="Nanopore 5S datander v2.1" style="display: block; text-align: center;"><img src="https://plot.ly/~yoshihikosuzuki/61.png?share_key=6N3XfWBMfdvI3ZL7oQz7jI" alt="Nanopore 5S datander v2.1" style="max-width: 100%;width: 725px;"  width="725" onerror="this.onerror=null;this.src='https://plot.ly/404.png';" /></a>
-    <script data-plotly="yoshihikosuzuki:61" sharekey-plotly="6N3XfWBMfdvI3ZL7oQz7jI" src="https://plot.ly/embed.js" async></script>
-</div>
+<iframe width="900" height="800" frameborder="0" scrolling="no" src="//plot.ly/~yoshihikosuzuki/61.embed"></iframe>
