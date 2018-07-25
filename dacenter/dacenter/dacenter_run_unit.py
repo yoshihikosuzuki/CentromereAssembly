@@ -9,7 +9,7 @@ from sklearn import mixture
 from sklearn import decomposition
 
 from .dpmm import DPMM, DPMMCluster
-from .datruf_utils import run_command
+from BITS.utils import run_command
 
 
 class Clustering:

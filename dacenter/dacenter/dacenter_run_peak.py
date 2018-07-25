@@ -6,7 +6,7 @@ from sklearn.neighbors import KernelDensity
 from interval import interval
 import edlib
 
-from .datruf_utils import run_command
+from BITS.utils import run_command
 
 
 class Peaks:
