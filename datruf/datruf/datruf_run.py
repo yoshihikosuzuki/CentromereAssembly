@@ -1,6 +1,5 @@
 import argparse
 import os
-from collections import defaultdict
 import pandas as pd
 from multiprocessing import Pool
 
@@ -46,18 +45,16 @@ class Runner():
             self.end_dbid = self.max_dbid
 
     def _get_max_dbid(self):
-        command = ("DBdump %s | awk 'NR == 1 {print $3}'") % self.db_file
+        command = f"DBdump {self.db_file} | awk 'NR == 1 {{print $3}}'"
         self.max_dbid = int(run_command(command).strip())
 
     def _check_dump(self):
         if not os.path.isfile(self.dbdump):
-            command = ("DBdump -r -h -mtan %s > %s"
-                       % (self.db_file, self.dbdump))
+            command = f"DBdump -r -h -mtan {self.db_file} > {self.dbdump}"
             run_command(command)
 
         if not os.path.isfile(self.ladump):
-            command = ("LAdump -c %s %s > %s"
-                       % (self.db_file, self.las_file, self.ladump))
+            command = f"LAdump -c {self.db_file} {self.las_file} > {self.ladump}"
             run_command(command)
 
     def run(self):
@@ -69,8 +66,7 @@ class Runner():
                 return None
             self.alignments_all = load_ladump(self)
 
-        out_units_fname_split = "%s.%d" % (self.out_units_fname,
-                                           os.getpid())
+        out_units_fname_split = f"{self.out_units_fname}.{os.getpid()}"
         out_units_file = open(out_units_fname_split, 'w')
 
         result = {}
@@ -182,11 +178,7 @@ def main():
                    .reset_index(drop=True))
 
     results.loc[:, Runner.columns].to_csv(out_main_fname, sep="\t")
-    command = ("cat %s > %s; rm %s" % (out_units_fnames,
-                                       args.out_units_fname,
-                                       out_units_fnames))
-    #command = ("cat %s > %s" % (out_units_fnames,
-    #                            args.out_units_fname))   # keep tmp files
+    command = f"cat {out_units_fnames} > {args.out_units_fname}; rm {out_units_fnames}"
     run_command(command)
 
 

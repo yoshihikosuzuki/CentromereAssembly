@@ -100,9 +100,9 @@ class Path:
         ret = trace_alignment(self, plot=plot, snake=snake)
 
         if plot is True:
-            self.unit_alignments, self.shapes = ret
+            self.unit_alignments, self.reflection_points, self.shapes = ret
         else:
-            self.unit_alignments = ret
+            self.unit_alignments, self.reflection_points  = ret
 
         # Determine raw unit sequences   # XXX: determine the only one full-length unit sequence when there is no unit_alignments (i.e. shorter than duplication) (to do this in trace_alignment is better?)
         self.unit_seqs = [unit_alignment.bseq.replace('-', '')
@@ -141,12 +141,8 @@ class Path:
 
         # Print (full-length) unit sequences
         for unit_count, unit_seq in enumerate(self.unit_seqs):
-            out_file.write(">%d-%d/%d/0_%d\n%s\n"
-                           % (read_id,
-                              path_count,
-                              unit_count,
-                              len(unit_seq),
-                              unit_seq))
+            start, end = self.reflection_points[unit_count:unit_count + 2]
+            out_file.write(f">{read_id}-{path_count}/{unit_count}/{start}_{end} unit_length={end - start}\n{unit_seq}\n")
 
         return True
 
@@ -235,9 +231,9 @@ def trace_alignment(path, plot=False, snake=False):
     #                         "median": int(np.median(distance_list))})
 
     #ret = [unit_alignments, estimate_unit_length]
-    ret = unit_alignments
+    ret = [unit_alignments, reflection_points]
     if plot is True:
-        ret = [ret, shapes]
+        ret.extend(shapes)
     return ret
 
 

@@ -28,15 +28,14 @@ class Viewer:
         ```
         py.init_notebook_mode(connected=True)
         from datruf_viewer import Viewer
-        v = Viewer(root_dir, db_file, las_file, out_dir, gepard_command)
+        v = Viewer(db_file, las_file, out_dir, gepard_command)
         v.show(read_id, path_plot=True, consensus=True)
     """
 
-    def __init__(self, root_dir, db_file, las_file, out_dir, gepard):
+    def __init__(self, db_file, las_file, out_dir, gepard):
         if not os.path.isdir(out_dir):
             os.mkdir(out_dir)
 
-        self.root_dir = root_dir
         self.db_file = db_file
         self.las_file = las_file
         self.out_dir = out_dir
@@ -75,7 +74,14 @@ class Viewer:
                 if not hasattr(path, 'unit_alignments'):
                     path.split_alignment()
 
-    def show(self, read_id, dot_plot=True, alignment_plot=True, path_plot=False, consensus=False):
+    def show(self,
+             read_id,
+             dot_plot=True,
+             alignment_plot=True,
+             show_grid=False,   # for alignment plot
+             path_plot=False,
+             snake=True,   # for alignment path plot
+             consensus=False):
         """
         All-in-one drawing function for a single read.
         By default, this method generates only dot plot and alignment plot.
@@ -86,7 +92,7 @@ class Viewer:
         if dot_plot:
             self.dot_plot()
         if alignment_plot:
-            self.alignment_plot()
+            self.alignment_plot(show_grid=show_grid)
         if path_plot:
             self.path_plot()
         if consensus:
@@ -130,8 +136,8 @@ class Viewer:
 
         # Show dot plot
         fig, ax = plt.subplots(figsize=(11, 11))
-        ax.tick_params(labelbottom="off", bottom="off")
-        ax.tick_params(labelleft="off", left="off")
+        ax.tick_params(labelbottom=False, bottom=False)
+        ax.tick_params(labelleft=False, left=False)
         # this assignment and plt.show() are necessary to show only one figure
         tmp = plt.imshow(img.imread(out_dotplot))
         plt.show()
@@ -256,7 +262,7 @@ class Viewer:
 
             # Show DAG   # TODO: show partial graph
             plt.figure(figsize=(18, 10))
-            plt.axis("off")
+            plt.axis(False)
             #pos = nx.spectral_layout(DAG)
             #pos = nx.circular_layout(DAG)
             #pos = graphviz_layout(DAG, prog="dot")

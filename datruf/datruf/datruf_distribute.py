@@ -51,7 +51,7 @@ def main():
                 script = utils.sge_nize(script,
                                         job_name="run_datruf",
                                         n_core=args.n_core,
-                                        sync=False)   # TODO: add mem param, make it an option
+                                        sync=False)
             elif args.job_scheduler == "slurm":
                 script = utils.slurm_nize(script,
                                           job_name="run_datruf",
@@ -60,11 +60,10 @@ def main():
                                           wait=False)
             f.write(script)
 
-        # NOTE: currently just submit all jobs and no wait. thus the entire workflow stops here once.
-        # TODO: should wait all distributed jobs?
         command = f"{args.submit_job} {script_fname}"
         utils.run_command(command)
 
+    # Generate a script that should be ran after the datruf calculation finishes
     with open("finalize_datruf.sh", 'w') as f:
         f.write(
 f"""cat {args.out_units_fname}.* > {args.out_units_fname}
@@ -73,11 +72,11 @@ awk -F'\\t' 'NR == 1 {{print $0}} $1 != \"\" {{print $0}}' {args.out_main_fname}
 rm {args.out_units_fname}.*; rm {args.out_main_fname}.*
 """)
 
-    logger.info("Run `bash finalize_datruf.sh` after finishing all jobs")
+    logger.info("Run `$ bash finalize_datruf.sh` after finishing all jobs")
 
 
 def load_args():
-    parser = argparse.ArgumentParser(description="Run datruf with many reads")
+    parser = argparse.ArgumentParser(description="Run datruf with many reads using job scheduler")
 
     parser.add_argument(
         "db_file",
