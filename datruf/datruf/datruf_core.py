@@ -233,7 +233,7 @@ def trace_alignment(path, plot=False, snake=False):
     #ret = [unit_alignments, estimate_unit_length]
     ret = [unit_alignments, reflection_points]
     if plot is True:
-        ret.extend(shapes)
+        ret.append(shapes)
     return ret
 
 
