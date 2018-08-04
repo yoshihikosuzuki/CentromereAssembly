@@ -1,5 +1,4 @@
 import os
-import pickle
 import numpy as np
 import pandas as pd
 from sklearn.neighbors import KernelDensity
@@ -40,9 +39,8 @@ def take_consensus_cyclic(seqs, out_dir):
 
 
 class Peak:
-    def __init__(self, root_dir, fname_prefix, index, N, unit_len, density, start_len, end_len, units):
+    def __init__(self, root_dir, index, N, unit_len, density, start_len, end_len, units):
         self.root_dir = root_dir
-        self.fname_prefix = fname_prefix
         self.index = index   # "<root_dir>/<fname_prefix>.<index>.fasta" is the result file
         self.N = N   # num of merged peaks inside this peak (1 if an independent peak)
         self.unit_len = unit_len   # unit length for each merged peak   # NOTE: list
@@ -50,14 +48,6 @@ class Peak:
         self.start_len = start_len   # min unit length in this peak
         self.end_len = end_len   # max unit length in this peak
         self.units = units   # longer than <start_len> and shorter than <end_len>   # NOTE: pandas dataframe
-
-        # pickle of this class instance itself
-        self.pkl_fname = os.path.join(self.root_dir,
-                                      f"{self.fname_prefix}.{self.index}.pkl")
-
-    def write(self):
-        with open(self.pkl_fname, 'wb') as f:
-            pickle.dump(self, f)
 
     def filter_units_by_single_alignment_coverage(self, threshold=0.9):
         """
@@ -123,7 +113,6 @@ class Runner:
     def __init__(self,
                  unit_fasta,
                  peaks_dir,
-                 peak_fname_prefix,
                  min_len=50,   # peak length must be longer than this
                  max_len=1000,   # must be shorter than this
                  band_width=5,   # parameter for KDE
@@ -132,7 +121,6 @@ class Runner:
 
         self.units = load_unit_fasta(unit_fasta)
         self.peaks_dir = peaks_dir
-        self.peak_fname_prefix = peak_fname_prefix
         self.min_len = min_len
         self.max_len = max_len
         self.band_width = band_width
@@ -192,7 +180,6 @@ class Runner:
             peak_units = (self.units[self.units["length"] >= peak_start]
                           .pipe(lambda df: df[df["length"] <= peak_end]))
             self.peaks.append(Peak(self.peaks_dir,
-                                   self.peak_fname_prefix,
                                    i,
                                    peak_n,
                                    peak_len,
@@ -200,139 +187,3 @@ class Runner:
                                    peak_start,
                                    peak_end,
                                    peak_units))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"""
-    def align_start_positions(self):
-        # For each peak
-        for peak_id in range(1, self.n_peaks + 1):
-            # NOTE: insert any filter on peak_id here
-            if peak_id != 3:
-                continue
-
-            self.align_start_positions_peak(peak_id)
-
-    def align_start_positions_peak(self, peak_id):
-        # For each unit in the peak
-        for unit_id in range(len(self.peak_units[peak_id])):
-            # NOTE: insert any filter on unit_id here
-            if unit_id != 1:
-                continue
-
-            self.align_start_positions_peak_unit(peak_id, unit_id)
-
-    def align_start_positions_peak_unit(self, peak_id, unit_id, max_diff=0.28):
-        out_fname_prefix = ("%s/%s.%d.aligned.%d"
-                            % (self.peaks_dir,
-                               self.peak_fname_prefix,
-                               peak_id,
-                               unit_id))
-
-        seq_writer = open(out_fname_prefix + ".seq", 'w')   # input of Consed
-        fasta_writer = open(out_fname_prefix + ".fasta", 'w')   # for split_dis
-        sam_writer = open(out_fname_prefix + ".sam", 'w')   # for split_dis
-
-        # used for reverse complement
-        RC_MAP = dict(zip("ACGTacgtNn-", "TGCAtgcaNn-"))
-
-        # a (global) -> b (local)
-        def align_edlib(a, b):
-            ret = edlib.align(a, b, mode="HW", task="path")
-
-            cigar = ret["cigar"]
-            # Swap I and D in cigar to satisfy the definition in SAM format
-            # NOTE: This is because: in each mapping the dup is reference,
-            # but indeed the unit is overall the seed (= reference) in SAM
-            reverse_cigar = cigar.replace("I", "?").replace("D", "I").replace("?", "D")
-
-            alignment_len = sum(list(map(int, re.findall(r'([0-9]+)', cigar))))
-            diff = ret["editDistance"] / alignment_len   # 0 ~ 1
-            start, end = ret["locations"][0]
-            end += 1
-
-            return {"cigar": reverse_cigar,
-                    "diff": diff,
-                    "start": start,
-                    "end": end}
-
-        unit_header, unit_seq = self.peak_units[peak_id][unit_id]
-
-        # Output the seed unit into fasta and sam
-        seq_writer.write("%s\n" % unit_seq)
-        fasta_writer.write(">%s\n%s\n" % (unit_header, unit_seq))
-        sam_writer.write("@SQ\tSN:%s\tLN:%d\n" % (unit_header, len(unit_seq)))
-
-        # TODO: store strand information for assembly
-
-        for unit in self.peak_units[peak_id]:
-            dup_header = unit[0]
-
-            # The seed unit should be already written in the first line
-            if dup_header == unit_header:
-                continue
-
-            dup_seq = unit[1] * 2
-
-            f_map = align_edlib(unit_seq, dup_seq)
-
-            rc_seq = "".join([RC_MAP[c] for c in dup_seq[::-1]])
-            rc_map = align_edlib(unit_seq, rc_seq)
-
-            # Filter bad alignments because Consed failed if a unit cannot be aligned to the seed
-            if min(f_map["diff"], rc_map["diff"]) > max_diff:
-                continue
-
-            if f_map["diff"] <= rc_map["diff"]:
-                out_map = f_map
-                out_seq = dup_seq
-            else:
-                out_map = rc_map
-                out_seq = rc_seq
-
-            out_header = "%s/%d_%d" % (dup_header.split("0_")[0],
-                                       out_map["start"],
-                                       out_map["end"])
-            out_seq = out_seq[out_map["start"]:out_map["end"]]
-
-            seq_writer.write("%s\n" % out_seq)
-            fasta_writer.write(">%s\n%s\n" % (out_header, out_seq))
-            sam_writer.write("\t".join(list(map(str, [out_header,   # QNAME
-                                                      0,   # (alignment status) FLAG
-                                                      unit_header,   # RNAME
-                                                      1,   # (start) POS (in reference; 1-index)
-                                                      30,   # MAPQ
-                                                      out_map["cigar"],   # CIGAR (R->Q)
-                                                      "*",   # RNEXT
-                                                      0,   # PNEXT
-                                                      0,   # TLEN
-                                                      out_seq,   # SEQ
-                                                      "*"]))))   # QUAL
-            sam_writer.write("\n")
-
-        seq_writer.close()
-        fasta_writer.close()
-        sam_writer.close()
-"""

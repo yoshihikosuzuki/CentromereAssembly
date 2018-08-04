@@ -1,4 +1,5 @@
 import os
+import sys
 import pickle
 import numpy as np
 import pandas as pd
@@ -64,24 +65,18 @@ def load_unit_fasta(fasta_fname):
                                            "sequence"))
 
 
-def load_peaks(peaks_dir, peak_fname_prefix):
+def load_peaks(peaks_dir):
     """
-    Load pickle files of Peak instances.
-    The file names must be <peaks_dir>/<peak_fname_prefix>.<peak_index>.pkl
+    Load a list of Peak instances.
     """
 
-    peaks = []
+    pkl_fname = os.path.join(peaks_dir, "peaks.pkl")
+    if not os.path.isfile(pkl_fname):
+        logger.error(f"{pkl_fname} does not exist. Abort.")
+        sys.exit(1)
 
-    peak_index = 0   # must start from 0
-    while True:
-        pkl_fname = os.path.join(peaks_dir,
-                                 f"{peak_fname_prefix}.{peak_index}.pkl")
-        if not os.path.isfile(pkl_fname):
-            break
-
-        with open(pkl_fname, 'rb') as f:
-            peaks.append(pickle.load(f))
-        peak_index += 1
+    with open(pkl_fname, 'rb') as f:
+        peaks = pickle.load(f)
 
     if len(peaks) == 0:
         logger.error("No peak pikles were detected.")

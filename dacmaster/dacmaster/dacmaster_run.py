@@ -1,6 +1,7 @@
 import argparse
 import os
 import copy
+import pickle
 from logzero import logger
 
 from BITS.utils import run_command
@@ -13,12 +14,11 @@ def main():
     # Check the root directory for peaks
     if not os.path.isdir(args.peaks_dir):
         logger.info(f"Creating the directory: {args.peaks_dir}")
-        run_command(f"mkdir -p {args.peaks_dir}")
+        run_command(f"mkdir {args.peaks_dir}")
 
     # Run the method of peak detection
     runner = Runner(args.unit_fasta,
-                    args.peaks_dir,
-                    args.peak_fname_prefix)
+                    args.peaks_dir)
     runner.run()
 
     # Delte Peaks instance because no longer needed except Peak instances
@@ -29,9 +29,12 @@ def main():
     for peak in peaks:
         peak.find_representatives()
 
-    # TODO: add an option for this or fix whether or not doing this
-    for peak in peaks:
-        peak.write()   # output as a pickle for each peak
+    # Output the peaks as pickle
+    # Now output the list itself instead of each peak for simplicity
+    pkl_fname = os.path.join(args.peaks_dir, "peaks.pkl")
+    with open(pkl_fname, 'wb') as f:
+        pickle.dump(peaks, f)
+
 
 
 def load_args():
@@ -48,12 +51,6 @@ def load_args():
         "--peaks_dir",
         default="peaks",
         help=("Directory to which dacmaster outputs results. [peaks]"))
-
-    parser.add_argument(
-        "-P",
-        "--peak_fname_prefix",
-        default="peak",
-        help=("Prefix for output/input files of the peak units [peak]"))
 
     args = parser.parse_args()
 
