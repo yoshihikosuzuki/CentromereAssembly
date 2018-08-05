@@ -220,6 +220,39 @@ class Peak:
                 break
         
         self.assignment[np.where(self.assignment < 0)] = -1
+
+        logger.info(f"{len(self.clusters)} representative unit candidates:\n{self.clusters}")
+        self.clusters = pd.DataFrame.from_dict(self.clusters, orient="index")
+        # TODO: add cluster size column and sort by it
+
+        # Remove redundant untis which are similar to another one
+        # After that, the remaining centroids are representative units
+        dm = np.zeros((self.clusters.shape[0], self.clusters.shape[0]), dtype=float)
+        for i in range(self.clusters.shape[0] - 1):
+            for j in range(1, self.clusters.shape[0]):
+                #print(f"# {i} vs {j} (f)")
+                alignment = run_edlib(self.clusters[0][i], self.clusters[0][j] * 2, mode='glocal')
+                f = alignment["diff"]
+                #print(f"# {i} vs {j} (rc)")
+                alignment = run_edlib(self.clusters[0][i], revcomp(self.clusters[0][j] * 2), mode='glocal')
+                rc = alignment["diff"]
+                
+                dm[i, j] = dm[j, i] = min([f, rc])
+
+        self.representative_units = {self.clusters[0][0]}
+        for i in range(1, self.clusters.shape[0]):
+            flag_add = 1
+            for j in range(i):
+                if dm[i, j] < 0.1:
+                    flag_add = 0
+                    break
+            if flag_add == 1:
+                self.representative_units.add(clusters[0][i])
+
+        logger.info(f"{len(self.representative_units)} after redundancy removal:\n{self.representative_units}")
+
+        for i, r_unit in enumerate(self.representative_units):
+            print(f">representative/{i}/0_{len(r_unit)}\n{r_unit}\n")   # add cluster_size information
         
 
 class Runner:
