@@ -36,7 +36,6 @@ def main():
         pickle.dump(peaks, f)
 
 
-
 def load_args():
     parser = argparse.ArgumentParser(
         description=("Run dacmaster."))

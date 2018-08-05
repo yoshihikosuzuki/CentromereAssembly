@@ -1,4 +1,5 @@
 import os
+import random
 import numpy as np
 import pandas as pd
 from sklearn.neighbors import KernelDensity
@@ -49,16 +50,6 @@ class Peak:
         self.end_len = end_len   # max unit length in this peak
         self.units = units   # longer than <start_len> and shorter than <end_len>   # NOTE: pandas dataframe
 
-    def filter_units_by_single_alignment_coverage(self, threshold=0.9):
-        """
-        Filter units in each read where at least 100 * <threshold> % of the read
-        is not covered by a single TR alignment.
-
-        This is used to extract pure and relatively clean centromeric monomers.
-        """
-
-        # TODO: this should be done in datruf!
-        
     def take_intra_consensus(self, n_units_threshold=5):
         """
         For each tandem repeat that has at least <n_units_threshold> units,
@@ -93,6 +84,82 @@ class Peak:
                                                                "length",
                                                                "sequence"))
 
+    def propose_cluster(self, remaining_read_id, cluster_id, out_dir):
+        """
+        From the remaining consensus units, first randomly choose a unit and
+        then collect all units within diameter of 10% sequence difference from
+        it.
+        """
+
+        cluster_units = np.zeros(self.units_consensus.shpae[0], dtype=int)   # <cluster_id> + 1 for cluster members, otherwise 0
+        read_id = random.choice(remaining_read_id)
+        query = self.units_consensus["sequence"].iloc[read_id]
+        
+        if not os.path.isdir(out_dir):
+            run_command(f"mkdir {out_dir}")
+        out_fname = os.path.join(out_dir, "input.seq")   # temporary file for Consed input
+        seq_writer = open(out_fname, 'w')
+    
+        # Output the first sequence as seed for consensus
+        seq_writer.write(f"{query}\n")
+    
+        for j in remaining_read_id:
+            target = self.units_consensus["sequence"].iloc[j]
+            
+            # forward
+            seq_f = target * 2
+            alignment_f = run_edlib(query, seq_f, mode="glocal")
+    
+            # reverse complement
+            seq_rc = revcomp(seq_f)
+            alignment_rc = run_edlib(query, seq_rc, mode="glocal")
+    
+            if alignment_f["diff"] <= alignment_rc["diff"]:
+                alignment = alignment_f
+                seq = seq_f
+            else:
+                alignment = alignment_rc
+                seq = seq_rc
+    
+            if alignment["diff"] < 0.1:   # 0.05とかにしてもいいかも
+                cluster_units[j] = cluster_id + 1
+                seq = seq[alignment["start"]:alignment["end"]]   # mapped area
+                seq_writer.write(f"{seq}\n")
+    
+        seq_writer.close()
+        return (cluster_units,
+                run_command(f"consed {out_fname}").replace('\n', ''))
+
+    def fix_cluster_assignment(self, remaining_read_id, cluster_id, consensus_seq):   # TODO: can I merge this and above one into a single method?
+        """
+        Given a set of consensus units proposed, return an actual cluster
+        which has diameter of 10% sequence difference from consensus of the
+        consensus units. The cluster size might become very smaller than the
+        proposed one.
+        """
+
+        cluster_units = np.zeros(N, dtype=int)   # 1 for cluster members, otherwise 0
+        read_id = random.choice(remaining_read_id)
+        query = self.units_consensus["sequence"].iloc[read_id]
+    
+        for j in remaining_read_id:
+            target = self.units_consensus["sequence"].iloc[j]
+    
+            # forward
+            seq_f = target * 2
+            alignment_f = run_edlib(query, seq_f, mode="glocal")
+    
+            if alignment_f["diff"] < 0.1:
+                cluster_units[j] = cluster_id + 1   # add 1 to neutralize the default value -1 in the <assignment>
+            else:
+                # reverse complement
+                seq_rc = revcomp(seq_f)
+                alignment_rc = run_edlib(query, seq_rc, mode="glocal")
+                if alignment_rc["diff"] < 0.1:
+                    cluster_units[j] = cluster_id + 1
+                    
+        return cluster_units
+
     def find_representatives(self):
         """
         From all units in a peak, find representative monomers that do not align well to each other.
@@ -107,6 +174,52 @@ class Peak:
         # Clustering of the consensus untis
         # Since what we are doing for now is just determine rough representative monomers,
         # this task is rather just to eliminate redundant consensus units.
+        self.assignment = np.full(self.units_consensus.shape[0], dtype=int)   # cluster id assignment for each consensus unit
+        self.clusters = {}   # mater unit sequences
+        cluster_id = 0
+        remaining_read_id = np.arange(N)   # array of indices of consensus units still remaining
+
+        while True:
+            cluster_units, consensus_seq = self.propose_cluster(remaining_read_id,
+                                                                cluster_id,
+                                                                f"{self.root_dir}tmp/")
+            
+            # XXX: consensus sequence may be "EXITING", "** WARNING", or Nothing!!!!
+            # TODO: maybe I should first debug Consed
+            
+            cluster_size = cluster_units[cluster_units > 0].shape[0]
+            print(cluster_id, cluster_size)
+            
+            #print(consensus_seq)
+            if cluster_size >= self.units_consensus.shape[0] * 0.01:
+                print("accepted")
+                
+                # Re-align the consensus sequence to the remaining consensus units
+                cluster_units = self.fix_cluster_assignment(remaining_read_id,
+                                                            cluster_id,
+                                                            consensus_seq)   # TODO: more efficient way?
+                
+                cluster_size = cluster_units[cluster_units > 0].shape[0]
+                print("actual cluster size =", cluster_size)
+                
+                if cluster_size >= self.units_consensus.shape[0] * 0.01:   # filter by cluster size again
+                    print("accepted")
+                    self.clusters[cluster_id] = consensus_seq
+                    self.assignment += cluster_units
+                    cluster_id += 1
+                else:
+                    print("rejected")
+            else:
+                print("rejected")
+                self.assignment -= cluster_units
+                
+            remaining_read_id = np.where(self.assignment == -1)[0]
+            print("# of remaining units =", remaining_read_id.shape[0])
+            #print(clusters)
+            if remaining_read_id.shape[0] < self.units_consensus.shape[0] * 0.1:
+                break
+        
+        self.assignment[np.where(self.assignment < 0)] = -1
         
 
 class Runner:
