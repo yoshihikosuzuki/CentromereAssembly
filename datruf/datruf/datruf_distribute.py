@@ -1,69 +1,51 @@
-import os
 import argparse
 import numpy as np
 from logzero import logger
 
-from BITS import utils
-
-
-def check_dump(args):
-    """
-    Generate dump files beforehand instead of in each distributed job.
-    """
-
-    if not os.path.isfile(args.dbdump):
-        command = f"DBdump -r -h -mtan {args.db_file} > {args.dbdump}"
-        utils.run_command(command)
-
-    if not os.path.isfile(args.ladump):
-        command = f"LAdump -c {args.db_file} {args.las_file} > {args.ladump}"
-        utils.run_command(command)
+from .datruf_run import Runner
+from BITS.utils import run_command, sge_nize, slurm_nize
 
 
 def main():
     args = load_args()
 
-    check_dump(args)
+    # Use Runner instance just for some preparation of data
+    r = Runner(args)   # args are now variables of <r>
+    r._check_dump()
 
-    command = f"DBdump {args.db_file} | awk 'NR == 1 {{print $3}}'"
-    max_dbid = int(utils.run_command(command).strip())
-
-    if args.start_dbid < 1:
-        args.start_dbid = 1
-    if args.end_dbid < 1 or args.end_dbid > max_dbid:
-        args.end_dbid = max_dbid
-
-    n_dbid_part = -(-args.end_dbid // args.n_distribute)
+    n_dbid_part = -(-r.end_dbid // args.n_distribute)
     n_digit = int(np.log10(args.n_distribute) + 1)
 
+    # Submit scripts each of which runs datruf_run.py
     for i in range(args.n_distribute):
-        idx = str(i + 1).zfill(n_digit)
+        index = str(i + 1).zfill(n_digit)
+        script_fname = f"run_datruf.{args.job_scheduler}.{index}"
 
-        script_fname = f"run_datruf.{args.job_scheduler}.{idx}"
         with open(script_fname, 'w') as f:
-            start = args.start_dbid + i * n_dbid_part
-            end = args.start_dbid + (i + 1) * n_dbid_part - 1
+            start = r.start_dbid + i * n_dbid_part
+            end = r.start_dbid + (i + 1) * n_dbid_part - 1
             script = (f"datruf_run.py -s {start} -e {end} -n {args.n_core} "
-                      f"-m {args.out_main_fname}.{idx} -u {args.out_units_fname}.{idx} "
+                      f"-m {args.out_main_fname}.{index} -u {args.out_units_fname}.{index} "
                       f"{'--only_interval' if args.only_interval else ''} "
+                      f"{'-D' if args.debug_mode else ''}"
                       f"{args.db_file} {args.las_file}")
+
             if args.job_scheduler == "sge":
-                script = utils.sge_nize(script,
-                                        job_name="run_datruf",
-                                        n_core=args.n_core,
-                                        sync=False)
+                script = sge_nize(script,
+                                  job_name="run_datruf",
+                                  n_core=args.n_core,
+                                  sync=False)
             elif args.job_scheduler == "slurm":
-                script = utils.slurm_nize(script,
-                                          job_name="run_datruf",
-                                          n_core=args.n_core,
-                                          mem_per_cpu=40000,
-                                          wait=False)
+                script = slurm_nize(script,
+                                    job_name="run_datruf",
+                                    n_core=args.n_core,
+                                    mem_per_cpu=40000,
+                                    wait=False)
             f.write(script)
 
-        command = f"{args.submit_job} {script_fname}"
-        utils.run_command(command)
+        run_command(f"{args.submit_job} {script_fname}")
 
-    # Generate a script that should be ran after the datruf calculation finishes
+    # Prepare a script for finalization of the task
     with open("finalize_datruf.sh", 'w') as f:
         f.write(
 f"""cat {args.out_units_fname}.* > {args.out_units_fname}
@@ -76,7 +58,8 @@ rm {args.out_units_fname}.*; rm {args.out_main_fname}.*
 
 
 def load_args():
-    parser = argparse.ArgumentParser(description="Run datruf with many reads using job scheduler")
+    parser = argparse.ArgumentParser(
+        description="Distribute datruf_run.py jobs using a job scheduler.")
 
     parser.add_argument(
         "db_file",
@@ -84,7 +67,7 @@ def load_args():
 
     parser.add_argument(
         "las_file",
-        help="output of TANmask")
+        help="output of TANmask of the modified DAMASTER package")
 
     parser.add_argument(
         "-d",
@@ -118,6 +101,44 @@ def load_args():
         help=("End read ID. Set < 1 to end at the last read. [-1]"))
 
     parser.add_argument(
+        "-m",
+        "--out_main_fname",
+        type=str,
+        default="datruf_result",
+        help=("Write main results to this file. [datruf_result]"))
+
+    parser.add_argument(
+        "-u",
+        "--out_units_fname",
+        type=str,
+        default="datruf_units.fasta",
+        help=("Write unit sequences to this file. [datruf_units.fasta]"))
+
+    parser.add_argument(
+        "--only_interval",
+        action="store_true",
+        default=False,
+        help=("Stop calculation just after obtaining TR intervals. Since "
+              "filtering of TRs by CV of its unit lengths is not applied, "
+              "(intervals of) TRs with short (<50 bp) units will be output, "
+              "unlike the default mode. [False]"))
+
+    parser.add_argument(
+        "--on_the_fly",
+        action="store_true",
+        default=False,
+        help=("Generate dump data for each read on the fly. This mode is very "
+              "slow and used only when whole data are huge and you just want "
+              "to look at results of only several reads. [False]"))
+
+    parser.add_argument(
+        "-D",
+        "--debug_mode",
+        action="store_true",
+        default=False,
+        help=("Run in debug mode. [False]"))
+
+    parser.add_argument(
         "-n",
         "--n_core",
         type=int,
@@ -144,27 +165,6 @@ def load_args():
         type=str,
         default="qsub",
         help="Command name to submit a job with the specified scheduler. [qsub]")
-
-    parser.add_argument(
-        "-m",
-        "--out_main_fname",
-        type=str,
-        default="datruf_result",
-        help=("Write main results to this file. [datruf_result]"))
-
-    parser.add_argument(
-        "-u",
-        "--out_units_fname",
-        type=str,
-        default="datruf_units.fasta",
-        help=("Write unit sequences to this file. [datruf_units.fasta]"))
-
-    parser.add_argument(
-        "--only_interval",
-        action="store_true",
-        default=False,
-        help=("Stop calculation just after obtaining TR intervals. Also "
-              "filtering by CV of the unit lengths is not applied. [False]"))
 
     return parser.parse_args()
 

@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
-from collections import defaultdict, Counter
+from collections import Counter
 from interval import interval
+from logzero import logger
 import matplotlib.pyplot as plt
 from matplotlib_venn import venn2, venn3
 import plotly.offline as py
@@ -41,7 +42,7 @@ class Plotter():
     def add_result(self, name, fname):
         result = pd.read_csv(fname, sep="\t", index_col=0)
         end_dbid = max(result["dbid"]) if self.end_dbid < 1 else self.end_dbid
-        print("end dbid (%s) = %d" % (name, end_dbid))
+        logger.info(f"end dbid ({name}) = {end_dbid}")
         result = result[result["dbid"] <= end_dbid]
         result = result[result["dbid"] >= self.start_dbid]
 
@@ -180,8 +181,7 @@ class Plotter():
         trace = go.Histogram(x=[x[1] / x[0] for x in out
                                 if x[0] >= 50 and x[1] >= 50],
                              xbins=dict(start=0, end=5, size=0.01))
-        layout = go.Layout(xaxis=dict(title="Ratio of length (%s / %s)"
-                                      % (methods[1], methods[0]),
+        layout = go.Layout(xaxis=dict(title=f"Ratio of length ({methods[1]} / {methods[0]})",
                                       range=[0, 5]),
                            yaxis=dict(title="Frequency"),
                            hovermode='closest',

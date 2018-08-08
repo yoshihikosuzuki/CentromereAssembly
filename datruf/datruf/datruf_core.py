@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 from interval import interval
+from logzero import logger
 
 from BITS.utils import make_line, interval_len, subtract_interval
 
@@ -126,14 +127,13 @@ class Path:
         # Discard TRs with only 1 full-length unit because we cannot
         # calculate CV
         if len(unit_lens) < 2:
-            #print("less than 2! %d %d" % (self.read_id, path_count))
+            logger.debug(f"less than 2! {self.read_id} {path_count}")
             return False
 
         cv = np.std(unit_lens, ddof=1) / np.mean(unit_lens)
-        #print(read_id, path_count)
-        #print(unit_lengths)
-        #print(cv)
-        #print("---")
+        logger.debug(read_id, path_count, unit_lens, cv)
+        logger.debug("---")
+
         if cv >= 0.1:
             return False
 
@@ -147,12 +147,15 @@ class Path:
         return True
 
 
-# During the trace,
-# 1) calculate average/median distance from diagonal
-# 2) divide path into unit paths
-# 3) generate shapes of the path (if plot is True)
-# 4) generate the reflecting snake of the path (if snake is True)
 def trace_alignment(path, plot=False, snake=False):
+    """
+    During the trace,
+      1) calculate average/median distance from diagonal -> obsolete
+      2) divide path into unit paths
+      3) generate shapes of the path (if <plot> is True)
+      4) generate the reflecting snake of the path (if <snake> is True)
+    """
+
     ab, ae, bb, be, alignment = path.ab, path.ae, path.bb, path.be, path.alignment
     aseq, bseq, symbol = alignment.aseq, alignment.bseq, alignment.symbol
 
@@ -165,8 +168,7 @@ def trace_alignment(path, plot=False, snake=False):
 
     apos = ab   # current a-coordinate in the path
     bpos = bb
-    #distance_list = [ab - bb]   # from diagonal to each point in the path
-    reflection_points = [bb, ab]   # equal to border points of units   # TODO: return this to Path as well
+    reflection_points = [bb, ab]   # equal to border points of units
     reflection_point = ab
 
     if plot is True:
@@ -194,8 +196,6 @@ def trace_alignment(path, plot=False, snake=False):
             start_apos = apos
             start_bpos = bpos
 
-        #distance_list.append(apos - bpos)
-
         # If bpos will step over current reflection point in the next step,
         # then add a reflection point
         if bpos == reflection_point and (i == len(symbol) - 1
@@ -206,10 +206,6 @@ def trace_alignment(path, plot=False, snake=False):
             reflection_point = apos
 
     # TODO: remaining partial aseq|bseq|symbol should be added?
-
-    #print("ab:", ab, "ae:", ae, "bb:", bb, "be:", be, "ab-bb:", ab - bb,
-    #      "mean:", int(np.mean(distance_list)),
-    #      "median:", int(np.median(distance_list)))
 
     # Reflecting snake
     if snake is True:
@@ -226,18 +222,13 @@ def trace_alignment(path, plot=False, snake=False):
         # Final vertical line
         shapes.append(make_line(rp[-1], rp[-2], rp[-1], rp[-1], col, width))
 
-    #estimate_unit_length = ({"border": ab - bb,
-    #                         "mean": int(np.mean(distance_list)),
-    #                         "median": int(np.median(distance_list))})
-
-    #ret = [unit_alignments, estimate_unit_length]
     ret = [unit_alignments, reflection_points]
     if plot is True:
         ret.append(shapes)
     return ret
 
 
-def take_consensus(unit_alignments):   # TODO: refactor though this will not be used any more
+def take_consensus(unit_alignments):   # TODO: refactor though this will no longer be used
     aseqs = [x.aseq for x in unit_alignments]
     bseqs = [x.bseq for x in unit_alignments]
     symbols = [x.symbol for x in unit_alignments]
@@ -248,10 +239,10 @@ def take_consensus(unit_alignments):   # TODO: refactor though this will not be 
     backbone = bseqs[0].replace('-', '')
     backbone_path = []
     for i in range(len(backbone) - 1):
-        DAG.add_edge("%s:%f" % (backbone[i], i + 1), "%s:%f" % (backbone[i + 1], i + 2), weight=1)   # backbone coordinate is 1-index
-        backbone_path.append("%s:%f" % (backbone[i], i + 1))
-    backbone_path.append("%s:%f" % (backbone[-1], len(backbone)))
-    #print("backbone_path:", backbone_path)
+        DAG.add_edge(f"{backbone[i]}:{i + 1}", "{backbone[i + 1]}:{i + 2}", weight=1)   # backbone coordinate is 1-index
+        backbone_path.append(f"{backbone[i]}:{i + 1}")
+    backbone_path.append(f"{backbone[-1]}:{len(backbone)}")
+    logger.debug(f"backbone_path: {backbone_path}")
     last_coordinate = len(backbone) + 1   # [0, last_coordinate]　is used for node coordinates ([1, last_coordinate - 1] is backbone's interval)
     
     # Iteratively add alignments

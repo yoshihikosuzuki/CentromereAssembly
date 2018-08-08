@@ -112,8 +112,8 @@ class Viewer:
         self.read_id = int(read_id)
 
         # Calculate read length
-        command = ("DBdump -s %s %d | awk '$1 == \"S\" {print $2}'"
-                   % (self.db_file, self.read_id))
+        command = (f"DBdump -s {self.db_file} {self.read_id} "
+                   f"| awk '$1 == \"S\" {{print $2}}'")
         out = run_command(command)
         self.read_len = int(out.strip())
 
@@ -123,15 +123,12 @@ class Viewer:
 
         # Generate fasta
         if not os.path.isfile(out_fasta):
-            command = ("DBshow %s %d > %s"
-                       % (self.db_file, self.read_id, out_fasta))
-            run_command(command)
+            run_command(f"DBshow {self.db_file} {self.read_id} > {out_fasta}")
 
         # Calculate dot plot
         if not os.path.isfile(out_dotplot):
-            command = ("unset DISPLAY;"   # no usage of any display
-                       "%s -seq1 %s -seq2 %s -outfile %s"
-                       % (self.gepard, out_fasta, out_fasta, out_dotplot))
+            command = (f"unset DISPLAY;"   # no usage of any display
+                       f"{self.gepard} -seq1 {out_fasta} -seq2 {out_fasta} -outfile {out_dotplot}")
             run_command(command)
 
         # Show dot plot

@@ -1,7 +1,11 @@
 import argparse
 import os
+import numpy as np
 import pandas as pd
 from multiprocessing import Pool
+import logging
+import logzero
+from logzero import logger
 
 from BITS.utils import run_command
 
@@ -18,26 +22,23 @@ from .datruf_core import (calc_cover_set,
 class Runner():
     """
     First, load all dump data of reads specified by <start_dbid> and
-    <end_dbid>. If <on_the_fly> option is set, this loading is skipped
-    and dump data will be loaded by directly running DBdump and LAdump
-    at the time they are needed. <on_the_fly> mode is very slow due to
-    its IO processing, so one should use this only when one just wants
-    to look at results of only several reads without generating dbdump
-    and ladump files.
+    <end_dbid>. If <on_the_fly> option is set (not recommended in most cases),
+    this loading is skipped and dump data will be loaded by executing DBdump
+    and LAdump on demand.
 
-    Then, for each read ID from <start_dbid> to <end_dbid>, apply datruf
-    algorithm. Alignment paths are loaded on-the-fly in both modes due
-    to its huge size.
+    Then, for each read ID from <start_dbid> to <end_dbid>, apply the datruf
+    algorithm in parallel (if <n_core> > 1). If <only_interval> option is set,
+    all tandem repeat INTERVALs including those with short (< 50 bp) units will
+    be output. Otherwise (i.e. by defalut), intervals and UNITs of tandem
+    repeats after filtering by coefficient of variation of unit lengths will be
+    output. This filtering usually removes tandem repeats with short units.
     """
-
-    columns = ("dbid", "start", "end", "unit length")
-    columns_only_interval = ("dbid", "start", "end")
 
     def __init__(self, args):
         for attr in list(vars(args).keys()):
             setattr(self, attr, getattr(args, attr))
 
-        # Adjust the start/end read IDs
+        # handle with improper start/end read IDs specified
         self._get_max_dbid()
         if self.start_dbid < 1:
             self.start_dbid = 1
@@ -50,27 +51,28 @@ class Runner():
 
     def _check_dump(self):
         if not os.path.isfile(self.dbdump):
-            command = f"DBdump -r -h -mtan {self.db_file} > {self.dbdump}"
-            run_command(command)
-
+            logger.info("DBdump does not exist. Generating...")
+            run_command(f"DBdump -r -h -mtan {self.db_file} > {self.dbdump}")
         if not os.path.isfile(self.ladump):
-            command = f"LAdump -c {self.db_file} {self.las_file} > {self.ladump}"
-            run_command(command)
+            logger.info("LAdump does not exist. Generating...")
+            run_command(f"LAdump -c {self.db_file} {self.las_file} > {self.ladump}")
 
     def run(self):
         if not self.on_the_fly:
-            # Load dump data beforehand
+            # Generate dump data if not exist
             self._check_dump()
+
+            # Load dump data
             self.tr_intervals_all = load_dbdump(self)
             if len(self.tr_intervals_all) == 0:
                 return None
             self.alignments_all = load_ladump(self)
 
-        out_units_fname_split = f"{self.out_units_fname}.{os.getpid()}"
+        out_units_fname_split = f"{self.out_units_fname}.{os.getpid()}"   # TODO: not output to file but return as a list
         out_units_file = open(out_units_fname_split, 'w')
 
         result = {}
-        index = 0
+        index = 0   # for <result> dataframe
         for read_id in range(self.start_dbid, self.end_dbid + 1):
             self.read_id = read_id
 
@@ -92,22 +94,18 @@ class Runner():
                 continue
 
             if self.only_interval:
-                intervals = sorted([(x[2], x[1])
+                # Output all TR intervals regardless of alignment straightness
+                intervals = sorted([(x[2], x[1])   # (bb, ae)
                                     for x in list(self.min_cover_set)])
                 for start, end in intervals:
-                    result[index] = [self.read_id, start, end]
+                    result[index] = [self.read_id, start, end, np.nan]
                     index += 1
                 continue
 
             # [Path, ...]
             self.paths = load_paths(self)
 
-            #print("---")
-            #print(self.read_id)
-            #print(self.tr_intervals)
-            #print(self.alignments)
-            #print(self.cover_set)
-            #print(self.min_cover_set)
+            logger.debug(f"---\n{self.read_id}\n{self.tr_intervals}\n{self.alignments}\n{self.cover_set}\n{self.min_cover_set}")
 
             for path_count, path in enumerate(self.paths):
                 path.split_alignment()
@@ -120,8 +118,12 @@ class Runner():
 
         out_units_file.close()
 
-        columns = Runner.columns_only_interval if self.only_interval else Runner.columns
-        result = pd.DataFrame.from_dict(result, orient="index", columns=columns)
+        result = pd.DataFrame.from_dict(result,
+                                        orient="index",
+                                        columns=("dbid",
+                                                 "start",
+                                                 "end",
+                                                 "unit length"))
         return (out_units_fname_split, result)
 
 
@@ -177,14 +179,14 @@ def main():
         results = (results.sort_values(by="dbid", kind="mergesort")
                    .reset_index(drop=True))
 
-    results.loc[:, Runner.columns].to_csv(out_main_fname, sep="\t")
+    results.to_csv(out_main_fname, sep="\t")
     command = f"cat {out_units_fnames} > {args.out_units_fname}; rm {out_units_fnames}"
     run_command(command)
 
 
 def load_args():
     parser = argparse.ArgumentParser(
-        description="Run datruf with many reads")
+        description="Report rough estimate of tandem repeat units in PacBio reads.")
 
     parser.add_argument(
         "db_file",
@@ -192,7 +194,7 @@ def load_args():
 
     parser.add_argument(
         "las_file",
-        help="output of TANmask")
+        help="output of TANmask of the modified DAMASTER package")
 
     parser.add_argument(
         "-d",
@@ -228,13 +230,6 @@ def load_args():
         help=("End read ID. Set < 1 to end at the last read. [-1]"))
 
     parser.add_argument(
-        "-n",
-        "--n_core",
-        type=int,
-        default=1,
-        help=("Degree of parallelization. [1]"))
-
-    parser.add_argument(
         "-m",
         "--out_main_fname",
         type=str,
@@ -252,8 +247,10 @@ def load_args():
         "--only_interval",
         action="store_true",
         default=False,
-        help=("Stop calculation just after obtaining TR intervals. Also "
-              "filtering by CV of the unit lengths is not applied. [False]"))
+        help=("Stop calculation just after obtaining TR intervals. Since "
+              "filtering of TRs by CV of its unit lengths is not applied, "
+              "(intervals of) TRs with short (<50 bp) units will be output, "
+              "unlike the default mode. [False]"))
 
     parser.add_argument(
         "--on_the_fly",
@@ -263,7 +260,26 @@ def load_args():
               "slow and used only when whole data are huge and you just want "
               "to look at results of only several reads. [False]"))
 
-    return parser.parse_args()
+    parser.add_argument(
+        "-D",
+        "--debug_mode",
+        action="store_true",
+        default=False,
+        help=("Run in debug mode. [False]"))
+
+    parser.add_argument(
+        "-n",
+        "--n_core",
+        type=int,
+        default=1,
+        help=("Degree of parallelization. [1]"))
+
+    args = parser.parse_args()
+    if not args.debug_mode:   # suppress debug messages
+        logzero.loglevel(logging.INFO)
+    del args.debug_mode
+
+    return args
 
 
 if __name__ == "__main__":

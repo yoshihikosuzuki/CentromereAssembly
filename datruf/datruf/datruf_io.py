@@ -1,17 +1,18 @@
 import re
-from collections import defaultdict
 import numpy as np
 import pandas as pd
 from io import StringIO
+from logzero import logger
 
 from BITS.utils import run_command
-
-from .datruf_core import (Alignment,
-                          Path)
+from .datruf_core import Alignment, Path
 
 
-# Extract TR intervals information of reads from DBdump output
 def load_dbdump(datruf):
+    """
+    Extract TR intervals information of reads from DBdump's output.
+    """
+
     tr_intervals_all = {}
     index = 0
     with open(datruf.dbdump, 'r') as f:
@@ -30,14 +31,16 @@ def load_dbdump(datruf):
                     tr_intervals_all[index] = [dbid, start, end]
                     index += 1
 
-    tr_intervals_all = pd.DataFrame.from_dict(tr_intervals_all,
-                                              orient="index",
-                                              columns=("dbid", "start", "end"))
-    return tr_intervals_all
+    return pd.DataFrame.from_dict(tr_intervals_all,
+                                  orient="index",
+                                  columns=("dbid", "start", "end"))
 
 
-# Extract alignments information of reads from LAdump output
 def load_ladump(datruf):
+    """
+    Extract self-read alignments by datander from LAdump's output.
+    """
+
     alignments_all = {}
     index = 0
     with open(datruf.ladump, 'r') as f:
@@ -53,17 +56,18 @@ def load_ladump(datruf):
                 alignments_all[index] = [dbid] + list(map(int, data[1:5]))
                 index += 1
 
-    alignments_all = pd.DataFrame.from_dict(alignments_all,
-                                            orient="index",
-                                            columns=("dbid", "abpos", "aepos", "bbpos", "bepos"))
-
-    return alignments_all
+    return pd.DataFrame.from_dict(alignments_all,
+                                  orient="index",
+                                  columns=("dbid", "abpos", "aepos", "bbpos", "bepos"))
 
 
-# Load TR intervals of single read
-# If those of all reads are already stored, use that data
-# Otherwise, call DBdump
 def load_tr_intervals(datruf):
+    """
+    Load TR intervals in a single read.
+    If the Runner instance <datruf> has already loaded TR intervals data,
+    extract from it. Otherwise (i.e. <on_the_fly> mode), execute DBdump.
+    """
+
     if hasattr(datruf, "tr_intervals_all"):
         all_data = datruf.tr_intervals_all
         tr_intervals = all_data[all_data["dbid"] == datruf.read_id]
@@ -72,8 +76,8 @@ def load_tr_intervals(datruf):
                                   .apply(lambda x: (x["start"], x["end"]),
                                          axis=1)))
     else:
-        command = ("DBdump -mtan %s %d | awk '$1 == \"T0\" {print $0}'"
-                   % (datruf.db_file, datruf.read_id))
+        command = (f"DBdump -mtan {datruf.db_file} {datruf.read_id} "
+                   f"| awk '$1 == \"T0\" {{print $0}}'")
         dbdump = run_command(command).strip().split(' ')
 
         tr_intervals = [(int(dbdump[1 + 2 * (i + 1)]),
@@ -83,14 +87,17 @@ def load_tr_intervals(datruf):
     return tr_intervals
 
 
-# Load alignments of single read like TR intervals
 def load_alignments(datruf):
+    """
+    Return formatted alignments information of the reads
+    """
+
     if hasattr(datruf, "alignments_all"):
         all_data = datruf.alignments_all
         alignments = all_data[all_data["dbid"] == datruf.read_id]
     else:
-        command = ("LAdump -c %s %s %d | awk '$1 == \"C\" {print $0}'"
-                   % (datruf.db_file, datruf.las_file, datruf.read_id))
+        command = (f"LAdump -c {datruf.db_file} {datruf.las_file} {datruf.read_id} "
+                   f"| awk '$1 == \"C\" {{print $0}}'")
         ladump = StringIO(run_command(command))
 
         alignments = pd.read_csv(ladump, sep=" ",
@@ -122,10 +129,10 @@ def convert_symbol(aseq, bseq, symbols):
 
 def load_paths(datruf):   # TODO: modify LAshow4pathplot so that only aligned regions are output
     # Load paths of alignments in the minimum cover set
-    command = ("LAshow4pathplot -a %s %s %d | sed 's/,//g'"
-               "| awk -F'[' 'NF == 1 {print $1} NF == 2 {print $2}'"
-               "| awk -F']' '{print $1}'"
-               % (datruf.db_file, datruf.las_file, datruf.read_id))
+    command = (f"LAshow4pathplot -a {datruf.db_file} {datruf.las_file} {datruf.read_id} "
+               f"| sed 's/,//g'"
+               f"| awk -F'[' 'NF == 1 {{print $1}} NF == 2 {{print $2}}'"
+               f"| awk -F']' '{{print $1}}'")
     lashow = run_command(command).strip().split('\n')
 
     paths = []
@@ -140,19 +147,17 @@ def load_paths(datruf):   # TODO: modify LAshow4pathplot so that only aligned re
             if flag_first:
                 flag_first = False
             elif flag_add:
-                aseq = aseq[prefix_cut : len(aseq) - suffix_cut]
-                bseq = bseq[prefix_cut : len(bseq) - suffix_cut]
+                aseq = aseq[prefix_cut:len(aseq) - suffix_cut]
+                bseq = bseq[prefix_cut:len(bseq) - suffix_cut]
                 symbols = symbols[:len(symbols) - suffix_cut]
-                #paths.append((ab, ae, bb, be, aseq, bseq, convert_symbol(aseq, bseq, symbols)))
                 paths.append(Path(ab, ae, bb, be, Alignment(aseq, bseq, convert_symbol(aseq, bseq, symbols))))
-                #print(ab, ae, bb, be, len(aseq))
+                logger.debug(ab, ae, bb, be, len(aseq))
             ab, ae, bb, be = list(map(int, data[2:6]))
             if (ab, ae, bb, be) in datruf.min_cover_set:
                 flag_add = True
             else:
                 flag_add = False
                 continue
-            #print(read_id, ab, ae, bb, be)
             aseq = ""
             bseq = ""
             symbols = ""
