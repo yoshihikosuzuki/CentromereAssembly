@@ -54,13 +54,13 @@ datruf_result datruf_units.fasta: $(DB_PREFIX).db TAN.$(DB_PREFIX).las
 ## Run dacmaster
 
 peaks.pkl: datruf_units.fasta
-	sbatch dacmaster_run.py $^
+	sbatch damaster_run.py $^
 
 
 ## Targets
 
 datruf: $(DB_OBJ) TAN.$(DB_PREFIX).las datruf_units.fasta
-dacmaster: peaks.pkl
+damaster: peaks.pkl
 
 clean_datruf:
 	rm datruf_* run_datruf.* finalize_datruf.sh sbatch*

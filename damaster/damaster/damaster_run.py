@@ -4,7 +4,6 @@ import copy
 import pickle
 from logzero import logger
 
-from BITS.utils import run_command
 from .damaster_core import Runner
 
 
@@ -18,7 +17,7 @@ def main():
 
     # Run the method of peak detection
     runner = Runner(args.unit_fasta,
-                    args.peaks_dir)
+                    args.peaks_dir)   # TODO: remove it
     runner.run()
 
     # Delte Peaks instance because no longer needed except Peak instances
@@ -38,18 +37,34 @@ def main():
 
 def load_args():
     parser = argparse.ArgumentParser(
-        description=("Run dacmaster."))
+        description=("Construct master units and representative units."))
 
     parser.add_argument(
         "unit_fasta",
         help=("Input fasta file of the unit sequences reported by datruf. "
               "[datruf_units.fasta]"))
 
+    parser.add_argument(
+        "-n",
+        "--n_core",
+        type=int,
+        default=1,
+        help=("Degree of parallelization. [1]"))
+
+    parser.add_argument(
+        "-D",
+        "--debug_mode",
+        action="store_true",
+        default=False,
+        help=("Run in debug mode. [False]"))
+
+    """
     parser.add_argument(   # TODO: no need of peaks dir anymore
         "-d",
         "--peaks_dir",
         default="peaks",
         help=("Directory to which dacmaster outputs results. [peaks]"))
+    """
 
     args = parser.parse_args()
 
