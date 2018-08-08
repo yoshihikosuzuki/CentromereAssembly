@@ -65,12 +65,12 @@ def load_unit_fasta(fasta_fname):
                                            "sequence"))
 
 
-def load_peaks(peaks_dir):
+def load_peaks(pkl_fname):
     """
     Load a list of Peak instances.
     """
 
-    pkl_fname = os.path.join(peaks_dir, "peaks.pkl")
+    #pkl_fname = os.path.join(peaks_dir, "peaks.pkl")
     if not os.path.isfile(pkl_fname):
         logger.error(f"{pkl_fname} does not exist. Abort.")
         sys.exit(1)

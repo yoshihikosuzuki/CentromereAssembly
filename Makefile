@@ -10,11 +10,11 @@ ORIGINAL_DB_DIR = /projects/dazzler/runs/dmel/
 DB_PREFIX = DMEL
 
 # for datander
-N_CORE_DATANDER = 4
+N_CORE_DATANDER = 16
 MEM_DATANDER = 5000
 
 # for datruf
-N_DISTRIBUTE = 16
+N_DISTRIBUTE = 32
 N_CORE_DATRUF = 4
 
 #####################
@@ -51,15 +51,16 @@ datruf_result datruf_units.fasta: $(DB_PREFIX).db TAN.$(DB_PREFIX).las
 	datruf_run_distribute.py -n $(N_CORE_DATRUF) -p $(N_DISTRIBUTE) -j $(JOB_SCHEDULER) -c $(SUBMIT_JOB) $^
 
 
-## Run dacenter
+## Run dacmaster
 
-peak_done: datruf_units.fasta
-	dacenter_run_peak.py -u $^
-	touch $@
-# TODO: make the script generate peaks.fofn including the file names of peak.*.fasta (before or after start position adjustment)
+peaks.pkl: datruf_units.fasta
+	sbatch dacmaster_run.py $^
 
 
 ## Targets
 
-datruf: $(DB_OBJ) TAN.$(DB_PREFIX).las datruf_result datruf_units.fasta
-dacenter: peak_done
+datruf: $(DB_OBJ) TAN.$(DB_PREFIX).las datruf_units.fasta
+dacmaster: peaks.pkl
+
+clean_datruf:
+	rm datruf_* run_datruf.* finalize_datruf.sh sbatch*

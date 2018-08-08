@@ -12,9 +12,9 @@ def main():
     args = load_args()
 
     # Check the root directory for peaks
-    if not os.path.isdir(args.peaks_dir):
-        logger.info(f"Creating the directory: {args.peaks_dir}")
-        run_command(f"mkdir {args.peaks_dir}")
+    #if not os.path.isdir(args.peaks_dir):
+    #    logger.info(f"Creating the directory: {args.peaks_dir}")
+    #    run_command(f"mkdir {args.peaks_dir}")
 
     # Run the method of peak detection
     runner = Runner(args.unit_fasta,
@@ -31,8 +31,8 @@ def main():
 
     # Output the peaks as pickle
     # Now output the list itself instead of each peak for simplicity
-    pkl_fname = os.path.join(args.peaks_dir, "peaks.pkl")
-    with open(pkl_fname, 'wb') as f:
+    #pkl_fname = os.path.join(args.peaks_dir, "peaks.pkl")
+    with open("peaks.pkl", 'wb') as f:
         pickle.dump(peaks, f)
 
 
@@ -45,7 +45,7 @@ def load_args():
         help=("Input fasta file of the unit sequences reported by datruf. "
               "[datruf_units.fasta]"))
 
-    parser.add_argument(
+    parser.add_argument(   # TODO: no need of peaks dir anymore
         "-d",
         "--peaks_dir",
         default="peaks",

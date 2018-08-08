@@ -1,4 +1,5 @@
 import os
+import sys
 import random
 import numpy as np
 import pandas as pd
@@ -62,7 +63,9 @@ class Peak:
             for path_id, df_path in df_read.groupby("path_id"):   # for each TR
                 if len(df_path) < n_units_threshold:   # only small number of units inside the TR
                     continue
+                logger.info(f"consensus cyclic {read_id}")
                 consensus_seq = take_consensus_cyclic(list(df_path["sequence"]), "tmp")
+                logger.info(f"{consensus_seq}")
                 #print(consensus_seq)
                 if len(consensus_seq) == 0 or consensus_seq[0] == 'W' or consensus_seq[0] == '*':
                     # XXX: TODO: this is just a workaround for the output of consed "Warning: tile overlaps did not align well" or "** EXISTING". Fix it.
@@ -91,7 +94,7 @@ class Peak:
         it.
         """
 
-        cluster_units = np.zeros(self.units_consensus.shpae[0], dtype=int)   # <cluster_id> + 1 for cluster members, otherwise 0
+        cluster_units = np.zeros(self.units_consensus.shape[0], dtype=int)   # <cluster_id> + 1 for cluster members, otherwise 0
         read_id = random.choice(remaining_read_id)
         query = self.units_consensus["sequence"].iloc[read_id]
         
@@ -138,7 +141,7 @@ class Peak:
         proposed one.
         """
 
-        cluster_units = np.zeros(N, dtype=int)   # 1 for cluster members, otherwise 0
+        cluster_units = np.zeros(self.units_consensus.shape[0], dtype=int)   # 1 for cluster members, otherwise 0
         read_id = random.choice(remaining_read_id)
         query = self.units_consensus["sequence"].iloc[read_id]
     
@@ -174,15 +177,16 @@ class Peak:
         # Clustering of the consensus untis
         # Since what we are doing for now is just determine rough representative monomers,
         # this task is rather just to eliminate redundant consensus units.
-        self.assignment = np.full(self.units_consensus.shape[0], dtype=int)   # cluster id assignment for each consensus unit
+        self.assignment = np.full(self.units_consensus.shape[0], -1, dtype=int)   # cluster id assignment for each consensus unit
         self.clusters = {}   # mater unit sequences
         cluster_id = 0
-        remaining_read_id = np.arange(N)   # array of indices of consensus units still remaining
+        remaining_read_id = np.arange(self.units_consensus.shape[0])   # array of indices of consensus units still remaining
 
         while True:
+            logger.info(f"propose {cluster_id}")
             cluster_units, consensus_seq = self.propose_cluster(remaining_read_id,
                                                                 cluster_id,
-                                                                f"{self.root_dir}tmp/")
+                                                                f"tmp/")
             
             # XXX: consensus sequence may be "EXITING", "** WARNING", or Nothing!!!!
             # TODO: maybe I should first debug Consed
@@ -222,7 +226,27 @@ class Peak:
         self.assignment[np.where(self.assignment < 0)] = -1
 
         logger.info(f"{len(self.clusters)} representative unit candidates:\n{self.clusters}")
-        self.clusters = pd.DataFrame.from_dict(self.clusters, orient="index")
+        # remove irregular sequences
+        """
+        del_ids = set()
+        for cluster_id, cluster_unit in self.clusters.items():
+            if len(cluster_unit) == 0 or cluster_unit[0] == 'W' or cluster_unit[0] == '*':
+                del_ids.add(cluster_id)
+        for cluster_id in del_ids:
+            del self.clusters[cluster_id]
+        """
+        
+        self.clusters = pd.DataFrame.from_dict(self.clusters, orient="index", columns=["sequence"])
+        for i in range(self.clusters.shape[0]):
+            if len(self.clusters.loc[i, "sequence"]) == 0 or self.clusters.loc[i, "sequence"][0] == '*' or self.clusters.loc[i, "sequence"] == 'W':
+                self.clusters = self.clusters.drop(i)
+        self.clusters = self.clusters.reset_index(drop=True)
+
+        if self.clusters.shape[0] == 0:
+            logger.info("No representatives found. Exit.")
+            sys.exit(1)
+
+        print(self.clusters)
         # TODO: add cluster size column and sort by it
 
         # Remove redundant untis which are similar to another one
@@ -231,15 +255,15 @@ class Peak:
         for i in range(self.clusters.shape[0] - 1):
             for j in range(1, self.clusters.shape[0]):
                 #print(f"# {i} vs {j} (f)")
-                alignment = run_edlib(self.clusters[0][i], self.clusters[0][j] * 2, mode='glocal')
+                alignment = run_edlib(self.clusters.loc[i, "sequence"], self.clusters.loc[j, "sequence"] * 2, mode='glocal')
                 f = alignment["diff"]
                 #print(f"# {i} vs {j} (rc)")
-                alignment = run_edlib(self.clusters[0][i], revcomp(self.clusters[0][j] * 2), mode='glocal')
+                alignment = run_edlib(self.clusters.loc[i, "sequence"], revcomp(self.clusters.loc[j, "sequence"] * 2), mode='glocal')
                 rc = alignment["diff"]
                 
                 dm[i, j] = dm[j, i] = min([f, rc])
 
-        self.representative_units = {self.clusters[0][0]}
+        self.representative_units = {self.clusters.loc[0, "sequence"]}
         for i in range(1, self.clusters.shape[0]):
             flag_add = 1
             for j in range(i):
@@ -247,12 +271,13 @@ class Peak:
                     flag_add = 0
                     break
             if flag_add == 1:
-                self.representative_units.add(clusters[0][i])
+                self.representative_units.add(self.clusters.loc[i, "sequence"])
 
         logger.info(f"{len(self.representative_units)} after redundancy removal:\n{self.representative_units}")
 
-        for i, r_unit in enumerate(self.representative_units):
-            print(f">representative/{i}/0_{len(r_unit)}\n{r_unit}\n")   # add cluster_size information
+        #with open(f"representative_units.fasta", 'w') as f:
+        #    for i, r_unit in enumerate(self.representative_units):
+        #        f.write(f">representative/{i}/0_{len(r_unit)}\n{r_unit}\n")   # add cluster_size information
         
 
 class Runner:
