@@ -5,7 +5,7 @@ import pickle
 from logzero import logger
 
 from BITS.utils import run_command
-from .dacmaster_core import Runner
+from .damaster_core import Runner
 
 
 def main():

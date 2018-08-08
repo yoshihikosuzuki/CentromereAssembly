@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
 
-from .dacmaster_core import Runner
+from .damaster_core import Runner
 
 plt.style.use('ggplot')
 

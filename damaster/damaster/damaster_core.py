@@ -7,7 +7,7 @@ from sklearn.neighbors import KernelDensity
 from interval import interval
 from logzero import logger
 
-from .dacmaster_io import load_unit_fasta
+from .damaster_io import load_unit_fasta
 
 from BITS.utils import run_command, revcomp
 from BITS.core import run_edlib
