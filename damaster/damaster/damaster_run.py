@@ -1,36 +1,39 @@
 import argparse
-import os
 import copy
 import pickle
+import logging
+import logzero
 from logzero import logger
 
-from .damaster_core import Runner
+from .damaster_core import PeaksFinder
+from .damaster_io import load_peaks
 
 
 def main():
     args = load_args()
 
-    # Check the root directory for peaks
-    #if not os.path.isdir(args.peaks_dir):
-    #    logger.info(f"Creating the directory: {args.peaks_dir}")
-    #    run_command(f"mkdir {args.peaks_dir}")
+    """
+    # Detect peaks in the unit length distribution
+    finder = PeaksFinder(args.unit_fasta)
+    finder.run()
 
-    # Run the method of peak detection
-    runner = Runner(args.unit_fasta,
-                    args.peaks_dir)   # TODO: remove it
-    runner.run()
+    # Keep only Peak instances and discard the others
+    peaks = copy.deepcopy(finder.peaks)
+    del finder
 
-    # Delte Peaks instance because no longer needed except Peak instances
-    peaks = copy.deepcopy(runner.peaks)
-    del runner
+    with open("peaks_wo_repr.pkl", 'wb') as f:
+        pickle.dump(peaks, f)
+    """
+
+    peaks = load_peaks("peaks_wo_repr.pkl")
 
     # Define a set of representative monomers from somewhat homogeneous TRs
-    for peak in peaks:
-        peak.find_representatives()
+    #for peak in peaks:
+    #    peak.find_representatives()
+    peaks[-1].find_representatives()
 
     # Output the peaks as pickle
     # Now output the list itself instead of each peak for simplicity
-    #pkl_fname = os.path.join(args.peaks_dir, "peaks.pkl")
     with open("peaks.pkl", 'wb') as f:
         pickle.dump(peaks, f)
 
@@ -58,15 +61,10 @@ def load_args():
         default=False,
         help=("Run in debug mode. [False]"))
 
-    """
-    parser.add_argument(   # TODO: no need of peaks dir anymore
-        "-d",
-        "--peaks_dir",
-        default="peaks",
-        help=("Directory to which dacmaster outputs results. [peaks]"))
-    """
-
     args = parser.parse_args()
+    if args.debug_mode:   # suppress debug messages
+        logzero.loglevel(logging.DEBUG)
+    del args.debug_mode
 
     return args
 

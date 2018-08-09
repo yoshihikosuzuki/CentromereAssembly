@@ -172,6 +172,7 @@ def main():
                 out_units_fname_split, result = ret
                 results = pd.concat([results, result])
                 out_units_fnames += out_units_fname_split + " "
+        exe_pool.close()
 
         if len(results) == 0:
             return
@@ -275,8 +276,8 @@ def load_args():
         help=("Degree of parallelization. [1]"))
 
     args = parser.parse_args()
-    if not args.debug_mode:   # suppress debug messages
-        logzero.loglevel(logging.INFO)
+    if args.debug_mode:   # suppress debug messages
+        logzero.loglevel(logging.DEBUG)
     del args.debug_mode
 
     return args

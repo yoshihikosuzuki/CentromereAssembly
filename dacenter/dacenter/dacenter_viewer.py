@@ -2,7 +2,6 @@ import pickle
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
 from scipy.cluster.hierarchy import linkage, dendrogram
-from sklearn.neighbors import KernelDensity
 from sklearn.decomposition import PCA, KernelPCA
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
@@ -17,32 +16,6 @@ from .dpmm import DPMM, DPMMCluster
 #from .dpmm_oldname import Clustering, Cluster
 
 plt.style.use('ggplot')
-
-
-class PeaksViewer:
-    def __init__(self, unit_fasta_fname):
-        self.peaks = Peaks(None, None)
-        self.peaks.load_units(unit_fasta_fname)
-
-    def hist_units(self, min_len=50, max_len=450, band_width=10):
-        unit_lens = np.array([len(x[1]) for x in self.peaks.units])
-
-        data = [go.Histogram(x=unit_lens,
-                             xbins=dict(start=min_len, end=max_len, size=1))]
-        layout = go.Layout(xaxis=dict(title="Unit length"),
-                           yaxis=dict(title="Frequency"))
-        py.iplot(go.Figure(data=data, layout=layout))
-
-        ul = unit_lens[(min_len < unit_lens) & (unit_lens < max_len)]
-        ls = np.linspace(min_len, max_len, max_len - min_len + 1, dtype=int)
-
-        kde = KernelDensity(kernel='gaussian', bandwidth=band_width).fit(ul.reshape(-1, 1))
-        dens = np.exp(kde.score_samples(ls.reshape(-1, 1)))
-
-        data = [go.Scatter(x=ls, y=dens)]
-        layout = go.Layout(xaxis=dict(title="Unit length"),
-                           yaxis=dict(title="Density"))
-        py.iplot(go.Figure(data=data, layout=layout))
 
 
 class ClusteringViewer:

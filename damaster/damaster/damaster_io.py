@@ -14,8 +14,8 @@ def load_unit_fasta(fasta_fname):
     """
 
     units = {}
-    header = ""
-    index = 0
+    header = seq = ""
+    index = read_id = path_id = unit_id = start = end = read_len = 0
     with open(fasta_fname, 'r') as f:
         flag_first = True
         for line in f:
@@ -70,7 +70,6 @@ def load_peaks(pkl_fname):
     Load a list of Peak instances.
     """
 
-    #pkl_fname = os.path.join(peaks_dir, "peaks.pkl")
     if not os.path.isfile(pkl_fname):
         logger.error(f"{pkl_fname} does not exist. Abort.")
         sys.exit(1)
