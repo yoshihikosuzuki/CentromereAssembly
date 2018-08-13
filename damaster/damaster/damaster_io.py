@@ -6,9 +6,10 @@ import pandas as pd
 from logzero import logger
 
 
-def load_unit_fasta(fasta_fname):
+def load_unit_fasta(fasta_fname):   # TODO: in datruf, output units fasta in the same format
     """
-    Return unit sequences in a fasta file as a pandas dataframe with the following columns:
+    Return unit sequences in a fasta file as a pandas dataframe with the
+    following columns:
 
     <index> <read header> <read ID> <path ID> <unit ID> <start pos> <end pos> <length> <sequence>
     """

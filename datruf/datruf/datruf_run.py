@@ -276,7 +276,7 @@ def load_args():
         help=("Degree of parallelization. [1]"))
 
     args = parser.parse_args()
-    if args.debug_mode:   # suppress debug messages
+    if args.debug_mode:
         logzero.loglevel(logging.DEBUG)
     del args.debug_mode
 

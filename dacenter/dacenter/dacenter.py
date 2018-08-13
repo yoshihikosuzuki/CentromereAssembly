@@ -1,18 +1,105 @@
 import argparse
 import os
 import pickle
+from logzero import logger
+from collections import Counter
+from multiprocessing import Pool
 import numpy as np
-from scipy.spatial.distance import pdist
-from scipy.cluster.hierarchy import linkage, fcluster
-from sklearn import cluster
-from sklearn import mixture
-from sklearn import decomposition
+from scipy.spatial.distance import pdist, squareform
+from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
+from sklearn.cluster import KMeans, Birch
+from sklearn.mixture import GaussianMixture
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.offline as py
+import plotly.graph_objs as go
+
+from BITS.utils import run_command, revcomp
+from BITS.core import run_edlib
 
 from .dpmm import DPMM, DPMMCluster
-from BITS.utils import run_command
+#from .dpmm_oldname import Clustering, Cluster
 
 
 class Clustering:
+    """
+    Super class of clusterings of
+      1. DNA sequences (regardless of cyclic alignment and/or revcomp)
+      2. distance matrix (distance = sequence difference)
+      3. variant matrix (by Consed)
+    """
+
+    def __init__(self, input_data):
+        self.data = input_data
+        self.N = input_data.shape[0]   # NOTE: this must be data size!
+        self.assignment = np.full(self.N, -1, dtype='int8')   # cluster assignment for each data
+
+    def calc_clusters(self):
+        """
+        From <self.assignment>, generate the clusters with data belonging to one of them.
+        """
+
+        self.clusters = {}
+        for cluster_id in set(self.assignment):
+            self.clusters[cluster_id] = self.data[np.where(self.assignment == cluster_id)]
+
+
+class ClusteringSeqs(Clustering):
+    def __init__(self, input_data, cyclic=True, revcomp=True):
+        super().__init__(input_data)
+        self.cyclic = cyclic   # do cyclic alignment between two sequences
+        self.revcomp = revcomp   # allow reverse complement when taking alignment
+
+    #def cluster_greedy(self):
+
+    def calc_dist_array(self, i):
+        logger.debug(f"Started job: row {i}, columns {i + 1}-{self.N - 1}")
+        dist_array = np.empty(self.N - i - 1, dtype='float32')   # of row <i> in the dist matrix
+
+        query = self.data[i]
+        query_rc = revcomp(query)
+        for index, j in enumerate(range(i + 1, self.N - 1)):
+            target = self.data[j] * 2
+            alignment_f = run_edlib(query, target, mode="glocal")   # TODO: no need of <task="path"> in edlib
+            if alignment_f["diff"] <= 0.3:
+                alignment = alignment_f   # TODO: needed here is only <diff> (maybe should check length?)
+            else:
+                alignment_rc = run_edlib(query_rc, target, mode="glocal")
+                alignment = alignment_f if alignment_f["diff"] <= alignment_rc["diff"] else alignment_rc
+            dist_array[index] = alignment["diff"]
+
+        logger.debug(f"Ended job: row {i}")
+
+    def calc_dist_mat(self, n_core=1):
+        """
+        Calculate all-vs-all distance matrix between the sequences.
+        Cyclic alignment, allowing reverse complement of one sequence during alignment,
+        and parallelization are supported.
+        """
+
+        logger.info(f"Starting calculation of distance matrix with {n_core} cores")
+
+        exe_pool = Pool(n_core)
+        self.dist_matrix = np.zeros((self.N, self.N), dtype='float32')
+
+        # NOTE: each row in the matrix is unit of the parallelized tasks
+        logger.debug("Scattering tasks")
+
+        for ret in exe_pool.imap(self.calc_dist_array, np.arange(self.N - 1)):
+            i, dist_array = ret
+            self.dist_matrix[i, i + 1:] = self.dist_matrix[i + 1:, i] = dist_array
+            logger.debug(f"Finished row {i}")
+
+        exe_pool.close()
+        logger.debug("Finished all tasks")
+
+    #def cluster_hierarchical(self, method="ward"):
+
+
+#class ClusteringDistMat:
+
+class ClusteringVarMat:
     """
     Overview:
           self.vmatrix     ---(any clustering method)--->     self.assignment

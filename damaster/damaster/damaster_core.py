@@ -415,7 +415,6 @@ class Peak:
 
         # NOTE: after assignment, then take consensus for each cluster using cyclic alignment
         # TODO: how to choose the seed? sampling?
-        
 
     def find_representatives(self):
         """

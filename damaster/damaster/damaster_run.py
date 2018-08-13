@@ -1,5 +1,4 @@
 import argparse
-import copy
 import pickle
 import logging
 import logzero
@@ -62,7 +61,7 @@ def load_args():
         help=("Run in debug mode. [False]"))
 
     args = parser.parse_args()
-    if args.debug_mode:   # suppress debug messages
+    if args.debug_mode:
         logzero.loglevel(logging.DEBUG)
     del args.debug_mode
 
