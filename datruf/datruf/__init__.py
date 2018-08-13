@@ -1,2 +1,2 @@
-from .datruf_viewer import Viewer
-from .datruf_plot import Plotter
+from .view import Viewer
+from .plot import Plotter
