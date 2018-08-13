@@ -1,3 +1,5 @@
+damaster and dacenter are now merged into a single package: dacmaster. Therefore, two README below will be merged in the near future.
+
 # DAzzler Centromeric Monomer AdjuSTER
 
 Dacmaster recieves the fasta file of the units reported by datruf, and determine a set of representative centromeric monomers from it. This task is done by
@@ -11,7 +13,7 @@ Dacmaster recieves the fasta file of the units reported by datruf, and determine
 
 See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/dacmaster/docs/Usage.ipynb).
 
-# DAzzler CENTromere clustERing module (combined to dacmaster)
+# DAzzler CENTromere clustERing module
 
 Dacenter recieves a set of tandem repeat unit sequences as input from datruf, and performs clustering of them with several resolutions required in each stage of the assembly.
 
