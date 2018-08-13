@@ -17,6 +17,10 @@ MEM_DATANDER = 5000
 N_DISTRIBUTE = 32
 N_CORE_DATRUF = 4
 
+# for damaster
+MIN_N_UNITS = 10
+N_CORE_DAMASTER = 24
+
 #####################
 
 
@@ -54,7 +58,7 @@ datruf_result datruf_units.fasta: $(DB_PREFIX).db TAN.$(DB_PREFIX).las
 ## Run dacmaster
 
 peaks.pkl: datruf_units.fasta
-	sbatch damaster_run.py $^
+	sbatch damaster_run.py -m ${MIN_N_UNITS} -n ${N_CORE_DAMASTER} -D $^
 
 
 ## Targets

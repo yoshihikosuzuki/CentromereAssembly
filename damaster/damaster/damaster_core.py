@@ -33,18 +33,18 @@ class Peak:
         First one will be the seed, and cyclic alignment is used in the mapping of other ones to it.
         This requires <out_dir> for a temporary place of the Consed input file.
         """
-    
+
         read_id, path_id, seqs, tmp_dir = args
-    
+
         if not os.path.isdir(tmp_dir):
             run_command(f"mkdir {tmp_dir}")
         out_fname = os.path.join(tmp_dir, f"input.seq.{os.getpid()}")   # temporary file for Consed input
         seq_writer = open(out_fname, 'w')
-    
+
         # Output the first sequence as seed for consensus
         seed_seq = seqs[0]
         seq_writer.write(f"{seed_seq}\n")
-    
+
         for seq in seqs[1:]:
             seq = seq * 2   # duplicated target sequence for a proxy of cyclic alignment
             alignment = run_edlib(seed_seq, seq, mode="glocal")
@@ -52,11 +52,9 @@ class Peak:
             seq = seq[alignment["start"]:alignment["end"]]   # mapped area
             seq_writer.write(f"{seq}\n")
 
-        # TODO: divide into homogeneous TR and heterogeneous TR....
-    
         seq_writer.close()
-        logger.debug(f"Wrote seqs: {read_id}({path_id})")   # XXX: inserting this line makes codes work!!! why...
-    
+        logger.debug(f"Wrote seqs: {read_id}({path_id})")   # XXX: inserting this makes code works?
+
         consensus_seq = run_command(f"consed {out_fname}").replace('\n', '')
         if len(consensus_seq) == 0 or consensus_seq[0] == 'W' or consensus_seq[0] == '*':
             logger.debug(f"Strange Consed output: {read_id}({path_id})")
@@ -65,13 +63,17 @@ class Peak:
             logger.debug(f"Consed successed: {read_id}({path_id})")
             return (read_id, path_id, consensus_seq)
 
-    def take_intra_consensus_parallel(self, n_units_threshold=5, n_core=1):
+    def take_intra_consensus_parallel(self, min_n_units, n_core):
         exe_pool = Pool(n_core)
+
+        # TODO: add a filter of minimum coverage in the read
+
+        # TODO: divide into homogeneous TR and heterogeneous TR....
 
         tasks = [[read_id, path_id, list(df_path["sequence"]), "tmp"]
                  for read_id, df_read in self.units.groupby("read_id")
                  for path_id, df_path in df_read.groupby("path_id")
-                 if len(df_path) >= n_units_threshold]
+                 if len(df_path) >= min_n_units]
 
         logger.debug("tasks generated")
 
@@ -91,28 +93,30 @@ class Peak:
                                                                "path_id",
                                                                "sequence"))
 
-    def construct_master_units(self, n_core=1):
+    def construct_master_units(self, min_n_units=10, n_core=1):
         """
         From all units in a peak, construct a set of "master units".
-        The main purpose of this task rather than direct construction of "representative units" is 
-        to fix the boundaries of the raw units in PacBio reads. In other words, master units have
-        a role of "phase adjustment" among the units.
+        The main purpose of this task rather than direct construction of
+        "representative units" is to fix the boundaries of the raw units in
+        PacBio reads. In other words, master units have a role of "phase
+        adjustment" among the units.
 
-        However, every two units are not necessarily similar to each other. Since phase adjustment
-        would become nonsense if intra-"master class" sequence diversity is too high, we must construct
-        not a single master unit but a set of several master units in general. We expect that each
-        master unit roughly corresponds to each chromosome in the genome. Therefore, we can say that
-        construction of master units is most basic (approximately chromosome-level) segregation of
-        the tandem repeat units.
+        However, every two units are not necessarily similar to each other.
+        Since phase adjustment would become nonsense if intra-"master class"
+        sequence diversity is too high, we must construct not a single master
+        unit but a set of several master units in general. We expect that each
+        master unit roughly corresponds to each chromosome in the genome.
+        Therefore, we can say that construction of master units is most basic
+        (approximately chromosome-level) characterization of the tandem repeat
+        units.
         """
 
         # Calculate intra-TR consensus unit for each TR
         logger.debug("Start taking intra-TR consensus")
-        self.take_intra_consensus_parallel(n_core=n_core)
+        self.take_intra_consensus_parallel(min_n_units=min_n_units, n_core=n_core)
         logger.debug("Ended intra consensus")
 
         # Cluster the intra-TR consensus untis
-        #self.greedy_clustering()   # too greedy way
         self.clustering = ClusteringSeqs(self.units_consensus["sequence"])
         self.clustering.cluster_hierarchical(n_core=n_core)
         #self.clustering.cluster_greedy()   # too greedy way
