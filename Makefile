@@ -58,7 +58,9 @@ datruf_result datruf_units.fasta: $(DB_PREFIX).db TAN.$(DB_PREFIX).las
 ## Run dacmaster
 
 peaks.pkl: datruf_units.fasta
-	sbatch damaster_run.py -m ${MIN_N_UNITS} -n ${N_CORE_DAMASTER} -D $^
+        echo "damaster_run.py -m $(MIN_N_UNITS) -n $(N_CORE_DAMASTER) -D $^" > run_damaster.sh
+        python -m BITS.$(JOB_SCHEDULER)_nize run_damaster.sh job_name="run_damaster" n_core=$(N_CORE_DAMASTER) wait=False
+        $(SUBMIT_JOB) run_damaster.sh.$(JOB_SCHEDULER)
 
 
 ## Targets
