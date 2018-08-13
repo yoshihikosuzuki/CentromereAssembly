@@ -233,15 +233,22 @@ def take_consensus(unit_alignments):   # TODO: refactor though this will no long
     bseqs = [x.bseq for x in unit_alignments]
     symbols = [x.symbol for x in unit_alignments]
 
+    print(aseqs)
+    print(bseqs)
+    print(symbols)
+
     DAG = nx.DiGraph()
     
     # Add backbone
     backbone = bseqs[0].replace('-', '')
     backbone_path = []
     for i in range(len(backbone) - 1):
-        DAG.add_edge(f"{backbone[i]}:{i + 1}", "{backbone[i + 1]}:{i + 2}", weight=1)   # backbone coordinate is 1-index
-        backbone_path.append(f"{backbone[i]}:{i + 1}")
-    backbone_path.append(f"{backbone[-1]}:{len(backbone)}")
+        DAG.add_edge("%s:%f" % (backbone[i], i + 1), "%s:%f" % (backbone[i + 1], i + 2), weight=1)   # NOTE: *backbone coordinate is 1-index*
+        backbone_path.append("%s:%f" % (backbone[i], i + 1))
+    backbone_path.append("%s:%f" % (backbone[-1], len(backbone)))
+        #DAG.add_edge(f"{backbone[i]}:{i + 1}", "{backbone[i + 1]}:{i + 2}", weight=1)   # backbone coordinate is 1-index
+        #backbone_path.append(f"{backbone[i]}:{i + 1}")
+    #backbone_path.append(f"{backbone[-1]}:{len(backbone)}")
     logger.debug(f"backbone_path: {backbone_path}")
     last_coordinate = len(backbone) + 1   # [0, last_coordinate]　is used for node coordinates ([1, last_coordinate - 1] is backbone's interval)
     

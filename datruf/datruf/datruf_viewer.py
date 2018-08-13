@@ -257,9 +257,11 @@ class Viewer:
 
             path.unit_consensus()
 
+            print(path.DAG)
+
             # Show DAG   # TODO: show partial graph
             plt.figure(figsize=(18, 10))
-            plt.axis(False)
+            plt.axis("off")
             #pos = nx.spectral_layout(DAG)
             #pos = nx.circular_layout(DAG)
             #pos = graphviz_layout(DAG, prog="dot")
@@ -267,3 +269,4 @@ class Viewer:
             nx.draw_networkx(path.DAG, pos, with_labels=False, node_size=1, font_size=1)   # TODO: output as dot file
             #edge_weights = nx.get_edge_attributes(path.DAG, 'weight')
             #nx.draw_networkx_edge_labels(DAG, pos, edge_labels=edge_weights)
+            #plt.show()
