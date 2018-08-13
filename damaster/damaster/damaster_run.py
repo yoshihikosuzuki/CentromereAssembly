@@ -1,4 +1,5 @@
 import argparse
+import copy
 import pickle
 import logging
 import logzero
@@ -11,7 +12,6 @@ from .damaster_io import load_peaks
 def main():
     args = load_args()
 
-    """
     # Detect peaks in the unit length distribution
     finder = PeaksFinder(args.unit_fasta)
     finder.run()
@@ -20,16 +20,15 @@ def main():
     peaks = copy.deepcopy(finder.peaks)
     del finder
 
-    with open("peaks_wo_repr.pkl", 'wb') as f:
-        pickle.dump(peaks, f)
-    """
+    #with open("peaks_wo_repr.pkl", 'wb') as f:
+    #    pickle.dump(peaks, f)
 
-    peaks = load_peaks("peaks_wo_repr.pkl")
+    #peaks = load_peaks("peaks_wo_repr.pkl")
 
     # Define a set of representative monomers from somewhat homogeneous TRs
-    #for peak in peaks:
-    #    peak.find_representatives()
-    peaks[-1].find_representatives()
+    for peak in peaks:
+        peak.construct_master_units(n_core=args.n_core)
+    #peaks[-1].find_representatives()
 
     # Output the peaks as pickle
     # Now output the list itself instead of each peak for simplicity
@@ -63,6 +62,8 @@ def load_args():
     args = parser.parse_args()
     if args.debug_mode:
         logzero.loglevel(logging.DEBUG)
+    else:
+        logzero.loglevel(logging.INFO)
     del args.debug_mode
 
     return args

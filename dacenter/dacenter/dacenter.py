@@ -1,6 +1,7 @@
 import argparse
 import os
 import pickle
+import random
 from logzero import logger
 from collections import Counter
 from multiprocessing import Pool
@@ -26,40 +27,119 @@ class Clustering:
     """
     Super class of clusterings of
       1. DNA sequences (regardless of cyclic alignment and/or revcomp)
-      2. distance matrix (distance = sequence difference)
-      3. variant matrix (by Consed)
+      2. variant matrix (by Consed)
+
+    <self.assignment> is the final result of the clustering.
     """
 
     def __init__(self, input_data):
         self.data = input_data
         self.N = input_data.shape[0]   # NOTE: this must be data size!
         self.assignment = np.full(self.N, -1, dtype='int8')   # cluster assignment for each data
+        self.hc_result_precomputed = {}   # used to avoid re-calculation of hierarchical clustering
 
-    def calc_clusters(self):
+    def cluster_hierarchical(self, method, criterion, threshold):   # TOOD: add <depth>?
         """
-        From <self.assignment>, generate the clusters with data belonging to one of them.
+        <method> = {single, complete, average, weighted, centroid, median, ward (default)}
+        <criterion> = {inconsistent, distance (default), maxclust, monocrit, maxclust_monocrit}   # NOTE: for now supports only inconsistent and distance
+        <value> = threshold in distance criterion, or depth in inconsistent criterion
+
+        Before using this method, you must make <self.hc_input> for argument of linkage.
         """
 
-        self.clusters = {}
-        for cluster_id in set(self.assignment):
-            self.clusters[cluster_id] = self.data[np.where(self.assignment == cluster_id)]
+        # Since computation of linkage is heavy to some extent, save it for the next time
+        if method in self.hc_result_precomputed:
+            self.hc_result = self.hc_result_precomputed[method]
+        else:
+            self.hc_result = linkage(self.hc_input, method=method)
+            self.hc_result_precomputed[method] = self.hc_result
+
+        # Calculate cluster assignment for each data
+        self.assignment = np.array(fcluster(self.hc_result, t=threshold, criterion=criterion))
+
+    def dendrogram(self, method):
+        """
+        Show dendrogram of data with <method>.
+        """
+
+        if method in self.hc_result_precomputed:
+            self.hc_result = self.hc_result_precomputed[method]
+        else:
+            self.hc_result = linkage(self.hc_input, method=method)
+            self.hc_result_precomputed[method] = self.hc_result
+
+        plt.figure(figsize=(18, 10))
+        dendrogram(self.hc_result)
+        plt.show()
+
+    def cluster(self, cluster_id, return_where=False):
+        """
+        Return the data belonging to the cluster whose ID is specified.
+        If <return_where>, return the indices of the data instead of the data itself.
+        """
+
+        where = np.where(self.assignment == cluster_id)[0]
+        if return_where:
+            return where
+        else:
+            return self.data[where]
+
+    def clusters(self, return_where=False):
+        """
+        From <self.assignment>, generate each cluster with data belonging to it.
+        If <return_where>, return the indices of the data instead of the data itself.
+        Be careful it is a generater.
+        """
+
+        for cluster_id in sorted(list(set(self.assignment))):
+            where = np.where(self.assignment == cluster_id)[0]
+            if return_where:
+                yield (cluster_id, where)
+            else:
+                yield (cluster_id, self.data[where])
+
+    def hist_cluster_size(self, bins=100, n_print=5):
+        """
+        Histogram of the size of the clusters.
+        Also both largest and smallest <n_print> clusters are shown.
+        """
+
+        cluster_size = Counter(self.assignment)
+        print(f"{n_print} largest clusters:")
+        for cluster_id, size in cluster_size.most_common()[:n_print]:
+            print(f"cluster {cluster_id} ({size} units)")
+        print(f"{n_print} smallest clusters:")
+        for cluster_id, size in cluster_size.most_common()[-n_print:]:
+            print(f"cluster {cluster_id} ({size} units)")
+
+        plt.hist(list(cluster_size.values()), bins=bins)
+        plt.show()
 
 
 class ClusteringSeqs(Clustering):
+    """
+    Perform clustering of DNA sequences given.
+    Both greedy approach based on cluster diameter and hierarchical clustering approach are available.
+
+    Run <self.cluster_greedy> for former, and <self.cluster_hierarchical> for latter.
+    """
+
     def __init__(self, input_data, cyclic=True, revcomp=True):
         super().__init__(input_data)
         self.cyclic = cyclic   # do cyclic alignment between two sequences
         self.revcomp = revcomp   # allow reverse complement when taking alignment
 
-    #def cluster_greedy(self):
-
     def calc_dist_array(self, i):
+        """
+        This is just for parallelization of distance matrix calculation
+        """
+
         logger.debug(f"Started job: row {i}, columns {i + 1}-{self.N - 1}")
         dist_array = np.empty(self.N - i - 1, dtype='float32')   # of row <i> in the dist matrix
 
         query = self.data[i]
         query_rc = revcomp(query)
-        for index, j in enumerate(range(i + 1, self.N - 1)):
+        for index, j in enumerate(range(i + 1, self.N)):
             target = self.data[j] * 2
             alignment_f = run_edlib(query, target, mode="glocal")   # TODO: no need of <task="path"> in edlib
             if alignment_f["diff"] <= 0.3:
@@ -67,9 +147,11 @@ class ClusteringSeqs(Clustering):
             else:
                 alignment_rc = run_edlib(query_rc, target, mode="glocal")
                 alignment = alignment_f if alignment_f["diff"] <= alignment_rc["diff"] else alignment_rc
+
             dist_array[index] = alignment["diff"]
 
         logger.debug(f"Ended job: row {i}")
+        return (i, dist_array)
 
     def calc_dist_mat(self, n_core=1):
         """
@@ -94,12 +176,221 @@ class ClusteringSeqs(Clustering):
         exe_pool.close()
         logger.debug("Finished all tasks")
 
-    #def cluster_hierarchical(self, method="ward"):
+    def cluster_hierarchical(self, method="ward", criterion="distance", threshold=0.7, n_core=1):   # TOOD: add <depth>?
+        if not hasattr(self, "dist_matrix"):
+            self.calc_dist_mat(n_core)
+        
+        if not hasattr(self, "hc_input"):
+            self.hc_input = squareform(self.dist_matrix)
+
+        super().cluster_hierarchical(method, criterion, threshold)
+
+    def dendrogram(self, method="ward"):
+        super().dendrogram(method)
+
+    def plot_tsne(self, figsize=(12, 12), out_fname=None):
+        if not hasattr(self, "coord"):
+            self.coord = TSNE(n_components=2, metric='precomputed').fit_transform(self.dist_matrix)
+
+        fig, ax = plt.subplots(figsize=figsize)
+        for i, data in enumerate(super().clusters(return_where=True)):
+            cluster_id, where = data
+            ax.scatter(self.coord[where, 0], self.coord[where, 1], marker=".", s=20,
+                       c=f"#{random.randint(0, 0xFFFFFF):06x}",   # TODO: secure any two colors are distant enough
+                       label=f"{cluster_id} ({where.shape[0]} seqs)")
+            # TODO: add represetatives
+
+        ax.legend(loc="upper right", bbox_to_anchor=(1.2, 1.0), prop={"size": 12})
+
+        if out_fname is not None:
+            plt.savefig(out_fname)
+        else:
+            plt.show()
+
+    # ------------------------------
+    # Greedy clustering from here...
+    # ------------------------------
+
+    def propose_cluster(self, remaining_read_id, cluster_id, out_dir):
+        """
+        From the remaining consensus units, first randomly choose a unit and
+        then collect all units within diameter of 10% sequence difference from
+        it.
+        """
+
+        cluster_units = np.zeros(self.units_consensus.shape[0], dtype=int)   # <cluster_id> + 1 for cluster members, otherwise 0
+        read_id = random.choice(remaining_read_id)
+        query = self.units_consensus["sequence"].iloc[read_id]
+        
+        if not os.path.isdir(out_dir):
+            run_command(f"mkdir {out_dir}")
+        out_fname = os.path.join(out_dir, "input.seq")   # temporary file for Consed input
+        seq_writer = open(out_fname, 'w')
+    
+        # Output the first sequence as seed for consensus
+        seq_writer.write(f"{query}\n")
+    
+        for j in remaining_read_id:
+            target = self.units_consensus["sequence"].iloc[j]
+            
+            # forward
+            seq_f = target * 2
+            alignment_f = run_edlib(query, seq_f, mode="glocal")
+    
+            # reverse complement
+            seq_rc = revcomp(seq_f)
+            alignment_rc = run_edlib(query, seq_rc, mode="glocal")
+    
+            if alignment_f["diff"] <= alignment_rc["diff"]:
+                alignment = alignment_f
+                seq = seq_f
+            else:
+                alignment = alignment_rc
+                seq = seq_rc
+    
+            if alignment["diff"] < 0.1:   # 0.05とかにしてもいいかも
+                cluster_units[j] = cluster_id + 1
+                seq = seq[alignment["start"]:alignment["end"]]   # mapped area
+                seq_writer.write(f"{seq}\n")
+    
+        seq_writer.close()
+        return (cluster_units,
+                run_command(f"consed {out_fname}").replace('\n', ''))
+
+    def fix_cluster_assignment(self, remaining_read_id, cluster_id, consensus_seq):   # TODO: can I merge this and above one into a single method?
+        """
+        Given a set of consensus units proposed, return an actual cluster
+        which has diameter of 10% sequence difference from consensus of the
+        consensus units. The cluster size might become very smaller than the
+        proposed one.
+        """
+
+        cluster_units = np.zeros(self.units_consensus.shape[0], dtype=int)   # 1 for cluster members, otherwise 0
+        read_id = random.choice(remaining_read_id)
+        query = self.units_consensus["sequence"].iloc[read_id]
+    
+        for j in remaining_read_id:
+            target = self.units_consensus["sequence"].iloc[j]
+    
+            # forward
+            seq_f = target * 2
+            alignment_f = run_edlib(query, seq_f, mode="glocal")
+    
+            if alignment_f["diff"] < 0.1:
+                cluster_units[j] = cluster_id + 1   # add 1 to neutralize the default value -1 in the <assignment>
+            else:
+                # reverse complement
+                seq_rc = revcomp(seq_f)
+                alignment_rc = run_edlib(query, seq_rc, mode="glocal")
+                if alignment_rc["diff"] < 0.1:
+                    cluster_units[j] = cluster_id + 1
+                    
+        return cluster_units
+
+    def cluster_greedy(self):   # TODO: refactor so that this works
+        # Clustering of the consensus untis
+        # Since what we are doing for now is just determine rough representative monomers,
+        # this task is rather just to eliminate redundant consensus units.
+        self.assignment = np.full(self.units_consensus.shape[0], -1, dtype=int)   # cluster id assignment for each consensus unit
+        self.clusters = {}   # mater unit sequences
+        cluster_id = 0
+        remaining_read_id = np.arange(self.units_consensus.shape[0])   # array of indices of consensus units still remaining
+
+        while True:
+            logger.info(f"propose {cluster_id}")
+            cluster_units, consensus_seq = self.propose_cluster(remaining_read_id,
+                                                                cluster_id,
+                                                                f"tmp/")
+            
+            # XXX: consensus sequence may be "EXITING", "** WARNING", or Nothing!!!!
+            # TODO: maybe I should first debug Consed
+            
+            cluster_size = cluster_units[cluster_units > 0].shape[0]
+            print(cluster_id, cluster_size)
+            
+            #print(consensus_seq)
+            if cluster_size >= self.units_consensus.shape[0] * 0.01:
+                print("accepted")
+                
+                # Re-align the consensus sequence to the remaining consensus units
+                cluster_units = self.fix_cluster_assignment(remaining_read_id,
+                                                            cluster_id,
+                                                            consensus_seq)   # TODO: more efficient way?
+                
+                cluster_size = cluster_units[cluster_units > 0].shape[0]
+                print("actual cluster size =", cluster_size)
+                
+                if cluster_size >= self.units_consensus.shape[0] * 0.01:   # filter by cluster size again
+                    print("accepted")
+                    self.clusters[cluster_id] = consensus_seq
+                    self.assignment += cluster_units
+                    cluster_id += 1
+                else:
+                    print("rejected")
+            else:
+                print("rejected")
+                self.assignment -= cluster_units
+                
+            remaining_read_id = np.where(self.assignment == -1)[0]
+            print("# of remaining units =", remaining_read_id.shape[0])
+            #print(clusters)
+            if remaining_read_id.shape[0] < self.units_consensus.shape[0] * 0.1:
+                break
+        
+        self.assignment[np.where(self.assignment < 0)] = -1
+
+        logger.info(f"{len(self.clusters)} representative unit candidates:\n{self.clusters}")
+        # remove irregular sequences
+        """
+        del_ids = set()
+        for cluster_id, cluster_unit in self.clusters.items():
+            if len(cluster_unit) == 0 or cluster_unit[0] == 'W' or cluster_unit[0] == '*':
+                del_ids.add(cluster_id)
+        for cluster_id in del_ids:
+            del self.clusters[cluster_id]
+        """
+        
+        self.clusters = pd.DataFrame.from_dict(self.clusters, orient="index", columns=["sequence"])
+        for i in range(self.clusters.shape[0]):
+            if len(self.clusters.loc[i, "sequence"]) == 0 or self.clusters.loc[i, "sequence"][0] == '*' or self.clusters.loc[i, "sequence"] == 'W':
+                self.clusters = self.clusters.drop(i)
+        self.clusters = self.clusters.reset_index(drop=True)
+
+        if self.clusters.shape[0] == 0:
+            logger.info("No representatives found. Exit.")
+            sys.exit(1)
+
+        print(self.clusters)
+        # TODO: add cluster size column and sort by it
+
+        # Remove redundant untis which are similar to another one
+        # After that, the remaining centroids are representative units
+        dm = np.zeros((self.clusters.shape[0], self.clusters.shape[0]), dtype=float)
+        for i in range(self.clusters.shape[0] - 1):
+            for j in range(1, self.clusters.shape[0]):
+                #print(f"# {i} vs {j} (f)")
+                alignment = run_edlib(self.clusters.loc[i, "sequence"], self.clusters.loc[j, "sequence"] * 2, mode='glocal')
+                f = alignment["diff"]
+                #print(f"# {i} vs {j} (rc)")
+                alignment = run_edlib(self.clusters.loc[i, "sequence"], revcomp(self.clusters.loc[j, "sequence"] * 2), mode='glocal')
+                rc = alignment["diff"]
+                
+                dm[i, j] = dm[j, i] = min([f, rc])
+
+        self.representative_units = {self.clusters.loc[0, "sequence"]}
+        for i in range(1, self.clusters.shape[0]):
+            flag_add = 1
+            for j in range(i):
+                if dm[i, j] < 0.1:
+                    flag_add = 0
+                    break
+            if flag_add == 1:
+                self.representative_units.add(self.clusters.loc[i, "sequence"])
+
+        logger.info(f"{len(self.representative_units)} after redundancy removal:\n{self.representative_units}")
 
 
-#class ClusteringDistMat:
-
-class ClusteringVarMat:
+class ClusteringVarMat:   # TOOD: change to a child class of Clustering
     """
     Overview:
           self.vmatrix     ---(any clustering method)--->     self.assignment
@@ -254,6 +545,7 @@ def run_consed(in_fname):
     return out_fname_prefix + ".V"
 
 
+"""
 def main():
     args = load_args()
 
@@ -323,3 +615,4 @@ def load_args():
 
 if __name__ == "__main__":
     main()
+"""

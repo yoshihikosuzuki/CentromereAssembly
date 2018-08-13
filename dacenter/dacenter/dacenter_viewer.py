@@ -42,6 +42,7 @@ class ClusteringViewer:
         plt.grid(False)
         plt.show()
 
+    """
     def hist_cluster_size(self, bins=100, n_print=5):
         cluster_size = Counter(self.clustering.assignment)
         print("%d largest clusters:" % n_print)
@@ -59,7 +60,7 @@ class ClusteringViewer:
             print("cluster %d (%d units)" % (pair[0], pair[1]))
         plt.hist(list(cluster_size.values()), bins=bins)
         plt.show()
-
+    """
     # Single heatmap with partitions of the clusters
     # Only for relatively small (<1000) dataset
     def heatmap_partition(self, partition_width=3, figsize=(18, 15)):

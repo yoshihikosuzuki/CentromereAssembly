@@ -14,92 +14,7 @@ from .damaster_io import load_unit_fasta
 
 from BITS.utils import run_command, revcomp
 from BITS.core import run_edlib
-
-
-def take_consensus_cyclic(seqs, tmp_dir="tmp"):   # TODO: move to dacenter?
-    """
-    Return consensus sequence of the given sequences using Consed.
-    First one will be the seed, and cyclic alignment is used in the mapping of other ones to it.
-    This requires <out_dir> for a temporary place of the Consed input file.
-    """
-
-    if not os.path.isdir(tmp_dir):
-        run_command(f"mkdir {tmp_dir}")
-    out_fname = os.path.join(tmp_dir, f"input.seq.{os.getpid()}")   # temporary file for Consed input
-    seq_writer = open(out_fname, 'w')
-
-    # Output the first sequence as seed for consensus
-    seed_seq = seqs[0]
-    seq_writer.write(f"{seed_seq}\n")
-
-    for seq in seqs[1:]:
-        seq = seq * 2   # duplicated target sequence for a proxy of cyclic alignment
-        alignment = run_edlib(seed_seq, seq, mode="glocal")
-        #print(alignment["start"], alignment["end"], len(seq)/2)
-        seq = seq[alignment["start"]:alignment["end"]]   # mapped area
-        seq_writer.write(f"{seq}\n")
-
-    seq_writer.close()
-    logger.debug("Wrote seqs")   # XXX: inserting this line makes codes work!!! why...
-
-    return run_command(f"consed {out_fname}").replace('\n', '')
-
-
-def take_consensus_cyclic_parallel(args):   # TODO: move to dacenter?
-    """
-    Return consensus sequence of the given sequences using Consed.
-    First one will be the seed, and cyclic alignment is used in the mapping of other ones to it.
-    This requires <out_dir> for a temporary place of the Consed input file.
-    """
-
-    read_id, path_id, seqs, tmp_dir = args
-
-    if not os.path.isdir(tmp_dir):
-        run_command(f"mkdir {tmp_dir}")
-    out_fname = os.path.join(tmp_dir, f"input.seq.{os.getpid()}")   # temporary file for Consed input
-    seq_writer = open(out_fname, 'w')
-
-    # Output the first sequence as seed for consensus
-    seed_seq = seqs[0]
-    seq_writer.write(f"{seed_seq}\n")
-
-    for seq in seqs[1:]:
-        seq = seq * 2   # duplicated target sequence for a proxy of cyclic alignment
-        alignment = run_edlib(seed_seq, seq, mode="glocal")
-        #print(alignment["start"], alignment["end"], len(seq)/2)
-        seq = seq[alignment["start"]:alignment["end"]]   # mapped area
-        seq_writer.write(f"{seq}\n")
-
-    seq_writer.close()
-    logger.debug(f"Wrote seqs: {read_id}({path_id})")   # XXX: inserting this line makes codes work!!! why...
-
-    consensus_seq = run_command(f"consed {out_fname}").replace('\n', '')
-    if len(consensus_seq) == 0 or consensus_seq[0] == 'W' or consensus_seq[0] == '*':
-        logger.debug(f"Strange Consed output: {read_id}({path_id})")
-        return None
-    else:
-        logger.debug(f"Consed successed: {read_id}({path_id})")
-        return (read_id, path_id, consensus_seq)
-
-
-def calc_dist(arg):
-    i, j_s, i_seq, j_seqs = arg
-    logger.debug(f"Started job: row {i}, columns {j_s[0]}-{j_s[-1]}")
-    ret = np.empty(len(j_s), dtype=float)   # NOTE: this will be dist_matrix[i:j_s[0]:j_s[-1]+1]
-    for j in range(len(j_s)):
-        # forward
-        target = j_seqs[j] * 2
-        alignment_f = run_edlib(i_seq, target, mode="glocal")   # XXX: query <-> target!
-        #print(alignment_f["start"], alignment_f["end"], alignment_f["diff"])
-
-        # reverse complement
-        alignment_rc = run_edlib(i_seq, revcomp(target), mode="glocal")
-        #print(alignment_rc["start"], alignment_rc["end"], alignment_rc["diff"])
-
-        alignment = alignment_f if alignment_f["diff"] <= alignment_rc["diff"] else alignment_rc
-        ret[j] = alignment["diff"]
-    logger.debug(f"Ended job: row {i}")
-    return (i, j_s, ret)
+from dacenter.dacenter import ClusteringSeqs
 
 
 class Peak:
@@ -112,7 +27,45 @@ class Peak:
         self.end_len = end_len   # max unit length in this peak
         self.units = units   # longer than <start_len> and shorter than <end_len>   # NOTE: pandas dataframe
 
-    def take_intra_consensus_parallel(self, n_units_threshold=10, n_core=24):
+    def take_consensus_cyclic_parallel(self, args):
+        """
+        Return consensus sequence of the given sequences using Consed.
+        First one will be the seed, and cyclic alignment is used in the mapping of other ones to it.
+        This requires <out_dir> for a temporary place of the Consed input file.
+        """
+    
+        read_id, path_id, seqs, tmp_dir = args
+    
+        if not os.path.isdir(tmp_dir):
+            run_command(f"mkdir {tmp_dir}")
+        out_fname = os.path.join(tmp_dir, f"input.seq.{os.getpid()}")   # temporary file for Consed input
+        seq_writer = open(out_fname, 'w')
+    
+        # Output the first sequence as seed for consensus
+        seed_seq = seqs[0]
+        seq_writer.write(f"{seed_seq}\n")
+    
+        for seq in seqs[1:]:
+            seq = seq * 2   # duplicated target sequence for a proxy of cyclic alignment
+            alignment = run_edlib(seed_seq, seq, mode="glocal")
+            #print(alignment["start"], alignment["end"], len(seq)/2)
+            seq = seq[alignment["start"]:alignment["end"]]   # mapped area
+            seq_writer.write(f"{seq}\n")
+
+        # TODO: divide into homogeneous TR and heterogeneous TR....
+    
+        seq_writer.close()
+        logger.debug(f"Wrote seqs: {read_id}({path_id})")   # XXX: inserting this line makes codes work!!! why...
+    
+        consensus_seq = run_command(f"consed {out_fname}").replace('\n', '')
+        if len(consensus_seq) == 0 or consensus_seq[0] == 'W' or consensus_seq[0] == '*':
+            logger.debug(f"Strange Consed output: {read_id}({path_id})")
+            return None
+        else:
+            logger.debug(f"Consed successed: {read_id}({path_id})")
+            return (read_id, path_id, consensus_seq)
+
+    def take_intra_consensus_parallel(self, n_units_threshold=5, n_core=1):
         exe_pool = Pool(n_core)
 
         tasks = [[read_id, path_id, list(df_path["sequence"]), "tmp"]
@@ -124,7 +77,7 @@ class Peak:
 
         self.units_consensus = {}   # intra-TR consensus units
         index = 0
-        for ret in exe_pool.imap(take_consensus_cyclic_parallel, tasks):
+        for ret in exe_pool.imap(self.take_consensus_cyclic_parallel, tasks):
             if ret is not None:
                 self.units_consensus[index] = ret
                 index += 1
@@ -132,307 +85,37 @@ class Peak:
         logger.debug("tasks completed and gathered")
         exe_pool.close()
 
-        """   # TODO: list comprehension for multiprocessing return values causes extreme slow?
-        rets = [ret for ret in exe_pool.imap(take_consensus_cyclic_parallel, tasks) if ret is not None]
-        exe_pool.close()
-
-        logger.debug("tasks completed")
-
-        self.units_consensus = {}   # intra-TR consensus units
-        for i, ret in enumerate(sorted(rets)):
-            self.units_consensus[i] = ret   # TODO: change to more efficient way
-
-        logger.debug("tasks gathered")
-        """
         self.units_consensus = pd.DataFrame.from_dict(self.units_consensus,
                                                       orient="index",
                                                       columns=("read_id",
                                                                "path_id",
                                                                "sequence"))
 
-    def take_intra_consensus(self, n_units_threshold=5):
+    def construct_master_units(self, n_core=1):
         """
-        For each tandem repeat that has at least <n_units_threshold> units,
-        this calculates intra-TR consensus sequence of the units.
-        """
+        From all units in a peak, construct a set of "master units".
+        The main purpose of this task rather than direct construction of "representative units" is 
+        to fix the boundaries of the raw units in PacBio reads. In other words, master units have
+        a role of "phase adjustment" among the units.
 
-        self.units_consensus = {}   # intra-TR consensus units
-        index = 0
-        for read_id, df_read in self.units.groupby("read_id"):   # for each read
-            for path_id, df_path in df_read.groupby("path_id"):   # for each TR
-                # take consensus only of each TR with at least <n_units_threshold> units
-                if len(df_path) < n_units_threshold:   # TODO: increase the threshold or let it be adaptive with the unit length
-                    continue
-
-                # intra-TR cosnsensus using Consed
-                # only forward alignments, cyclic alignment is allowed
-                logger.debug(f"consensus cyclic {read_id}")
-                consensus_seq = take_consensus_cyclic(list(df_path["sequence"]))
-                #logger.debug(f"{consensus_seq}")
-
-                # trim strange results
-                # TODO: this should be resolved by Consed side or at least alignment function side
-                if len(consensus_seq) == 0 or consensus_seq[0] == 'W' or consensus_seq[0] == '*':
-                    # XXX: TODO: this is just a workaround for the output of consed "Warning: tile overlaps did not align well" or "** EXISTING". Fix it.
-                    continue
-
-                self.units_consensus[index] = [read_id,
-                                               path_id,
-                                               df_path["start"].iloc[0],
-                                               df_path["end"].iloc[-1],
-                                               len(consensus_seq),
-                                               consensus_seq]
-                index += 1
-
-        self.units_consensus = pd.DataFrame.from_dict(self.units_consensus,
-                                                      orient="index",
-                                                      columns=("read_id",
-                                                               "path_id",
-                                                               "start",
-                                                               "end",
-                                                               "length",
-                                                               "sequence"))
-
-    def propose_cluster(self, remaining_read_id, cluster_id, out_dir):
-        """
-        From the remaining consensus units, first randomly choose a unit and
-        then collect all units within diameter of 10% sequence difference from
-        it.
-        """
-
-        cluster_units = np.zeros(self.units_consensus.shape[0], dtype=int)   # <cluster_id> + 1 for cluster members, otherwise 0
-        read_id = random.choice(remaining_read_id)
-        query = self.units_consensus["sequence"].iloc[read_id]
-        
-        if not os.path.isdir(out_dir):
-            run_command(f"mkdir {out_dir}")
-        out_fname = os.path.join(out_dir, "input.seq")   # temporary file for Consed input
-        seq_writer = open(out_fname, 'w')
-    
-        # Output the first sequence as seed for consensus
-        seq_writer.write(f"{query}\n")
-    
-        for j in remaining_read_id:
-            target = self.units_consensus["sequence"].iloc[j]
-            
-            # forward
-            seq_f = target * 2
-            alignment_f = run_edlib(query, seq_f, mode="glocal")
-    
-            # reverse complement
-            seq_rc = revcomp(seq_f)
-            alignment_rc = run_edlib(query, seq_rc, mode="glocal")
-    
-            if alignment_f["diff"] <= alignment_rc["diff"]:
-                alignment = alignment_f
-                seq = seq_f
-            else:
-                alignment = alignment_rc
-                seq = seq_rc
-    
-            if alignment["diff"] < 0.1:   # 0.05とかにしてもいいかも
-                cluster_units[j] = cluster_id + 1
-                seq = seq[alignment["start"]:alignment["end"]]   # mapped area
-                seq_writer.write(f"{seq}\n")
-    
-        seq_writer.close()
-        return (cluster_units,
-                run_command(f"consed {out_fname}").replace('\n', ''))
-
-    def fix_cluster_assignment(self, remaining_read_id, cluster_id, consensus_seq):   # TODO: can I merge this and above one into a single method?
-        """
-        Given a set of consensus units proposed, return an actual cluster
-        which has diameter of 10% sequence difference from consensus of the
-        consensus units. The cluster size might become very smaller than the
-        proposed one.
-        """
-
-        cluster_units = np.zeros(self.units_consensus.shape[0], dtype=int)   # 1 for cluster members, otherwise 0
-        read_id = random.choice(remaining_read_id)
-        query = self.units_consensus["sequence"].iloc[read_id]
-    
-        for j in remaining_read_id:
-            target = self.units_consensus["sequence"].iloc[j]
-    
-            # forward
-            seq_f = target * 2
-            alignment_f = run_edlib(query, seq_f, mode="glocal")
-    
-            if alignment_f["diff"] < 0.1:
-                cluster_units[j] = cluster_id + 1   # add 1 to neutralize the default value -1 in the <assignment>
-            else:
-                # reverse complement
-                seq_rc = revcomp(seq_f)
-                alignment_rc = run_edlib(query, seq_rc, mode="glocal")
-                if alignment_rc["diff"] < 0.1:
-                    cluster_units[j] = cluster_id + 1
-                    
-        return cluster_units
-
-    def greedy_clustering(self):
-        # Clustering of the consensus untis
-        # Since what we are doing for now is just determine rough representative monomers,
-        # this task is rather just to eliminate redundant consensus units.
-        self.assignment = np.full(self.units_consensus.shape[0], -1, dtype=int)   # cluster id assignment for each consensus unit
-        self.clusters = {}   # mater unit sequences
-        cluster_id = 0
-        remaining_read_id = np.arange(self.units_consensus.shape[0])   # array of indices of consensus units still remaining
-
-        while True:
-            logger.info(f"propose {cluster_id}")
-            cluster_units, consensus_seq = self.propose_cluster(remaining_read_id,
-                                                                cluster_id,
-                                                                f"tmp/")
-            
-            # XXX: consensus sequence may be "EXITING", "** WARNING", or Nothing!!!!
-            # TODO: maybe I should first debug Consed
-            
-            cluster_size = cluster_units[cluster_units > 0].shape[0]
-            print(cluster_id, cluster_size)
-            
-            #print(consensus_seq)
-            if cluster_size >= self.units_consensus.shape[0] * 0.01:
-                print("accepted")
-                
-                # Re-align the consensus sequence to the remaining consensus units
-                cluster_units = self.fix_cluster_assignment(remaining_read_id,
-                                                            cluster_id,
-                                                            consensus_seq)   # TODO: more efficient way?
-                
-                cluster_size = cluster_units[cluster_units > 0].shape[0]
-                print("actual cluster size =", cluster_size)
-                
-                if cluster_size >= self.units_consensus.shape[0] * 0.01:   # filter by cluster size again
-                    print("accepted")
-                    self.clusters[cluster_id] = consensus_seq
-                    self.assignment += cluster_units
-                    cluster_id += 1
-                else:
-                    print("rejected")
-            else:
-                print("rejected")
-                self.assignment -= cluster_units
-                
-            remaining_read_id = np.where(self.assignment == -1)[0]
-            print("# of remaining units =", remaining_read_id.shape[0])
-            #print(clusters)
-            if remaining_read_id.shape[0] < self.units_consensus.shape[0] * 0.1:
-                break
-        
-        self.assignment[np.where(self.assignment < 0)] = -1
-
-        logger.info(f"{len(self.clusters)} representative unit candidates:\n{self.clusters}")
-        # remove irregular sequences
-        """
-        del_ids = set()
-        for cluster_id, cluster_unit in self.clusters.items():
-            if len(cluster_unit) == 0 or cluster_unit[0] == 'W' or cluster_unit[0] == '*':
-                del_ids.add(cluster_id)
-        for cluster_id in del_ids:
-            del self.clusters[cluster_id]
-        """
-        
-        self.clusters = pd.DataFrame.from_dict(self.clusters, orient="index", columns=["sequence"])
-        for i in range(self.clusters.shape[0]):
-            if len(self.clusters.loc[i, "sequence"]) == 0 or self.clusters.loc[i, "sequence"][0] == '*' or self.clusters.loc[i, "sequence"] == 'W':
-                self.clusters = self.clusters.drop(i)
-        self.clusters = self.clusters.reset_index(drop=True)
-
-        if self.clusters.shape[0] == 0:
-            logger.info("No representatives found. Exit.")
-            sys.exit(1)
-
-        print(self.clusters)
-        # TODO: add cluster size column and sort by it
-
-        # Remove redundant untis which are similar to another one
-        # After that, the remaining centroids are representative units
-        dm = np.zeros((self.clusters.shape[0], self.clusters.shape[0]), dtype=float)
-        for i in range(self.clusters.shape[0] - 1):
-            for j in range(1, self.clusters.shape[0]):
-                #print(f"# {i} vs {j} (f)")
-                alignment = run_edlib(self.clusters.loc[i, "sequence"], self.clusters.loc[j, "sequence"] * 2, mode='glocal')
-                f = alignment["diff"]
-                #print(f"# {i} vs {j} (rc)")
-                alignment = run_edlib(self.clusters.loc[i, "sequence"], revcomp(self.clusters.loc[j, "sequence"] * 2), mode='glocal')
-                rc = alignment["diff"]
-                
-                dm[i, j] = dm[j, i] = min([f, rc])
-
-        self.representative_units = {self.clusters.loc[0, "sequence"]}
-        for i in range(1, self.clusters.shape[0]):
-            flag_add = 1
-            for j in range(i):
-                if dm[i, j] < 0.1:
-                    flag_add = 0
-                    break
-            if flag_add == 1:
-                self.representative_units.add(self.clusters.loc[i, "sequence"])
-
-        logger.info(f"{len(self.representative_units)} after redundancy removal:\n{self.representative_units}")
-
-    def calcualte_consensus_units_dist_matrix(self, n_core=24):
-        # Calculate all-vs-all distance matrix between units using cyclic alignment
-        # in parallel
-        # NOTE: maybe we can sub-sample the units if they are too many
-
-        logger.info("Start calculation of distance matrix")
-
-        exe_pool = Pool(n_core)
-
-        # slice the matrix into each row and each of them is a unit task of parallelization
-
-        dist_matrix = np.zeros((self.units_consensus.shape[0], self.units_consensus.shape[0]))
-
-        tasks = []
-        for i in range(self.units_consensus.shape[0] - 1):
-            tasks.append([i,
-                          [j for j in range(i + 1, self.units_consensus.shape[0])],
-                          self.units_consensus["sequence"].iloc[i],
-                          [self.units_consensus["sequence"].iloc[j] for j in range(i + 1, self.units_consensus.shape[0])]])
-
-        logger.debug("tasks generated")
-
-        for ret in exe_pool.imap(calc_dist, tasks):
-            i, j_s, dist_array = ret
-            logger.debug(f"add result of row {i}")
-            for p, j in enumerate(j_s):
-                dist_matrix[i, j] = dist_matrix[j, i] = dist_array[p]
-                # TODO: array insertion instead of each element
-            logger.debug(f"add result finished row {i}")
-
-        logger.debug("tasks completed")
-
-        exe_pool.close()
-        logger.info("Finished")
-        self.dist_matrix = dist_matrix
-
-    def hierarchical_clustering(self):
-        # Do hierarchical clustering
-        logger.debug("Start hierarchical clustering")
-        self.hc_result = linkage(squareform(self.dist_matrix), method="average")
-        logger.debug("Ended")
-
-        # NOTE: after assignment, then take consensus for each cluster using cyclic alignment
-        # TODO: how to choose the seed? sampling?
-
-    def find_representatives(self):
-        """
-        From all units in a peak, find representative monomers that do not align well to each other.
-        This task includes start-position adjustment and phase-adjustment as well.
-
-        In this step, determination of seed units is essential.
+        However, every two units are not necessarily similar to each other. Since phase adjustment
+        would become nonsense if intra-"master class" sequence diversity is too high, we must construct
+        not a single master unit but a set of several master units in general. We expect that each
+        master unit roughly corresponds to each chromosome in the genome. Therefore, we can say that
+        construction of master units is most basic (approximately chromosome-level) segregation of
+        the tandem repeat units.
         """
 
         # Calculate intra-TR consensus unit for each TR
         logger.debug("Start taking intra-TR consensus")
-        self.take_intra_consensus_parallel()
+        self.take_intra_consensus_parallel(n_core=n_core)
         logger.debug("Ended intra consensus")
 
         # Cluster the intra-TR consensus untis
         #self.greedy_clustering()   # too greedy way
-        self.calcualte_consensus_units_dist_matrix()
-        self.hierarchical_clustering()   # TODO: move it to dacenter
+        self.clustering = ClusteringSeqs(self.units_consensus["sequence"])
+        self.clustering.cluster_hierarchical(n_core=n_core)
+        #self.clustering.cluster_greedy()   # too greedy way
 
 
 class PeaksFinder:
