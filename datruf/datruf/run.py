@@ -62,11 +62,11 @@ class Runner():
                 return None
             self.alignments_all = load_ladump(self)
 
-        out_units_fname_split = f"{self.out_units_fname}.{os.getpid()}"   # TODO: not output to file but return as a list
-        out_units_file = open(out_units_fname_split, 'w')
+        #out_units_fname_split = f"{self.out_units_fname}.{os.getpid()}"   # TODO: not output to file but return as a list
+        #out_units_file = open(out_units_fname_split, 'w')
 
-        result = {}
-        index = 0   # for <result> dataframe
+        trs, units = {}, {}   # to be output as <args.out_main_fname> and <args.out_units_fname>
+        tr_index = unit_index = 0
         for read_id in range(self.start_dbid, self.end_dbid + 1):
             self.read_id = read_id
 
@@ -88,18 +88,63 @@ class Runner():
                 continue
 
             if self.only_interval:
+                intervals = sorted([(x[2], x[1])   # (bb, ae)
+                                    for x in list(self.min_cover_set)])
+                for start, end in intervals:
+                    trs[tr_index] = [self.read_id,
+                                     start,
+                                     end,
+                                     np.nan,
+                                     np.nan,
+                                     np.nan]
+                    tr_index += 1
+                continue
+
+            # else: Default mode below
+
+            # [Path, ...]
+            self.paths = load_paths(self)
+            
+            for path_id, path in enumerate(self.paths):
+                path.split_alignment()
+                mean_len, cv = path.calc_unit_stat()
+                trs[tr_index] = [self.read_id,
+                                 path.bb,
+                                 path.ae,
+                                 len(path.unit_seqs),
+                                 mean_len,
+                                 cv]
+                tr_index += 1
+
+                # Also output unit sequences if the alignment is stable enough
+                if np.isnan(cv) or cv >= 0.1:
+                    continue
+                for unit_id, unit_seq in enumerate(path.unit_seqs):
+                    start, end = path.reflection_points[unit_id:unit_id + 2]
+                    units[unit_index] = [self.read_id,
+                                         path_id,
+                                         unit_id,
+                                         start,
+                                         end,
+                                         end - start,
+                                         unit_seq]   # TODO: maybe no sequence is better (then load on demand)
+                    unit_index += 1
+                
+
+            """
+            if self.only_interval:
                 # Output all TR intervals regardless of alignment straightness
                 intervals = sorted([(x[2], x[1])   # (bb, ae)
                                     for x in list(self.min_cover_set)])
                 for start, end in intervals:
-                    result[index] = [self.read_id, start, end, np.nan]
-                    index += 1
+                    #result[index] = [self.read_id, start, end, np.nan]
+                    #index += 1
                 continue
 
             # [Path, ...]
             self.paths = load_paths(self)
 
-            logger.debug(f"---\n{self.read_id}\n{self.tr_intervals}\n{self.alignments}\n{self.cover_set}\n{self.min_cover_set}")
+            #logger.debug(f"---\n{self.read_id}\n{self.tr_intervals}\n{self.alignments}\n{self.cover_set}\n{self.min_cover_set}")
 
             for path_count, path in enumerate(self.paths):
                 path.split_alignment()
@@ -109,16 +154,29 @@ class Runner():
                 if path.write_unit_seqs(read_id, path_count, out_units_file):
                     result[index] = [self.read_id, path.bb, path.ae, path.mean_unit_len]
                     index += 1
+            """
 
-        out_units_file.close()
+        #out_units_file.close()
 
-        result = pd.DataFrame.from_dict(result,
-                                        orient="index",
-                                        columns=("dbid",
-                                                 "start",
-                                                 "end",
-                                                 "unit length"))
-        return (out_units_fname_split, result)
+        trs = pd.DataFrame.from_dict(trs,
+                                     orient="index",
+                                     columns=("read_id",
+                                              "start",
+                                              "end",
+                                              "unit count",
+                                              "mean unit length",
+                                              "unit cv"))
+        units = pd.DataFrame.from_dict(units,
+                                       orient="index",
+                                       columns=("read_id",
+                                                "path_id",
+                                                "unit_id",
+                                                "start",
+                                                "end",
+                                                "length",
+                                                "sequence"))
+        #return (out_units_fname_split, result)
+        return (trs, units)
 
 
 def run_runner(r):
@@ -127,19 +185,20 @@ def run_runner(r):
 
 def main():
     args = load_args()
-    n_core = args.n_core
-    out_main_fname = args.out_main_fname
+    n_core, out_main_fname, out_units_fname = args.n_core, args.out_main_fname, args.out_units_fname
     del args.n_core
     del args.out_main_fname
+    del args.out_units_fname
 
-    out_units_fnames = ""
+    #out_units_fnames = ""
 
     if n_core == 1:
         r = Runner(args)
         ret = r.run()
         if ret is None:
             return
-        out_units_fnames, results = ret
+        trs_all, units_all = ret
+        #out_units_fnames, results = ret
     else:
         r_tmp = Runner(args)   # only for the setting of dbids
         start_dbid = r_tmp.start_dbid
@@ -160,23 +219,34 @@ def main():
 
         # Parallely execute and then merge results
         exe_pool = Pool(n_core)
-        results = pd.DataFrame()
+        #results = pd.DataFrame()
+        trs_all, units_all = pd.DataFrame(), pd.DataFrame()
         for ret in exe_pool.imap(run_runner, r):
             if ret is not None:
-                out_units_fname_split, result = ret
-                results = pd.concat([results, result])
-                out_units_fnames += out_units_fname_split + " "
+                #out_units_fname_split, result = ret
+                #results = pd.concat([results, result])
+                #out_units_fnames += out_units_fname_split + " "
+                trs, units = ret
+                trs = pd.concat([trs_all, trs])
+                units_all = pd.concat([units_all, units])
         exe_pool.close()
 
-        if len(results) == 0:
+        #if len(results) == 0:
+        if trs_all.shape[0] == 0:
             return
 
-        results = (results.sort_values(by="dbid", kind="mergesort")
-                   .reset_index(drop=True))
+        #results = (results.sort_values(by="dbid", kind="mergesort")
+        #           .reset_index(drop=True))
+        trs_all = trs_all.sort_values(by="read_id", kind="mergesort").reset_index(drop=True)
 
-    results.to_csv(out_main_fname, sep="\t")
-    command = f"cat {out_units_fnames} > {args.out_units_fname}; rm {out_units_fnames}"
-    run_command(command)
+        if units_all.shape[0] != 0:
+            units_all = units_all.sort_values(by="read_id", kind="mergesort").reset_index(drop=True)
+
+    #results.to_csv(out_main_fname, sep="\t")
+    #command = f"cat {out_units_fnames} > {args.out_units_fname}; rm {out_units_fnames}"
+    #run_command(command)
+    trs_all.to_csv(out_main_fname, sep="\t")
+    units_all.to_csv(out_units_fname, sep="\t")
 
 
 def load_args():
@@ -235,8 +305,8 @@ def load_args():
         "-u",
         "--out_units_fname",
         type=str,
-        default="datruf_units.fasta",
-        help=("Write unit sequences to this file. [datruf_units.fasta]"))
+        default="datruf_units",
+        help=("Write unit sequences to this file. [datruf_units]"))
 
     parser.add_argument(
         "--only_interval",

@@ -120,6 +120,26 @@ class Path:
         # a DAG, but we now have Consed and we are not going to implement this
         # function
 
+    def calc_unit_stat(self):
+        """
+        Return mean length and coeffient of variation of full-length units.
+        """
+
+        unit_lens = [len(unit_seq) for unit_seq in self.unit_seqs]
+        #cv = np.nan
+        if len(unit_lens) < 2:
+            logger.warn(f"Units are less than 2!")
+            return (np.nan, np.nan)
+        else:
+            cv = np.std(unit_lens, ddof=1) / np.mean(unit_lens)
+            return (int(np.mean(unit_lens)), cv)
+        #logger.debug(f"{read_id}({path_count}), {len(unit_lens)}, {cv}")
+
+        #if cv >= 0.1:
+        #    return False
+
+
+    """
     def write_unit_seqs(self, read_id, path_count, out_file):
         # Filter by coefficient of variation of the unit lengths
         unit_lens = [len(unit_seq) for unit_seq in self.unit_seqs]
@@ -127,12 +147,11 @@ class Path:
         # Discard TRs with only 1 full-length unit because we cannot
         # calculate CV
         if len(unit_lens) < 2:
-            logger.debug(f"less than 2! {self.read_id} {path_count}")
+            logger.warn(f"Units are less than 2! @ {read_id}({path_count})")
             return False
 
         cv = np.std(unit_lens, ddof=1) / np.mean(unit_lens)
-        logger.debug(read_id, path_count, unit_lens, cv)
-        logger.debug("---")
+        logger.debug(f"{read_id}({path_count}), {len(unit_lens)}, {cv}")
 
         if cv >= 0.1:
             return False
@@ -143,8 +162,9 @@ class Path:
         for unit_count, unit_seq in enumerate(self.unit_seqs):
             start, end = self.reflection_points[unit_count:unit_count + 2]
             out_file.write(f">{read_id}-{path_count}/{unit_count}/{start}_{end} unit_length={end - start}\n{unit_seq}\n")
+    """
 
-        return True
+    #return True
 
 
 def trace_alignment(path, plot=False, snake=False):

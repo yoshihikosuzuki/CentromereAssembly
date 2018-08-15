@@ -127,7 +127,7 @@ def convert_symbol(aseq, bseq, symbols):
     return converted
 
 
-def load_paths(datruf):   # TODO: modify LAshow4pathplot so that only aligned regions are output
+def load_paths(datruf):
     # Load paths of alignments in the minimum cover set
     command = (f"LAshow4pathplot -a {datruf.db_file} {datruf.las_file} {datruf.read_id} "
                f"| sed 's/,//g'"
@@ -151,7 +151,6 @@ def load_paths(datruf):   # TODO: modify LAshow4pathplot so that only aligned re
                 bseq = bseq[prefix_cut:len(bseq) - suffix_cut]
                 symbols = symbols[:len(symbols) - suffix_cut]
                 paths.append(Path(ab, ae, bb, be, Alignment(aseq, bseq, convert_symbol(aseq, bseq, symbols))))
-                #logger.debug(ab, ae, bb, be, len(aseq))
             ab, ae, bb, be = list(map(int, data[2:6]))
             if (ab, ae, bb, be) in datruf.min_cover_set:
                 flag_add = True
