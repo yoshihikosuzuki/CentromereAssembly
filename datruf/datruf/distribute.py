@@ -50,9 +50,11 @@ def main():
 
     # Prepare a script for finalization of the task
     with open("finalize_datruf.sh", 'w') as f:
-        f.write('\n'.join([f"cat {args.out_units_fname}.* > {args.out_units_fname}.cat",
-                           f"cat {args.out_main_fname}.* > {args.out_main_fname}.cat",
-                           f"awk -F'\\t' 'NR == 1 {{print $0}} $1 != \"\" {{print $0}}' {args.out_main_fname}.cat > {args.out_main_fname}",
+        # Same as doing pd.concat and reset_index
+        f.write('\n'.join([f"cat {args.out_main_fname}.* > {args.out_main_fname}.cat",
+                           f"cat {args.out_units_fname}.* > {args.out_units_fname}.cat",
+                           f"awk -F'\\t' 'BEGIN {{count = 0}} NR == 1 {{print $0}} $1 != \"\" {{printf count; for (i = 2; i <= NF; i++) {{printf \"\\t\" $i}}; print \"\"; count++}}' {args.out_main_fname}.cat > {args.out_main_fname}",
+                           f"awk -F'\\t' 'BEGIN {{count = 0}} NR == 1 {{print $0}} $1 != \"\" {{printf count; for (i = 2; i <= NF; i++) {{printf \"\\t\" $i}}; print \"\"; count++}}' {args.out_units_fname}.cat > {args.out_units_fname}",
                            f"rm {args.out_units_fname}.*; rm {args.out_main_fname}.*"]) + '\n')
 
     logger.info("Run `$ bash finalize_datruf.sh` after finishing all jobs")
