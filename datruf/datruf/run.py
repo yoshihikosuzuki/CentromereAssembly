@@ -62,9 +62,6 @@ class Runner():
                 return None
             self.alignments_all = load_ladump(self)
 
-        #out_units_fname_split = f"{self.out_units_fname}.{os.getpid()}"   # TODO: not output to file but return as a list
-        #out_units_file = open(out_units_fname_split, 'w')
-
         trs, units = {}, {}   # to be output as <args.out_main_fname> and <args.out_units_fname>
         tr_index = unit_index = 0
         for read_id in range(self.start_dbid, self.end_dbid + 1):
@@ -129,43 +126,15 @@ class Runner():
                                          end - start,
                                          unit_seq]   # TODO: maybe no sequence is better (then load on demand)
                     unit_index += 1
-                
-
-            """
-            if self.only_interval:
-                # Output all TR intervals regardless of alignment straightness
-                intervals = sorted([(x[2], x[1])   # (bb, ae)
-                                    for x in list(self.min_cover_set)])
-                for start, end in intervals:
-                    #result[index] = [self.read_id, start, end, np.nan]
-                    #index += 1
-                continue
-
-            # [Path, ...]
-            self.paths = load_paths(self)
-
-            #logger.debug(f"---\n{self.read_id}\n{self.tr_intervals}\n{self.alignments}\n{self.cover_set}\n{self.min_cover_set}")
-
-            for path_count, path in enumerate(self.paths):
-                path.split_alignment()
-
-                # Filter results by CV of unit lengths and output the units
-                # if specified
-                if path.write_unit_seqs(read_id, path_count, out_units_file):
-                    result[index] = [self.read_id, path.bb, path.ae, path.mean_unit_len]
-                    index += 1
-            """
-
-        #out_units_file.close()
 
         trs = pd.DataFrame.from_dict(trs,
                                      orient="index",
                                      columns=("read_id",
                                               "start",
                                               "end",
-                                              "unit count",
-                                              "mean unit length",
-                                              "unit cv"))
+                                              "unit_count",
+                                              "mean_unit_length",
+                                              "unit_cv"))
         units = pd.DataFrame.from_dict(units,
                                        orient="index",
                                        columns=("read_id",
@@ -175,7 +144,6 @@ class Runner():
                                                 "end",
                                                 "length",
                                                 "sequence"))
-        #return (out_units_fname_split, result)
         return (trs, units)
 
 
@@ -190,15 +158,12 @@ def main():
     del args.out_main_fname
     del args.out_units_fname
 
-    #out_units_fnames = ""
-
     if n_core == 1:
         r = Runner(args)
         ret = r.run()
         if ret is None:
             return
         trs_all, units_all = ret
-        #out_units_fnames, results = ret
     else:
         r_tmp = Runner(args)   # only for the setting of dbids
         start_dbid = r_tmp.start_dbid
@@ -219,32 +184,26 @@ def main():
 
         # Parallely execute and then merge results
         exe_pool = Pool(n_core)
-        #results = pd.DataFrame()
         trs_all, units_all = pd.DataFrame(), pd.DataFrame()
         for ret in exe_pool.imap(run_runner, r):
             if ret is not None:
-                #out_units_fname_split, result = ret
-                #results = pd.concat([results, result])
-                #out_units_fnames += out_units_fname_split + " "
                 trs, units = ret
-                trs = pd.concat([trs_all, trs])
+                trs_all = pd.concat([trs_all, trs])
                 units_all = pd.concat([units_all, units])
         exe_pool.close()
 
-        #if len(results) == 0:
         if trs_all.shape[0] == 0:
+            logger.info("No TRs. Exit without any output")
             return
 
-        #results = (results.sort_values(by="dbid", kind="mergesort")
-        #           .reset_index(drop=True))
-        trs_all = trs_all.sort_values(by="read_id", kind="mergesort").reset_index(drop=True)
+        # Sort the results in the order of read_id
+        trs_all = (trs_all.sort_values(by="read_id", kind="mergesort")
+                   .reset_index(drop=True))
 
         if units_all.shape[0] != 0:
-            units_all = units_all.sort_values(by="read_id", kind="mergesort").reset_index(drop=True)
+            units_all = (units_all.sort_values(by="read_id", kind="mergesort")
+                         .reset_index(drop=True))
 
-    #results.to_csv(out_main_fname, sep="\t")
-    #command = f"cat {out_units_fnames} > {args.out_units_fname}; rm {out_units_fnames}"
-    #run_command(command)
     trs_all.to_csv(out_main_fname, sep="\t")
     units_all.to_csv(out_units_fname, sep="\t")
 
@@ -342,6 +301,8 @@ def load_args():
     args = parser.parse_args()
     if args.debug_mode:
         logzero.loglevel(logging.DEBUG)
+    else:
+        logzero.loglevel(logging.INFO)
     del args.debug_mode
 
     return args

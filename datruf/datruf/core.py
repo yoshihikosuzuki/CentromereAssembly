@@ -103,7 +103,7 @@ class Path:
         if plot is True:
             self.unit_alignments, self.reflection_points, self.shapes = ret
         else:
-            self.unit_alignments, self.reflection_points  = ret
+            self.unit_alignments, self.reflection_points = ret
 
         # Determine raw unit sequences   # XXX: determine the only one full-length unit sequence when there is no unit_alignments (i.e. shorter than duplication) (to do this in trace_alignment is better?)
         self.unit_seqs = [unit_alignment.bseq.replace('-', '')
@@ -126,45 +126,12 @@ class Path:
         """
 
         unit_lens = [len(unit_seq) for unit_seq in self.unit_seqs]
-        #cv = np.nan
         if len(unit_lens) < 2:
-            logger.warn(f"Units are less than 2!")
+            logger.warn(f"Num of units are less than 2!")
             return (np.nan, np.nan)
         else:
             cv = np.std(unit_lens, ddof=1) / np.mean(unit_lens)
             return (int(np.mean(unit_lens)), cv)
-        #logger.debug(f"{read_id}({path_count}), {len(unit_lens)}, {cv}")
-
-        #if cv >= 0.1:
-        #    return False
-
-
-    """
-    def write_unit_seqs(self, read_id, path_count, out_file):
-        # Filter by coefficient of variation of the unit lengths
-        unit_lens = [len(unit_seq) for unit_seq in self.unit_seqs]
-
-        # Discard TRs with only 1 full-length unit because we cannot
-        # calculate CV
-        if len(unit_lens) < 2:
-            logger.warn(f"Units are less than 2! @ {read_id}({path_count})")
-            return False
-
-        cv = np.std(unit_lens, ddof=1) / np.mean(unit_lens)
-        logger.debug(f"{read_id}({path_count}), {len(unit_lens)}, {cv}")
-
-        if cv >= 0.1:
-            return False
-
-        self.mean_unit_len = int(np.mean(unit_lens))
-
-        # Print (full-length) unit sequences
-        for unit_count, unit_seq in enumerate(self.unit_seqs):
-            start, end = self.reflection_points[unit_count:unit_count + 2]
-            out_file.write(f">{read_id}-{path_count}/{unit_count}/{start}_{end} unit_length={end - start}\n{unit_seq}\n")
-    """
-
-    #return True
 
 
 def trace_alignment(path, plot=False, snake=False):
