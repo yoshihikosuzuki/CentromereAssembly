@@ -1,7 +1,5 @@
 import os
-import sys
 import copy
-import random
 import numpy as np
 import pandas as pd
 import networkx as nx
@@ -16,7 +14,6 @@ import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
 
-from .io import load_unit_fasta
 from .clustering import ClusteringSeqs
 
 from BITS.utils import run_command, revcomp
@@ -178,7 +175,7 @@ class Peak:
                                                                                 self.master_units.loc[node, "sequence"])
         logger.debug(f"\n{self.master_units}")
 
-    def construct_master_units(self, min_n_units=10, n_core=1):
+    def construct_master_units(self, min_n_units, n_core):
         """
         From all units in a peak, construct a set of "master units".
         The main purpose of this task rather than direct construction of
@@ -219,7 +216,7 @@ class Peak:
 
 class PeaksFinder:
     def __init__(self,
-                 unit_fasta,
+                 units_fname,
                  min_len=50,   # peak length must be longer than this
                  max_len=1000,   # must be shorter than this
                  band_width=5,   # parameter for KDE
@@ -231,7 +228,7 @@ class PeaksFinder:
                         f"shorter than 50 bp, which is generally detection "
                         f"threshold of datander & datruf!")
 
-        self.units = pd.read_table(unit_fasta, index_col=0)
+        self.units = pd.read_table(units_fname, index_col=0)
         self.min_len = min_len
         self.max_len = max_len
         self.band_width = band_width

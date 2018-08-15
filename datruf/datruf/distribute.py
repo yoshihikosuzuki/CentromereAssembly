@@ -135,18 +135,18 @@ def load_args():
               "to look at results of only several reads. [False]"))
 
     parser.add_argument(
-        "-D",
-        "--debug_mode",
-        action="store_true",
-        default=False,
-        help=("Run in debug mode. [False]"))
-
-    parser.add_argument(
         "-n",
         "--n_core",
         type=int,
         default=1,
         help=("Degree of parallelization in each distributed job. [1]"))
+
+    parser.add_argument(
+        "-D",
+        "--debug_mode",
+        action="store_true",
+        default=False,
+        help=("Run datruf in debug mode. [False]"))
 
     parser.add_argument(
         "-p",

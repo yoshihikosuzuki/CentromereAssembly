@@ -85,8 +85,7 @@ def main():
         ## ------------------------------------ ##
 
         # Cluster intra-TR consensus unit sequences
-        peak.construct_master_units(min_n_units=args.min_n_units,
-                                    n_core=args.n_core)
+        peak.construct_master_units(args.min_n_units, args.n_core)
 
         ## -------------------------------------------- ##
         ## Step 3. Construction of representative units ##
@@ -124,9 +123,8 @@ def load_args():
         description=("Construct master units and representative units."))
 
     parser.add_argument(
-        "unit_fasta",
-        help=("Input fasta file of the unit sequences reported by datruf. "
-              "[datruf_units.fasta]"))
+        "units_fname",
+        help=("Input file of the unit sequences reported by datruf."))
 
     parser.add_argument(
         "-m",

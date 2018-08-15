@@ -285,18 +285,18 @@ def load_args():
               "to look at results of only several reads. [False]"))
 
     parser.add_argument(
-        "-D",
-        "--debug_mode",
-        action="store_true",
-        default=False,
-        help=("Run in debug mode. [False]"))
-
-    parser.add_argument(
         "-n",
         "--n_core",
         type=int,
         default=1,
         help=("Degree of parallelization. [1]"))
+
+    parser.add_argument(
+        "-D",
+        "--debug_mode",
+        action="store_true",
+        default=False,
+        help=("Run in debug mode. [False]"))
 
     args = parser.parse_args()
     if args.debug_mode:
