@@ -19,8 +19,9 @@ import seaborn as sns
 import plotly.offline as py
 import plotly.graph_objs as go
 
-from BITS.utils import run_command, revcomp
-from BITS.core import run_edlib
+from BITS.utils import run_command
+from BITS.seq import revcomp
+from BITS.run import run_edlib
 
 from .dpmm import DPMM, DPMMCluster
 #from .dpmm_oldname import Clustering, Cluster

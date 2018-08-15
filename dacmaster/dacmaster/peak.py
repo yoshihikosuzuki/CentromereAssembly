@@ -16,8 +16,9 @@ import plotly.graph_objs as go
 
 from .clustering import ClusteringSeqs
 
-from BITS.utils import run_command, revcomp
-from BITS.core import run_edlib
+from BITS.utils import run_command
+from BITS.seq import revcomp
+from BITS.run import run_edlib
 
 plt.style.use('ggplot')
 
