@@ -22,13 +22,16 @@ def main():
         script_fname = f"run_datruf.{args.job_scheduler}.{index}"
 
         with open(script_fname, 'w') as f:
-            start = r.start_dbid + i * n_dbid_part
-            end = r.start_dbid + (i + 1) * n_dbid_part - 1
-            script = (f"datruf_run.py -s {start} -e {end} -n {args.n_core} "
-                      f"-m {args.out_main_fname}.{index} -u {args.out_units_fname}.{index} "
-                      f"{'--only_interval' if args.only_interval else ''} "
-                      f"{'-D' if args.debug_mode else ''}"
-                      f"{args.db_file} {args.las_file}")
+            script = ' '.join([f"datruf_run.py",
+                               f"-s {r.start_dbid + i * n_dbid_part}",
+                               f"-e {r.start_dbid + (i + 1) * n_dbid_part - 1}",
+                               f"-m {args.out_main_fname}.{index}",
+                               f"-u {args.out_units_fname}.{index}",
+                               f"{'--only_interval' if args.only_interval else ''}",
+                               f"{'-D' if args.debug_mode else ''}",
+                               f"-n {args.n_core}",
+                               f"{args.db_file}",
+                               f"{args.las_file}"])
 
             if args.job_scheduler == "sge":
                 script = sge_nize(script,
@@ -47,12 +50,10 @@ def main():
 
     # Prepare a script for finalization of the task
     with open("finalize_datruf.sh", 'w') as f:
-        f.write(
-f"""cat {args.out_units_fname}.* > {args.out_units_fname}.cat
-cat {args.out_main_fname}.* > {args.out_main_fname}.cat
-awk -F'\\t' 'NR == 1 {{print $0}} $1 != \"\" {{print $0}}' {args.out_main_fname}.cat > {args.out_main_fname}
-rm {args.out_units_fname}.*; rm {args.out_main_fname}.*
-""")
+        f.write('\n'.join([f"cat {args.out_units_fname}.* > {args.out_units_fname}.cat",
+                           f"cat {args.out_main_fname}.* > {args.out_main_fname}.cat",
+                           f"awk -F'\\t' 'NR == 1 {{print $0}} $1 != \"\" {{print $0}}' {args.out_main_fname}.cat > {args.out_main_fname}",
+                           f"rm {args.out_units_fname}.*; rm {args.out_main_fname}.*"]) + '\n')
 
     logger.info("Run `$ bash finalize_datruf.sh` after finishing all jobs")
 
