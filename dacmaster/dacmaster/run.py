@@ -6,7 +6,6 @@ import logzero
 from logzero import logger
 
 from .peak import PeaksFinder
-from .io import load_peaks
 
 
 def main():
