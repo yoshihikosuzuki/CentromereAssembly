@@ -60,9 +60,9 @@ def main():
     if "peaks" in precomputed:
         peaks = load_precomputed(precomputed)
     else:
-        logger.info("No precomputed Peak instances. Detect peaks")
+        logger.info("No precomputed Peak instances. Staring peak detection")
         # Detect peaks in the unit length distribution
-        finder = PeaksFinder(args.unit_fasta)
+        finder = PeaksFinder(args.units_fname)
         finder.run()
 
         # Keep only Peak instances and discard the others

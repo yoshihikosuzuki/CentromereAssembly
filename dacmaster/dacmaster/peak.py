@@ -195,23 +195,25 @@ class Peak:
 
         # Calculate intra-TR consensus unit for each TR
         if not hasattr(self, "units_consensus"):
-            logger.debug("Starting taking intra-TR consensus")
+            logger.info("Starting taking intra-TR consensus")
             self.take_intra_consensus_parallel(min_n_units, n_core)
-            logger.debug("Finished intra consensus")
+            logger.info("Finished intra-TR consensus")
 
         # Cluster the intra-TR consensus units
         if not hasattr(self, "clustering"):
-            logger.debug("Create clustering instance")
             self.clustering = ClusteringSeqs(self.units_consensus["sequence"])
-        logger.debug("Perform hierarchical clustering")
+        logger.info("Starting hierarchical clustering")
         self.clustering.cluster_hierarchical(n_core=n_core)
         #self.clustering.cluster_greedy()   # too greedy way
+        logger.info("Finished hierarchical clustering")
 
+        # Generate master units
         self.master_original = self.clustering.generate_consensus()   # NOTE: dataframe
         logger.debug(f"\n{self.master_original}")
         # remove strange sequences and redundancy
         # after that, start-position adjustment and strand adjustment of close seqs
         self.filter_master_units()
+        logger.info("Finished cluster consensus")
 
 
 class PeaksFinder:

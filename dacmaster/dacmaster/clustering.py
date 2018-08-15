@@ -37,17 +37,19 @@ class Clustering:
 
     def __init__(self, input_data):
         self.data = input_data
-        self.N = input_data.shape[0]   # NOTE: this must be data size!
+        self.N = input_data.shape[0]   # NOTE: <input_data> must be this kind of data
         self.assignment = np.full(self.N, -1, dtype='int8')   # cluster assignment for each data
         self.hc_result_precomputed = {}   # used to avoid re-calculation of hierarchical clustering
 
-    def cluster_hierarchical(self, method, criterion, threshold):   # TOOD: add <depth> for inconsistent?
+    def cluster_hierarchical(self, method, criterion, threshold):
         """
         <method> = {single, complete, average, weighted, centroid, median, ward (default)}
-        <criterion> = {inconsistent, distance (default), maxclust, monocrit, maxclust_monocrit}   # NOTE: for now supports only inconsistent and distance
-        <value> = threshold in distance criterion, or depth in inconsistent criterion
+        <criterion> = {inconsistent, distance (default), maxclust, monocrit, maxclust_monocrit}
+        <threshold> = threshold in distance criterion
 
-        Before using this method, you must make <self.hc_input> for argument of linkage.
+        Before calling this, <self.hc_input> must be set with a condensed distance matrix.
+
+        NOTE: Currently this supports only distance criterion.
         """
 
         # Since computation of linkage is heavy to some extent, save it for the next time
@@ -137,7 +139,7 @@ class ClusteringSeqs(Clustering):
         This is just for parallelization of distance matrix calculation
         """
 
-        logger.debug(f"Started job: row {i}, columns {i + 1}-{self.N - 1}")
+        logger.debug(f"Started @ row {i}, columns {i + 1}-{self.N - 1}")
         dist_array = np.empty(self.N - i - 1, dtype='float32')   # of row <i> in the dist matrix
 
         query = self.data[i]
@@ -153,35 +155,30 @@ class ClusteringSeqs(Clustering):
 
             dist_array[index] = alignment["diff"]
 
-        logger.debug(f"Ended job: row {i}")
+        logger.debug(f"Finished @ row {i}")
         return (i, dist_array)
 
     def calc_dist_mat(self, n_core=1):
         """
         Calculate all-vs-all distance matrix between the sequences.
-        Cyclic alignment, allowing reverse complement of one sequence during alignment,
-        and parallelization are supported.
+        Both cyclic alignment and reverse complement sequence are considered.
+        Computation is performed in parallel, and the unit of parallelization
+        is each row of the (triangular) distance matrix.
         """
 
-        logger.info(f"Starting calculation of distance matrix with {n_core} cores")
-
-        exe_pool = Pool(n_core)
         self.dist_matrix = np.zeros((self.N, self.N), dtype='float32')
 
-        # NOTE: each row in the matrix is unit of the parallelized tasks
-        logger.debug(f"Scattering tasks with {n_core} cores")
-
+        exe_pool = Pool(n_core)
         for ret in exe_pool.imap(self.calc_dist_array, np.arange(self.N - 1)):
             i, dist_array = ret
             self.dist_matrix[i, i + 1:] = self.dist_matrix[i + 1:, i] = dist_array
-            logger.debug(f"Finished row {i}")
-
         exe_pool.close()
-        logger.debug("Finished all tasks")
 
-    def cluster_hierarchical(self, method="ward", criterion="distance", threshold=0.7, n_core=1):   # TOOD: add <depth>?
+    def cluster_hierarchical(self, method="ward", criterion="distance", threshold=0.7, n_core=1):
         if not hasattr(self, "dist_matrix"):
+            logger.info(f"Starting calculation of distance matrix with {n_core} cores")
             self.calc_dist_mat(n_core)
+            logger.info(f"Finished calculation distance matrix")
         
         if not hasattr(self, "hc_input"):
             self.hc_input = squareform(self.dist_matrix)
