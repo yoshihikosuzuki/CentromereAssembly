@@ -83,7 +83,7 @@ class Peak:
                  for path_id, df_path in df_read.groupby("path_id")
                  if len(df_path) >= min_n_units]
 
-        logger.debug("tasks generated")
+        logger.debug(f"Scattering tasks with {n_core} cores")
 
         self.units_consensus = {}   # intra-TR consensus units
         index = 0
@@ -92,7 +92,7 @@ class Peak:
                 self.units_consensus[index] = ret
                 index += 1
 
-        logger.debug("tasks completed and gathered")
+        logger.debug("Finished all tasks")
         exe_pool.close()
 
         self.units_consensus = pd.DataFrame.from_dict(self.units_consensus,
@@ -198,9 +198,9 @@ class Peak:
 
         # Calculate intra-TR consensus unit for each TR
         if not hasattr(self, "units_consensus"):
-            logger.debug("Start taking intra-TR consensus")
-            self.take_intra_consensus_parallel(min_n_units=min_n_units, n_core=n_core)
-            logger.debug("Ended intra consensus")
+            logger.debug("Starting taking intra-TR consensus")
+            self.take_intra_consensus_parallel(min_n_units, n_core)
+            logger.debug("Finished intra consensus")
 
         # Cluster the intra-TR consensus units
         if not hasattr(self, "clustering"):

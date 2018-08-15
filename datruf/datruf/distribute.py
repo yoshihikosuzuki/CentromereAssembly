@@ -48,7 +48,7 @@ def main():
     # Prepare a script for finalization of the task
     with open("finalize_datruf.sh", 'w') as f:
         f.write(
-f"""cat {args.out_units_fname}.* > {args.out_units_fname}
+f"""cat {args.out_units_fname}.* > {args.out_units_fname}.cat
 cat {args.out_main_fname}.* > {args.out_main_fname}.cat
 awk -F'\\t' 'NR == 1 {{print $0}} $1 != \"\" {{print $0}}' {args.out_main_fname}.cat > {args.out_main_fname}
 rm {args.out_units_fname}.*; rm {args.out_main_fname}.*
@@ -111,8 +111,8 @@ def load_args():
         "-u",
         "--out_units_fname",
         type=str,
-        default="datruf_units.fasta",
-        help=("Write unit sequences to this file. [datruf_units.fasta]"))
+        default="datruf_units",
+        help=("Write unit sequences to this file. [datruf_units]"))
 
     parser.add_argument(
         "--only_interval",

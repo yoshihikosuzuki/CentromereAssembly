@@ -1,5 +1,6 @@
-import argparse
+#import argparse
 import os
+import sys
 import pickle
 import random
 from logzero import logger
@@ -12,6 +13,7 @@ from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
 from sklearn.cluster import KMeans, Birch
 from sklearn.mixture import GaussianMixture
 from sklearn.manifold import TSNE
+from sklearn.decomposition import NMF
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.offline as py
@@ -39,7 +41,7 @@ class Clustering:
         self.assignment = np.full(self.N, -1, dtype='int8')   # cluster assignment for each data
         self.hc_result_precomputed = {}   # used to avoid re-calculation of hierarchical clustering
 
-    def cluster_hierarchical(self, method, criterion, threshold):   # TOOD: add <depth>?
+    def cluster_hierarchical(self, method, criterion, threshold):   # TOOD: add <depth> for inconsistent?
         """
         <method> = {single, complete, average, weighted, centroid, median, ward (default)}
         <criterion> = {inconsistent, distance (default), maxclust, monocrit, maxclust_monocrit}   # NOTE: for now supports only inconsistent and distance
@@ -167,7 +169,7 @@ class ClusteringSeqs(Clustering):
         self.dist_matrix = np.zeros((self.N, self.N), dtype='float32')
 
         # NOTE: each row in the matrix is unit of the parallelized tasks
-        logger.debug("Scattering tasks")
+        logger.debug(f"Scattering tasks with {n_core} cores")
 
         for ret in exe_pool.imap(self.calc_dist_array, np.arange(self.N - 1)):
             i, dist_array = ret
@@ -510,8 +512,8 @@ class ClusteringVarMat:   # TOOD: change to a child class of Clustering
                                             criterion='distance'))
 
     def gmm_bic(self, n_components):
-        gmm = mixture.GaussianMixture(n_components=n_components,
-                                      covariance_type='full')
+        gmm = GaussianMixture(n_components=n_components,
+                              covariance_type='full')
         gmm.fit(self.vmatrix)
         return gmm.bic(self.vmatrix)
 
@@ -519,8 +521,8 @@ class ClusteringVarMat:   # TOOD: change to a child class of Clustering
     def gmm(self, max_components=100):
         gmm_bics = [self.gmm_bic(i) for i in range(1, max_components + 1)]
         print(gmm_bics)
-        gmm = mixture.GaussianMixture(n_components=np.argmin(gmm_bics) + 1,
-                                      covariance_type='full')
+        gmm = GaussianMixture(n_components=np.argmin(gmm_bics) + 1,
+                              covariance_type='full')
         gmm.fit(self.vmatrix)
         self.assignment = gmm.predict(self.vmatrix)
 
@@ -536,19 +538,19 @@ class ClusteringVarMat:   # TOOD: change to a child class of Clustering
             self.nmf(n_components)
 
     def kmeans(self, n_components):
-        self.assignment = cluster.KMeans(n_clusters=n_components).fit_predict(self.vmatrix)
+        self.assignment = KMeans(n_clusters=n_components).fit_predict(self.vmatrix)
 
     def gmm_split(self, n_components):
-        gmm = mixture.GaussianMixture(n_components=n_components,
-                                      covariance_type='full')
+        gmm = GaussianMixture(n_components=n_components,
+                              covariance_type='full')
         gmm.fit(self.vmatrix)
         self.assignment = gmm.predict(self.vmatrix)
 
     def birch(self, n_components):
-        self.assignment = cluster.Birch(n_clusters=n_components).fit_predict(self.vmatrix)
+        self.assignment = Birch(n_clusters=n_components).fit_predict(self.vmatrix)
 
     def nmf(self, n_components):
-        nmf = decomposition.NMF(n_components=n_components)
+        nmf = NMF(n_components=n_components)
         W = nmf.fit_transform(self.vmatrix)
         H = nmf.components_
         print(W)
