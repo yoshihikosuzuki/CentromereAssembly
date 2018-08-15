@@ -6,6 +6,7 @@ from logzero import logger
 from collections import Counter
 from multiprocessing import Pool
 import numpy as np
+import pandas as pd
 from scipy.spatial.distance import pdist, squareform
 from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
 from sklearn.cluster import KMeans, Birch
@@ -184,6 +185,65 @@ class ClusteringSeqs(Clustering):
             self.hc_input = squareform(self.dist_matrix)
 
         super().cluster_hierarchical(method, criterion, threshold)
+
+    def _take_consensus(self, seqs, tmp_dir, skip_threshold):
+        skip_count = 0
+        query = seqs.iloc[0]
+        
+        out_fname = os.path.join(tmp_dir, f"input.seq")   # temporary file for Consed input
+        seq_writer = open(out_fname, 'w')
+    
+        # Output the first sequence as seed for consensus
+        seq_writer.write(f"{query}\n")
+    
+        for seq in seqs.iloc[1:]:
+            seq_f = seq * 2
+            alignment_f = run_edlib(query, seq_f, mode="glocal")
+            # reverse complement
+            seq_rc = revcomp(seq_f)
+            alignment_rc = run_edlib(query, seq_rc, mode="glocal")
+    
+            if alignment_f["diff"] <= alignment_rc["diff"]:
+                alignment = alignment_f
+                seq = seq_f
+            else:
+                alignment = alignment_rc
+                seq = seq_rc
+                
+            if alignment["diff"] > skip_threshold:
+                #print(alignment["diff"])
+                skip_count += 1
+                continue
+                #pass
+    
+            seq = seq[alignment["start"]:alignment["end"]]   # mapped area
+            seq_writer.write(f"{seq}\n")
+    
+        seq_writer.close()
+        ret = run_command(f"consed {out_fname}").replace('\n', '')
+        return (ret, skip_count)
+
+    def generate_consensus(self, tmp_dir="tmp", skip_threshold=0.15):
+        """
+        Determine a representative sequence for each cluster.
+        If sequence dissimilarity of a sequence from the first seed sequence 
+        exceeds <skip_threshold>, skip the sequence for the calculation of consensus.
+        """
+
+        # NOTE: setting <skip_threshold> as 0.15 means cluster diameter is less than 0.3,
+        #       thus in most cases no error happens in Consed?
+
+        # TODO: better way to fix the seed
+
+        ret = {}
+        index = 0
+        for cluster_id, seqs in super().clusters():
+            cons_seq, skip_count = self._take_consensus(seqs, tmp_dir, skip_threshold)
+            ret[index] = (cluster_id, seqs.shape[0], skip_count, cons_seq)
+            index += 1
+
+        return pd.DataFrame.from_dict(ret, orient="index",
+                                      columns=("cluster_id", "cluster_size", "skip_count", "sequence"))
 
     def dendrogram(self, method="ward"):
         super().dendrogram(method)
