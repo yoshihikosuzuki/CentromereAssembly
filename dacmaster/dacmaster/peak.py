@@ -236,6 +236,7 @@ class PeaksFinder:
         # all unit lengths within the specified interval
         self.ul = self.unit_lens[(self.min_len < self.unit_lens)
                                  & (self.unit_lens < self.max_len)]
+
         # [min_len, min_len + 1, ..., max_len]
         self.ls = np.linspace(self.min_len,
                               self.max_len,

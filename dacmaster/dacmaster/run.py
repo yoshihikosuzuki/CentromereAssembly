@@ -14,24 +14,20 @@ def load_precomputed(precomputed):
     # <precomputed["peaks"]> corresponds to <PeaksFinder.peaks>
     # Re-create Peak instances so that any modifications on Peak class would not affect loading
     # If any of these members are modified, re-claculate from the begining
-    logger.info("Loading precomputed Peak instances")
     peaks = [Peak(p.peak_id, p.N, p.unit_len, p.density, p.start_len, p.end_len, p.raw_units)
              for p in precomputed["peaks"]]
 
     # These data below take time to calculate, thus re-use if previous one is available
     if "units_consensus" in precomputed:
-        logger.info("Loading precomputed intra-TR consensus units")
         for i, data in enumerate(precomputed["units_consensus"]):
             if data is not None:
                 setattr(peaks[i], "units_consensus", data)
                 setattr(peaks[i], "clustering", ClusteringSeqs(peaks[i].units_consensus["sequence"]))
     if "dist_matrix" in precomputed:   # TODO: rename?
-        logger.info("Loading precomputed distance matrix of intra-TR consensus units")
         for i, data in enumerate(precomputed["dist_matrix"]):
             if data is not None:
                 setattr(peaks[i].clustering, "dist_matrix", data)
     if "hc_result_precomputed" in precomputed:
-        logger.info("Loading precomputed hierarchical clustering results")
         for i, data in enumerate(precomputed["hc_result_precomputed"]):
             if data is not None:
                 setattr(peaks[i].clustering, "hc_result_precomputed", data)
@@ -44,14 +40,14 @@ def main():
 
     # You can skip redundant heavy calculation by specifying precomputed pickle
     if args.precomputed_pkl is not None:
+        logger.info(f"Loading precomputed data from {args.precomputed_pkl}")
         with open(args.precomputed_pkl, 'rb') as f:
             precomputed = pickle.load(f)
     else:
         precomputed = {}
         setattr(args, "precomputed_pkl", "precomputed.pkl")
-
-    logger.info(f"As well as peaks.pkl, some computationally heavy data are "
-                f"stored to {args.precomputed_pkl} for the next time.")
+        logger.info(f"As well as peaks.pkl, some computationally heavy data are "
+                    f"stored to {args.precomputed_pkl} for the next time.")
 
     ## -------------------------------------- ##
     ## Step 1. Detection of peak unit lengths ##
