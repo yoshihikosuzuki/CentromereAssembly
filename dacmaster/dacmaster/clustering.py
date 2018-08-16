@@ -21,7 +21,7 @@ import plotly.graph_objs as go
 
 from BITS.utils import run_command
 from BITS.seq import revcomp
-from BITS.run import run_edlib
+from BITS.run import run_edlib, run_consed
 
 from .dpmm import DPMM, DPMMCluster
 #from .dpmm_oldname import Clustering, Cluster
@@ -141,23 +141,18 @@ class ClusteringSeqs(Clustering):
         """
 
         logger.debug(f"Started @ row {i}, columns {i + 1}-{self.N - 1}")
-        dist_array = np.empty(self.N - i - 1, dtype='float32')   # of row <i> in the dist matrix
 
-        query = self.data[i]
-        query_rc = revcomp(query)
-        for index, j in enumerate(range(i + 1, self.N)):
-            target = self.data[j] * 2
-            alignment_f = run_edlib(query, target, mode="glocal")   # TODO: no need of <task="path"> in edlib
-            if alignment_f["diff"] <= 0.3:
-                alignment = alignment_f   # TODO: needed here is only <diff> (maybe should check length?)
-            else:
-                alignment_rc = run_edlib(query_rc, target, mode="glocal")
-                alignment = alignment_f if alignment_f["diff"] <= alignment_rc["diff"] else alignment_rc
-
-            dist_array[index] = alignment["diff"]
+        # row <i> in the distance matrix
+        dist_array = np.array([run_edlib(self.data[i],
+                                         self.data[j],
+                                         only_diff=True,
+                                         revcomp=True,
+                                         cyclic=True)
+                               for j in range(i + 1, self.N)],
+                              dtype='float32')
 
         logger.debug(f"Finished @ row {i}")
-        return (i, dist_array)
+        return (i, dist_array)   # TODO: how to do "one line + debug message"...?
 
     def calc_dist_mat(self, n_core=1):
         """
@@ -186,44 +181,17 @@ class ClusteringSeqs(Clustering):
 
         super().cluster_hierarchical(method, criterion, threshold)
 
-    def _take_consensus(self, seqs, tmp_dir, skip_threshold):
-        skip_count = 0
-        query = seqs.iloc[0]
-        
-        out_fname = os.path.join(tmp_dir, f"input.seq")   # temporary file for Consed input
-        seq_writer = open(out_fname, 'w')
-    
-        # Output the first sequence as seed for consensus
-        seq_writer.write(f"{query}\n")
-    
-        for seq in seqs.iloc[1:]:
-            seq_f = seq * 2
-            alignment_f = run_edlib(query, seq_f, mode="glocal")
-            # reverse complement
-            seq_rc = revcomp(seq_f)
-            alignment_rc = run_edlib(query, seq_rc, mode="glocal")
-    
-            if alignment_f["diff"] <= alignment_rc["diff"]:
-                alignment = alignment_f
-                seq = seq_f
-            else:
-                alignment = alignment_rc
-                seq = seq_rc
-                
-            if alignment["diff"] > skip_threshold:
-                #print(alignment["diff"])
-                skip_count += 1
-                continue
-                #pass
-    
-            seq = seq[alignment["start"]:alignment["end"]]   # mapped area
-            seq_writer.write(f"{seq}\n")
-    
-        seq_writer.close()
-        ret = run_command(f"consed {out_fname}").replace('\n', '')
-        return (ret, skip_count)
+    def _take_consensus(self, seqs, skip_threshold):
+        return (run_consed([seq if i == 0
+                            else run_edlib(seqs.iloc[0],
+                                           seq,
+                                           mode="glocal",
+                                           cyclic=True,
+                                           return_seq=True)["seq"]
+                            for i, seq in enumerate(seqs)]),
+                0)
 
-    def generate_consensus(self, tmp_dir="tmp", skip_threshold=0.15):
+    def generate_consensus(self, skip_threshold=0.15):
         """
         Determine a representative sequence for each cluster.
         If sequence dissimilarity of a sequence from the first seed sequence 
@@ -233,12 +201,10 @@ class ClusteringSeqs(Clustering):
         # NOTE: setting <skip_threshold> as 0.15 means cluster diameter is less than 0.3,
         #       thus in most cases no error happens in Consed?
 
-        # TODO: better way to fix the seed
-
         ret = {}
         index = 0
         for cluster_id, seqs in super().clusters():
-            cons_seq, skip_count = self._take_consensus(seqs, tmp_dir, skip_threshold)
+            cons_seq, skip_count = self._take_consensus(seqs, skip_threshold)   # TODO: remove skip_threshold and rename skip_count to n_bad_align
             ret[index] = (cluster_id, seqs.shape[0], skip_count, cons_seq)
             index += 1
 
@@ -576,33 +542,6 @@ class ClusteringVarMat:   # TOOD: change to a child class of Clustering
     def save_pickle(self, out_fname):
         with open(out_fname, 'wb') as f:
             pickle.dump(self, f)
-
-
-def run_consed(in_fname):
-    out_fname_prefix = os.path.splitext(in_fname)[0]
-
-    print("[INFO] If Consed failed with \"Cannot align to first sequence\", "
-          "try \"$ sed -i -e \"<read_id + 1>d\" <aligned_units_fname>\".")
-
-    # Consed output with variant matrix
-    command = "consed -V -w1000000 %s" % in_fname
-    consed_fname = out_fname_prefix + ".consed"
-    with open(consed_fname, 'w')as f:
-        f.write(run_command(command))
-
-    # Extract consensus sequence
-    command = ("awk 'BEGIN {seq = \"\"} $0 == \"\" {exit} {seq = seq $0} END {print seq}' %s"
-               % consed_fname)
-    cons_seq = run_command(command).strip()
-    with open(out_fname_prefix + ".consensus.fasta", 'w') as f:
-        f.write(">consensus/0/0_%d\n%s\n" % (len(cons_seq), cons_seq))
-
-    # Extract variant matrix
-    command = "awk 'NR > 5 {print $NF}' %s" % consed_fname
-    with open(out_fname_prefix + ".V", 'w') as f:
-        f.write(run_command(command))
-
-    return out_fname_prefix + ".V"
 
 
 """

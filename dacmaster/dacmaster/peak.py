@@ -16,9 +16,9 @@ import plotly.graph_objs as go
 
 from .clustering import ClusteringSeqs
 
-from BITS.utils import run_command
+#from BITS.utils import run_command
 from BITS.seq import revcomp
-from BITS.run import run_edlib
+from BITS.run import run_edlib, run_consed
 
 plt.style.use('ggplot')
 
@@ -40,34 +40,18 @@ class Peak:
         This requires <out_dir> for a temporary place of the Consed input file.
         """
 
-        read_id, path_id, seqs, tmp_dir = args
+        read_id, path_id, seqs = args
 
-        if not os.path.isdir(tmp_dir):
-            run_command(f"mkdir {tmp_dir}")
-        out_fname = os.path.join(tmp_dir, f"input.seq.{os.getpid()}")   # temporary file for Consed input
-        seq_writer = open(out_fname, 'w')
+        cons_seq = run_consed([seq if i == 0
+                               else run_edlib(seqs[0],
+                                              seq,
+                                              mode="glocal",
+                                              cyclic=True,
+                                              return_seq=True)["seq"]
+                               for i, seq in enumerate(seqs)],
+                              parallel=True)
 
-        # Output the first sequence as seed for consensus
-        seed_seq = seqs[0]
-        seq_writer.write(f"{seed_seq}\n")
-
-        for seq in seqs[1:]:
-            seq = seq * 2   # duplicated target sequence for a proxy of cyclic alignment
-            alignment = run_edlib(seed_seq, seq, mode="glocal")
-            #print(alignment["start"], alignment["end"], len(seq)/2)
-            seq = seq[alignment["start"]:alignment["end"]]   # mapped area
-            seq_writer.write(f"{seq}\n")
-
-        seq_writer.close()
-        #logger.debug(f"Wrote seqs: {read_id}({path_id})")   # XXX: inserting this makes code works?
-
-        consensus_seq = run_command(f"consed {out_fname}").replace('\n', '')
-        if len(consensus_seq) == 0 or consensus_seq[0] == 'W' or consensus_seq[0] == '*':
-            logger.debug(f"Strange Consed output: {read_id}({path_id}) {out_fname}\n{consensus_seq}")
-            return None
-        else:
-            logger.debug(f"Consed successed: {read_id}({path_id})")
-            return (read_id, path_id, consensus_seq)
+        return (read_id, path_id, cons_seq)
 
     def take_intra_consensus_parallel(self, min_n_units, n_core):
         exe_pool = Pool(n_core)
@@ -76,10 +60,10 @@ class Peak:
 
         # TODO: divide into homogeneous TR and heterogeneous TR....
 
-        tasks = [[read_id, path_id, list(df_path["sequence"]), "tmp"]
+        tasks = [[read_id, path_id, list(df_path["sequence"])]
                  for read_id, df_read in self.raw_units.groupby("read_id")
                  for path_id, df_path in df_read.groupby("path_id")
-                 if len(df_path) >= min_n_units]
+                 if df_path.shape[0] >= min_n_units]
 
         logger.debug(f"Scattering tasks with {n_core} cores")
 
@@ -100,9 +84,7 @@ class Peak:
                                                                "sequence"))
 
     def adjust_two_units(self, seed, seq):   # allow only forward-forward
-        seq = seq * 2
-        alignment = run_edlib(seed, seq, mode="glocal")
-        return seq[alignment["start"]:alignment["end"]]
+        return run_edlib(seed, seq, mode="glocal", cyclic=True, return_seq=True)["seq"]
 
     def filter_master_units(self, redundant_threshold=0.05, similar_threshold=0.2):
         """
@@ -129,14 +111,14 @@ class Peak:
         strand = np.zeros((n_master, n_master), dtype='int')    # 0 for forward, 1 for revcomp
         del_row = []
         for i in range(n_master - 1):
-            query = self.master_units["sequence"][i]
             for j in range(i + 1, n_master):
-                target = self.master_units["sequence"][j] * 2
-                alignment_f = run_edlib(query, target, mode='glocal')
-                alignment_rc = run_edlib(query, revcomp(target), mode='glocal')
-                dm[i, j] = dm[j, i] = min([alignment_f["diff"], alignment_rc["diff"]])
-                if alignment_f["diff"] > alignment_rc["diff"]:
-                    strand[i, j] = strand[j, i] = 1
+                align = run_edlib(self.master_units["sequence"][i],
+                                  self.master_units["sequence"][j],
+                                  mode="glocal",
+                                  revcomp=True,
+                                  cyclic=True)
+                dm[i, j] = dm[j, i] = align["diff"]
+                strand[i, j] = strand[j, i] = align["strand"]
                 if dm[i, j] < redundant_threshold:
                     if self.master_units["cluster_size"][i] >= self.master_units["cluster_size"][j]:
                         del_row.append(j)
@@ -171,10 +153,12 @@ class Peak:
             logger.debug(f"rev: {revs}")
             for rev in revs:   # strand
                 self.master_units.loc[rev, "sequence"] = revcomp(self.master_units.loc[rev, "sequence"])
+                strand[rev, :] = 1 - strand[rev, :]
+                strand[:, rev] = 1 - strand[:, rev]
             for node in nodes[1:]:   # revcomp
                 self.master_units.loc[node, "sequence"] = self.adjust_two_units(self.master_units.loc[seed, "sequence"],
-                                                                                self.master_units.loc[node, "sequence"])
-        logger.debug(f"\n{self.master_units}")
+                                                                                self.master_units.loc[node, "sequence"])   # TODO: simply running and replacing to run_edlib(return_seq=True, return_seq_diff_th=similar_threshold)["seq"] for each row is enough?
+        logger.debug(f"\n{self.master_units}\ndist mat:\n{dm}\nstrand:\n{strand}")
 
     def construct_master_units(self, min_n_units, n_core):
         """
