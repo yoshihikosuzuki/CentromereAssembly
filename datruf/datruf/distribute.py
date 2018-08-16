@@ -34,10 +34,10 @@ def main():
                                f"{args.las_file}"])
 
             if args.job_scheduler == "sge":
-                script = sge_nize(script,
+                script = sge_nize(script,   # TODO: use * oprater
                                   job_name="run_datruf",
                                   n_core=args.n_core,
-                                  sync=False)
+                                  wait=False)
             elif args.job_scheduler == "slurm":
                 script = slurm_nize(script,
                                     job_name="run_datruf",
