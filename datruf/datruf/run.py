@@ -165,7 +165,10 @@ def main():
             return
         trs_all, units_all = ret
     else:
-        r_tmp = Runner(args)   # only for the setting of dbids
+        # First of all, generate *_dump files if not exist
+        r_tmp = Runner(args)
+        r_tmp._check_dump()
+        # Also obtain start/end read IDs in the whole data
         start_dbid = r_tmp.start_dbid
         end_dbid = r_tmp.end_dbid
         del r_tmp
