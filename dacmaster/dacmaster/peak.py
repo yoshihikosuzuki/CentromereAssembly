@@ -3,9 +3,6 @@ import copy
 import numpy as np
 import pandas as pd
 import networkx as nx
-from sklearn.neighbors import KernelDensity
-from scipy.spatial.distance import pdist, squareform
-from scipy.cluster.hierarchy import linkage, dendrogram
 from interval import interval
 from logzero import logger
 from multiprocessing import Pool
@@ -24,64 +21,74 @@ plt.style.use('ggplot')
 
 
 class Peak:
-    def __init__(self, peak_id, N, unit_len, density, start_len, end_len, raw_units):
+    """
+    Description of the instance variables:
+      <peak_id>      : int              : peaks[peak_id] should be itself in run.py
+      <N>            : int              : num of merged peaks inside this peak (1 if an isolated single peak)
+      <unit_len>     : list(int)        : unit length for each merged peak
+      <density>      : list(float)      : density for each merged peak
+      <min_len>      : int              : min unit length in this peak
+      <max_len>      : int              : max unit length in this peak
+
+      <reads>        : pd.df            : # TODO: let this include encodings?
+
+      <raw_units>    : pd.df            : units longer than <min_len> and shorter than <max_len>
+      <cons_units>   : pd.df            : intra-TR consensus units
+      <master_units> : pd.df            : initial, chromosome- or large scale structure-level template
+                                          sequences for all units whose start/end positions are adjusted
+      <repr_units>   : pd.df            : 
+
+      <cl_master>    : ClusteringSeqs   : perform clustering of <raw_units> to construct master units
+      <cl_repr>      : ClusteringSeqs   : 
+      <cl_unit>      : ClusteringVarMat :
+    """
+
+    def __init__(self, peak_id, N, unit_len, density, min_len, max_len, raw_units):
         self.peak_id = peak_id
-        self.N = N   # num of merged peaks inside this peak (1 if an independent peak)
-        self.unit_len = unit_len   # unit length for each merged peak   # NOTE: list
-        self.density = density   # density for each merged peak   # NOTE: list
-        self.start_len = start_len   # min unit length in this peak
-        self.end_len = end_len   # max unit length in this peak
-        self.raw_units = raw_units   # longer than <start_len> and shorter than <end_len>   # NOTE: pandas dataframe
+        self.N = N
+        self.unit_len = unit_len
+        self.density = density
+        self.min_len = min_len
+        self.max_len = max_len
+        self.raw_units = raw_units
 
-    def take_consensus_cyclic_parallel(self, args):
-        """
-        Return consensus sequence of the given sequences using Consed.
-        First one will be the seed, and cyclic alignment is used in the mapping of other ones to it.
-        This requires <out_dir> for a temporary place of the Consed input file.
-        """
-
+    def _take_intra_consensus(self, args):
         read_id, path_id, seqs = args
+        return (read_id,
+                path_id,
+                run_consed([seq if i == 0
+                            else run_edlib(seqs[0],
+                                           seq,
+                                           mode="glocal",
+                                           cyclic=True,
+                                           return_seq=True)["seq"]
+                            for i, seq in enumerate(seqs)],
+                           parallel=True))
 
-        cons_seq = run_consed([seq if i == 0
-                               else run_edlib(seqs[0],
-                                              seq,
-                                              mode="glocal",
-                                              cyclic=True,
-                                              return_seq=True)["seq"]
-                               for i, seq in enumerate(seqs)],
-                              parallel=True)
-
-        return (read_id, path_id, cons_seq)
-
-    def take_intra_consensus_parallel(self, min_n_units, n_core):
-        exe_pool = Pool(n_core)
-
-        # TODO: add a filter of minimum coverage in the read
-
-        # TODO: divide into homogeneous TR and heterogeneous TR....
+    def take_intra_consensus(self, min_n_units, n_core):
+        # TODO: divide into homogeneous TR and heterogeneous TR?
 
         tasks = [[read_id, path_id, list(df_path["sequence"])]
                  for read_id, df_read in self.raw_units.groupby("read_id")
                  for path_id, df_path in df_read.groupby("path_id")
-                 if df_path.shape[0] >= min_n_units]
+                 if df_path.shape[0] >= min_n_units]   # filter by min. num. of units in a TR   # TODO: add a filter of minimum coverage in the read
 
-        logger.debug(f"Scattering tasks with {n_core} cores")
-
-        self.units_consensus = {}   # intra-TR consensus units
+        self.cons_units = {}
         index = 0
-        for ret in exe_pool.imap(self.take_consensus_cyclic_parallel, tasks):
+        logger.debug(f"Scattering tasks with {n_core} cores")
+        exe_pool = Pool(n_core)
+        for ret in exe_pool.imap(self._take_intra_consensus, tasks):
             if ret is not None:
-                self.units_consensus[index] = ret
+                self.cons_units[index] = ret
                 index += 1
-
         logger.debug("Finished all tasks")
         exe_pool.close()
 
-        self.units_consensus = pd.DataFrame.from_dict(self.units_consensus,
-                                                      orient="index",
-                                                      columns=("read_id",
-                                                               "path_id",
-                                                               "sequence"))
+        self.cons_units = pd.DataFrame.from_dict(self.cons_units,
+                                                 orient="index",
+                                                 columns=("read_id",
+                                                          "path_id",
+                                                          "sequence"))
 
     def adjust_two_units(self, seed, seq):   # allow only forward-forward
         return run_edlib(seed, seq, mode="glocal", cyclic=True, return_seq=True)["seq"]
@@ -96,7 +103,7 @@ class Peak:
         del_row = []
         for index, df in self.master_original.iterrows():
             cluster_id, cluster_size, skip_count, seq = df
-            if cluster_size < self.clustering.N * 0.01:   # too small cluster
+            if cluster_size < self.cl_master.N * 0.01:   # too small cluster
                 del_row.append(index)
             elif len(seq) == 0 or seq[0] in ['W', '*']:   # strange consensus seq
                 del_row.append(index)
@@ -163,37 +170,29 @@ class Peak:
     def construct_master_units(self, min_n_units, n_core):
         """
         From all units in a peak, construct a set of "master units".
-        The main purpose of this task rather than direct construction of
-        "representative units" is to fix the boundaries of the raw units in
-        PacBio reads. In other words, master units have a role of "phase
-        adjustment" among the units.
-
-        However, every two units are not necessarily similar to each other.
-        Since phase adjustment would become nonsense if intra-"master class"
-        sequence diversity is too high, we must construct not a single master
-        unit but a set of several master units in general. We expect that each
-        master unit roughly corresponds to each chromosome in the genome.
-        Therefore, we can say that construction of master units is most basic
-        (approximately chromosome-level) characterization of the tandem repeat
-        units.
+        The main purpose here is to adjust and fix the boundaries of the raw
+        units in the reads. In other words, master units play a role of "phase
+        adjustment" among the units. As side effect, these master units play
+        another role of large scale-level (almost chromosome-level) segregation
+        of the units.
         """
 
         # Calculate intra-TR consensus unit for each TR
-        if not hasattr(self, "units_consensus"):
+        if not hasattr(self, "cons_units"):
             logger.info("Starting taking intra-TR consensus")
-            self.take_intra_consensus_parallel(min_n_units, n_core)
+            self.take_intra_consensus(min_n_units, n_core)
             logger.info("Finished intra-TR consensus")
 
         # Cluster the intra-TR consensus units
-        if not hasattr(self, "clustering"):
-            self.clustering = ClusteringSeqs(self.units_consensus["sequence"])
+        if not hasattr(self, "cl_master"):
+            self.cl_master = ClusteringSeqs(self.cons_units["sequence"])
         logger.info("Starting hierarchical clustering")
-        self.clustering.cluster_hierarchical(n_core=n_core)
-        #self.clustering.cluster_greedy()   # too greedy way
+        self.cl_master.cluster_hierarchical(n_core=n_core)
+        #self.cl_master.cluster_greedy()   # too greedy way
         logger.info("Finished hierarchical clustering")
 
         # Generate master units
-        self.master_original = self.clustering.generate_consensus()   # NOTE: dataframe
+        self.master_original = self.cl_master.generate_consensus()   # NOTE: dataframe
         logger.debug(f"\n{self.master_original}")
         # remove strange sequences and redundancy
         # after that, start-position adjustment and strand adjustment of close seqs
@@ -230,6 +229,8 @@ class PeaksFinder:
         """
         Calculate unit length distribution smoothed by kernel density estimation.
         """
+
+        from sklearn.neighbors import KernelDensity
 
         self.unit_lens = np.array(self.units["length"])
 
