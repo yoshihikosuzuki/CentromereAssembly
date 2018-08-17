@@ -31,17 +31,26 @@ class Peak:
       <max_len>      : int              : max unit length in this peak
 
       <reads>        : pd.df            : # TODO: let this include encodings?
+        [read_id, sequence]
 
-      <raw_units>    : pd.df            : units longer than <min_len> and shorter than <max_len>
-      <cons_units>   : pd.df            : intra-TR consensus units
-      <master_units> : pd.df            : initial, chromosome- or large scale structure-level template
-                                          sequences for all units whose start/end positions are adjusted
-      <repr_units>   : pd.df            : 
+      <raw_units>    : pd.df            : unsynchronized raw units between <min_len> and <max_len> bp
+        [read_id, path_id, start, end, length]
+      <cons_units>   : pd.df            : unsynchronized intra-TR consensus units
+        [read_id, path_id, length, sequence]
+      <master_units> : pd.df            : synchronized, global-level representative units
+        [master_id, cluster_id, cluster_size, n_bad_align, length, sequence]
+      <repr_units>   : pd.df            : synchronized, local-level representative units
+        [repr_id, cluster_id, cluster_size, length, sequence]
+      <encodings>    : pd.df            : synchronized raw units   # TODO: separate into master_encodings and repr_encodings?
 
       <cl_master>    : ClusteringSeqs   : perform clustering of <raw_units> to construct master units
       <cl_repr>      : ClusteringSeqs   : 
       <cl_unit>      : ClusteringVarMat :
     """
+
+    # TODO:
+    # func to load <reads>
+    # remove unit_id and sequence columns in <raw_units>
 
     def __init__(self, peak_id, N, unit_len, density, min_len, max_len, raw_units):
         self.peak_id = peak_id
