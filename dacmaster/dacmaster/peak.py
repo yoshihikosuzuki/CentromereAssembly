@@ -15,7 +15,8 @@ from .clustering import ClusteringSeqs
 
 #from BITS.utils import run_command
 from BITS.seq import revcomp
-from BITS.run import run_edlib, run_consed
+from BITS.run import run_edlib
+import consed
 
 plt.style.use('ggplot')
 
@@ -65,14 +66,13 @@ class Peak:
         read_id, path_id, seqs = args
         return (read_id,
                 path_id,
-                run_consed([seq if i == 0
-                            else run_edlib(seqs[0],
-                                           seq,
-                                           mode="glocal",
-                                           cyclic=True,
-                                           return_seq=True)["seq"]
-                            for i, seq in enumerate(seqs)],
-                           parallel=True))
+                consed.consensus([seq if i == 0
+                                  else run_edlib(seqs[0],
+                                                 seq,
+                                                 mode="glocal",
+                                                 cyclic=True,
+                                                 return_seq=True)["seq"]
+                                  for i, seq in enumerate(seqs)]))
 
     def take_intra_consensus(self, min_n_units, n_core):
         # TODO: divide into homogeneous TR and heterogeneous TR?

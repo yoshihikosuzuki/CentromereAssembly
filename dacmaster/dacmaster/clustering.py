@@ -21,7 +21,8 @@ import plotly.graph_objs as go
 
 from BITS.utils import run_command
 from BITS.seq import revcomp
-from BITS.run import run_edlib, run_consed
+from BITS.run import run_edlib
+import consed
 
 from .dpmm import DPMM, DPMMCluster
 #from .dpmm_oldname import Clustering, Cluster
@@ -182,14 +183,13 @@ class ClusteringSeqs(Clustering):
         super().cluster_hierarchical(method, criterion, threshold)
 
     def _take_consensus(self, seqs, skip_threshold):
-        return (run_consed([seq if i == 0
-                            else run_edlib(seqs.iloc[0],
-                                           seq,
-                                           mode="glocal",
-                                           cyclic=True,
-                                           return_seq=True)["seq"]
-                            for i, seq in enumerate(seqs)]),
-                0)
+        return (consed.consensus([seq if i == 0
+                                  else run_edlib(seqs.iloc[0],
+                                                 seq,
+                                                 mode="glocal",
+                                                 cyclic=True,
+                                                 return_seq=True)["seq"]
+                                  for i, seq in enumerate(seqs)]))
 
     def generate_consensus(self, skip_threshold=0.15):
         """
