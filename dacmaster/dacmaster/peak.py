@@ -1,36 +1,20 @@
-import os
 import copy
 import numpy as np
 import pandas as pd
 import networkx as nx
 from interval import interval
 from logzero import logger
-from multiprocessing import Pool
-
 import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
 
 from .clustering import ClusteringSeqs
 
-#from BITS.utils import run_command
 from BITS.seq import revcomp
 from BITS.run import run_edlib, run_consed
-#import consed
+from BITS.utils import NoDaemonPool
 
 plt.style.use('ggplot')
-
-import multiprocessing
-class NoDaemonProcess(multiprocessing.Process):
-    # make 'daemon' attribute always return False
-    def _get_daemon(self):
-        return False
-    def _set_daemon(self, value):
-        pass
-    daemon = property(_get_daemon, _set_daemon)
-
-class MyPool(multiprocessing.pool.Pool):
-    Process = NoDaemonProcess
 
 
 def __take_intra_consensus(args):
@@ -41,7 +25,8 @@ def __take_intra_consensus(args):
                                           mode="glocal",
                                           cyclic=True,
                                           return_seq=True)["seq"]
-                           for i, seq in enumerate(seqs)])
+                           for i, seq in enumerate(seqs)],
+                          n_iteration=2)
     
     if cons_seq == "":
         logger.warn(f"Could not take consensus @ {read_id}({path_id})")
@@ -110,16 +95,14 @@ class Peak:
         self.cons_units = {}
         index = 0
         logger.debug(f"Scattering tasks with {n_core} cores")
-        #exe_pool = Pool(n_core)
-        pool = MyPool(n_core)
-        for ret in pool.map(_take_intra_consensus, tasks_sub):
+        exe_pool = NoDaemonPool(n_core)
+        for ret in exe_pool.map(_take_intra_consensus, tasks_sub):
             logger.debug(f"Received")
             for r in ret:
                 self.cons_units[index] = r
                 index += 1
-        pool.close()
-        pool.join()
-        #exe_pool.close()
+        exe_pool.close()
+        exe_pool.join()
         logger.debug("Finished all tasks")
 
         self.cons_units = pd.DataFrame.from_dict(self.cons_units,

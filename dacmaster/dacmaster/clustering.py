@@ -4,7 +4,6 @@ import pickle
 import random
 from logzero import logger
 from collections import Counter
-from multiprocessing import Pool
 import numpy as np
 import pandas as pd
 from scipy.spatial.distance import pdist, squareform
@@ -14,14 +13,12 @@ from sklearn.mixture import GaussianMixture
 from sklearn.manifold import TSNE
 from sklearn.decomposition import NMF
 import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.offline as py
 import plotly.graph_objs as go
 
-from BITS.utils import run_command
 from BITS.seq import revcomp
-from BITS.run import run_edlib
-import consed
+from BITS.run import run_edlib, run_consed
+from BITS.utils import run_command, NoDaemonPool
 
 from .dpmm import DPMM, DPMMCluster
 #from .dpmm_oldname import Clustering, Cluster
@@ -184,8 +181,8 @@ class ClusteringSeqs(Clustering):
         if total > 0:
             tasks.append((s, self.N - 1, self.data))
 
-        exe_pool = Pool(n_core)
-        for ret in exe_pool.imap(_calc_dist_array, tasks):
+        exe_pool = NoDaemonPool(n_core)
+        for ret in exe_pool.map(_calc_dist_array, tasks):
             logger.debug("Received")
             for r in ret:
                 i, dist_array = r
@@ -204,13 +201,14 @@ class ClusteringSeqs(Clustering):
         super().cluster_hierarchical(method, criterion, threshold)
 
     def _take_consensus(self, seqs, skip_threshold):
-        return (consed.consensus([seq if i == 0
-                                  else run_edlib(seqs.iloc[0],
-                                                 seq,
-                                                 mode="glocal",
-                                                 cyclic=True,
-                                                 return_seq=True)["seq"]
-                                  for i, seq in enumerate(seqs)]),
+        return (run_consed([seq if i == 0
+                            else run_edlib(seqs.iloc[0],
+                                           seq,
+                                           mode="glocal",
+                                           cyclic=True,
+                                           return_seq=True)["seq"]
+                            for i, seq in enumerate(seqs)],
+                           n_iteration=3),
                 0)
 
     def generate_consensus(self, skip_threshold=0.15):
