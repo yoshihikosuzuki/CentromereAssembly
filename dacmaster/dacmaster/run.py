@@ -18,19 +18,19 @@ def load_precomputed(precomputed):
              for p in precomputed["peaks"]]
 
     # These data below take time to calculate, thus re-use if previous one is available
-    if "units_consensus" in precomputed:
-        for i, data in enumerate(precomputed["units_consensus"]):
+    if "cons_units" in precomputed:
+        for i, data in enumerate(precomputed["cons_units"]):
             if data is not None:
-                setattr(peaks[i], "units_consensus", data)
-                setattr(peaks[i], "clustering", ClusteringSeqs(peaks[i].units_consensus["sequence"]))
+                setattr(peaks[i], "cons_units", data)
+                setattr(peaks[i], "cl_master", ClusteringSeqs(peaks[i].cons_units["sequence"]))
     if "dist_matrix" in precomputed:   # TODO: rename?
         for i, data in enumerate(precomputed["dist_matrix"]):
             if data is not None:
-                setattr(peaks[i].clustering, "dist_matrix", data)
+                setattr(peaks[i].cl_master, "dist_matrix", data)
     if "hc_result_precomputed" in precomputed:
         for i, data in enumerate(precomputed["hc_result_precomputed"]):
             if data is not None:
-                setattr(peaks[i].clustering, "hc_result_precomputed", data)
+                setattr(peaks[i].cl_master, "hc_result_precomputed", data)
 
     return peaks
 
@@ -90,19 +90,19 @@ def main():
         #peak.construct_repr_units(n_core=args.n_core)
 
     # Update precomputed data (even when there is actually no update!)
-    precomputed["units_consensus"] = [peak.units_consensus
-                                      if hasattr(peak, "units_consensus")
+    precomputed["cons_units"] = [peak.cons_units
+                                      if hasattr(peak, "cons_units")
                                       else None
                                       for peak in peaks]
-    precomputed["dist_matrix"] = [peak.clustering.dist_matrix
-                                  if hasattr(peak, "clustering")
-                                  and hasattr(peak.clustering, "dist_matrix")
+    precomputed["dist_matrix"] = [peak.cl_master.dist_matrix
+                                  if hasattr(peak, "cl_master")
+                                  and hasattr(peak.cl_master, "dist_matrix")
                                   else None
                                   for peak in peaks]
-    precomputed["hc_result_precomputed"] = [peak.clustering.hc_result_precomputed
-                                            if hasattr(peak, "clustering")
-                                            and hasattr(peak.clustering, "hc_result_precomputed")
-                                            and len(peak.clustering.hc_result_precomputed) > 0
+    precomputed["hc_result_precomputed"] = [peak.cl_master.hc_result_precomputed
+                                            if hasattr(peak, "cl_master")
+                                            and hasattr(peak.cl_master, "hc_result_precomputed")
+                                            and len(peak.cl_master.hc_result_precomputed) > 0
                                             else None
                                             for peak in peaks]
     with open(args.precomputed_pkl, 'wb') as f:

@@ -21,7 +21,7 @@ import consed
 plt.style.use('ggplot')
 
 
-def _take_intra_consensus(args):
+def __take_intra_consensus(args):
     read_id, path_id, seqs = args
     cons_seq = consed.consensus([seq if i == 0
                                  else run_edlib(seqs[0],
@@ -37,6 +37,10 @@ def _take_intra_consensus(args):
         logger.debug(f"Finished @ {read_id}({path_id})")
 
     return (read_id, path_id, cons_seq)
+
+
+def _take_intra_consensus(args_list):
+    return [__take_intra_consensus(args) for args in args_list]
 
 
 class Peak:
@@ -83,19 +87,23 @@ class Peak:
     def take_intra_consensus(self, min_n_units, n_core):
         # TODO: divide into homogeneous TR and heterogeneous TR?
 
-        tasks = [[read_id, path_id, list(df_path["sequence"])]
+        tasks = [(read_id, path_id, list(df_path["sequence"]))
                  for read_id, df_read in self.raw_units.groupby("read_id")
                  for path_id, df_path in df_read.groupby("path_id")
                  if df_path.shape[0] >= min_n_units]   # filter by min. num. of units in a TR   # TODO: add a filter of minimum coverage in the read
+
+        n_sub = -(-len(tasks) // n_core)   # num. of tasks for each core
+        tasks_sub = [tasks[i * n_sub:(i + 1) * n_sub - 1] for i in range(n_core)]
 
         self.cons_units = {}
         index = 0
         logger.debug(f"Scattering tasks with {n_core} cores")
         exe_pool = Pool(n_core)
-        for ret in exe_pool.imap(_take_intra_consensus, tasks):
-            logger.debug(f"Received {ret[0]}({ret[1]})")
-            self.cons_units[index] = ret
-            index += 1
+        for ret in exe_pool.imap(_take_intra_consensus, tasks_sub):
+            logger.debug(f"Received")
+            for r in ret:
+                self.cons_units[index] = r
+                index += 1
         exe_pool.close()
         logger.debug("Finished all tasks")
 
