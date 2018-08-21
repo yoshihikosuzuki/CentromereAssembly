@@ -120,6 +120,9 @@ class Peak:
             sys.stdout.flush()
             sys.stderr.flush()
             for r in ret:
+                logger.debug(f"Insert {r[0]}({r[1]})")
+                sys.stdout.flush()
+                sys.stderr.flush()
                 self.cons_units[index] = r
                 index += 1
         exe_pool.close()
