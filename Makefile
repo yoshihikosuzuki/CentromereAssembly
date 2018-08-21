@@ -19,7 +19,7 @@ N_CORE_DATRUF = 4
 
 # for damaster
 MIN_N_UNITS = 10
-N_CORE_DAMASTER = 24
+N_CORE_DACMASTER = 1
 
 #####################
 
@@ -51,22 +51,22 @@ TAN.$(DB_PREFIX).las: $(DB_PREFIX).db
 
 ## Run datruf
 
-datruf_result datruf_units.fasta: $(DB_PREFIX).db TAN.$(DB_PREFIX).las
+datruf_result datruf_units: $(DB_PREFIX).db TAN.$(DB_PREFIX).las
 	datruf_run_distribute.py -n $(N_CORE_DATRUF) -p $(N_DISTRIBUTE) -j $(JOB_SCHEDULER) -c $(SUBMIT_JOB) $^
 
 
 ## Run dacmaster
 
-peaks.pkl: datruf_units.fasta
-        echo "damaster_run.py -m $(MIN_N_UNITS) -n $(N_CORE_DAMASTER) -D $^" > run_damaster.sh
-        python -m BITS.$(JOB_SCHEDULER)_nize run_damaster.sh job_name="run_damaster" n_core=$(N_CORE_DAMASTER) wait=False
-        $(SUBMIT_JOB) run_damaster.sh.$(JOB_SCHEDULER)
+peaks.pkl: datruf_units
+	echo "dacmaster_run.py -m $(MIN_N_UNITS) -n $(N_CORE_DACMASTER) -D -p precomputed.pkl $^" > run_dacmaster.sh
+	python -m BITS.$(JOB_SCHEDULER)_nize run_dacmaster.sh job_name="run_dacmaster" n_core=$(N_CORE_DACMASTER) wait=False
+	$(SUBMIT_JOB) run_dacmaster.sh.$(JOB_SCHEDULER)
 
 
 ## Targets
 
-datruf: $(DB_OBJ) TAN.$(DB_PREFIX).las datruf_units.fasta
-damaster: peaks.pkl
+datruf: $(DB_OBJ) TAN.$(DB_PREFIX).las datruf_units
+dacmaster: peaks.pkl
 
 clean_datruf:
 	rm datruf_* run_datruf.* finalize_datruf.sh sbatch*
