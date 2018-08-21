@@ -95,6 +95,9 @@ def main():
                                      if hasattr(peak, "cons_units")
                                      else None
                                      for peak in peaks]
+        with open(args.precomputed_pkl, 'wb') as f:
+            pickle.dump(precomputed, f)
+        logger.info(f"Saved consensus units to {args.precomputed_pkl}")
 
         # Cluster the intra-TR consensus units
         if not hasattr(peak, "cl_master"):
@@ -115,6 +118,9 @@ def main():
                                                 and len(peak.cl_master.hc_result_precomputed) > 0
                                                 else None
                                                 for peak in peaks]
+        with open(args.precomputed_pkl, 'wb') as f:
+            pickle.dump(precomputed, f)
+        logger.info(f"Saved clustering data to {args.precomputed_pkl}")
 
         # Generate master units
         peak.master_original = peak.cl_master.generate_consensus()
