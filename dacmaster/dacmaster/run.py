@@ -81,7 +81,47 @@ def main():
         ## ------------------------------------ ##
 
         # Cluster intra-TR consensus unit sequences
-        peak.construct_master_units(args.min_n_units, args.n_core)
+        #peak.construct_master_units(args.min_n_units, args.n_core)
+
+        # Calculate intra-TR consensus unit for each TR
+        if not hasattr(peak, "cons_units"):
+            logger.info("Starting taking intra-TR consensus")
+            peak.take_intra_consensus(args.min_n_units, args.n_core)
+            logger.info("Finished intra-TR consensus")
+
+        # Save data for each loop
+        precomputed["cons_units"] = [peak.cons_units
+                                     if hasattr(peak, "cons_units")
+                                     else None
+                                     for peak in peaks]
+
+        # Cluster the intra-TR consensus units
+        if not hasattr(peak, "cl_master"):
+            peak.cl_master = ClusteringSeqs(peak.cons_units["sequence"])
+        logger.info("Starting hierarchical clustering")
+        peak.cl_master.cluster_hierarchical(n_core=args.n_core)
+        logger.info("Finished hierarchical clustering")
+
+        # Save data for each loop
+        precomputed["dist_matrix"] = [peak.cl_master.dist_matrix
+                                      if hasattr(peak, "cl_master")
+                                      and hasattr(peak.cl_master, "dist_matrix")
+                                      else None
+                                      for peak in peaks]
+        precomputed["hc_result_precomputed"] = [peak.cl_master.hc_result_precomputed
+                                                if hasattr(peak, "cl_master")
+                                                and hasattr(peak.cl_master, "hc_result_precomputed")
+                                                and len(peak.cl_master.hc_result_precomputed) > 0
+                                                else None
+                                                for peak in peaks]
+
+        # Generate master units
+        peak.master_original = peak.cl_master.generate_consensus()
+        logger.debug(f"\n{peak.master_original}")
+        # remove strange sequences and redundancy
+        # after that, start-position adjustment and strand adjustment of close seqs
+        peak.filter_master_units()
+        logger.info("Finished cluster consensus")
 
         ## -------------------------------------------- ##
         ## Step 3. Construction of representative units ##
@@ -89,22 +129,6 @@ def main():
 
         #peak.construct_repr_units(n_core=args.n_core)
 
-    # Update precomputed data (even when there is actually no update!)
-    precomputed["cons_units"] = [peak.cons_units
-                                      if hasattr(peak, "cons_units")
-                                      else None
-                                      for peak in peaks]
-    precomputed["dist_matrix"] = [peak.cl_master.dist_matrix
-                                  if hasattr(peak, "cl_master")
-                                  and hasattr(peak.cl_master, "dist_matrix")
-                                  else None
-                                  for peak in peaks]
-    precomputed["hc_result_precomputed"] = [peak.cl_master.hc_result_precomputed
-                                            if hasattr(peak, "cl_master")
-                                            and hasattr(peak.cl_master, "hc_result_precomputed")
-                                            and len(peak.cl_master.hc_result_precomputed) > 0
-                                            else None
-                                            for peak in peaks]
     with open(args.precomputed_pkl, 'wb') as f:
         pickle.dump(precomputed, f)
     logger.info(f"Saved heavy data in Peak instances to {args.precomputed_pkl}")
