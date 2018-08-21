@@ -49,6 +49,8 @@ def __take_intra_consensus(args):
         logger.warn(f"Could not take consensus @ {read_id}({path_id})")
     else:
         logger.debug(f"Finished @ {read_id}({path_id})")
+    sys.stdout.flush()
+    sys.stderr.flush()
 
     return (read_id, path_id, cons_seq)
 
@@ -115,6 +117,8 @@ class Peak:
         exe_pool = NoDaemonPool(n_core)
         for ret in exe_pool.map(_take_intra_consensus, tasks_sub):
             logger.debug(f"Received")
+            sys.stdout.flush()
+            sys.stderr.flush()
             for r in ret:
                 self.cons_units[index] = r
                 index += 1
