@@ -15,22 +15,34 @@ from .clustering import ClusteringSeqs
 
 #from BITS.utils import run_command
 from BITS.seq import revcomp
-from BITS.run import run_edlib
-import consed
+from BITS.run import run_edlib, run_consed
+#import consed
 
 plt.style.use('ggplot')
+
+import multiprocessing
+class NoDaemonProcess(multiprocessing.Process):
+    # make 'daemon' attribute always return False
+    def _get_daemon(self):
+        return False
+    def _set_daemon(self, value):
+        pass
+    daemon = property(_get_daemon, _set_daemon)
+
+class MyPool(multiprocessing.pool.Pool):
+    Process = NoDaemonProcess
 
 
 def __take_intra_consensus(args):
     read_id, path_id, seqs = args
-    cons_seq = consed.consensus([seq if i == 0
-                                 else run_edlib(seqs[0],
-                                                seq,
-                                                mode="glocal",
-                                                cyclic=True,
-                                                return_seq=True)["seq"]
-                                 for i, seq in enumerate(seqs)])
-
+    cons_seq = run_consed([seq if i == 0
+                           else run_edlib(seqs[0],
+                                          seq,
+                                          mode="glocal",
+                                          cyclic=True,
+                                          return_seq=True)["seq"]
+                           for i, seq in enumerate(seqs)])
+    
     if cons_seq == "":
         logger.warn(f"Could not take consensus @ {read_id}({path_id})")
     else:
@@ -98,13 +110,16 @@ class Peak:
         self.cons_units = {}
         index = 0
         logger.debug(f"Scattering tasks with {n_core} cores")
-        exe_pool = Pool(n_core)
-        for ret in exe_pool.imap(_take_intra_consensus, tasks_sub):
+        #exe_pool = Pool(n_core)
+        pool = MyPool(n_core)
+        for ret in pool.map(_take_intra_consensus, tasks_sub):
             logger.debug(f"Received")
             for r in ret:
                 self.cons_units[index] = r
                 index += 1
-        exe_pool.close()
+        pool.close()
+        pool.join()
+        #exe_pool.close()
         logger.debug("Finished all tasks")
 
         self.cons_units = pd.DataFrame.from_dict(self.cons_units,
