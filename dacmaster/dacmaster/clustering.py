@@ -122,14 +122,10 @@ class Clustering:
         plt.show()
 
 
-def __calc_dist_array(args):
+def __calc_dist_array(i, data):
     """
     This is just for parallelization of distance matrix calculation
     """
-
-    i, data = args
-
-    logger.debug(f"Started @ row {i}, columns {i + 1}-{data.shape[0] - 1}")
 
     # row <i> in the distance matrix
     dist_array = np.array([run_edlib(data[i],
@@ -144,8 +140,10 @@ def __calc_dist_array(args):
     return (i, dist_array)   # TODO: how to do "one line + debug message"...?
 
 
-def _calc_dist_array(args_list):
-    return [__calc_dist_array(args) for args in args_list]
+def _calc_dist_array(args):
+    s, t, data = args
+    logger.debug(f"Starting row {s}-{t}")
+    return [__calc_dist_array(i, data) for i in range(s, t)]
 
 
 class ClusteringSeqs(Clustering):
@@ -171,12 +169,23 @@ class ClusteringSeqs(Clustering):
 
         self.dist_matrix = np.zeros((self.N, self.N), dtype='float32')
 
-        tasks =  [(i, self.data) for i in np.arange(self.N - 1)]
-        n_sub = -(-len(tasks) // n_core)
-        tasks_sub = [tasks[i * n_sub:(i + 1) * n_sub] for i in range(n_sub)]
+        # Split jobs while considering that weight is different for each row
+        #tasks = [i for i in np.arange(self.N - 1)]
+        tasks = []
+        n_sub = -(-((self.N - 1) * (self.N - 1)) // n_core / 2)
+        s = 0
+        total = 0
+        for t in range(self.N - 1):
+            total += self.N - 1 - t
+            if total >= n_sub:
+                tasks.append((s, t + 1, self.data))
+                s = t + 1
+                total = 0
+        if total > 0:
+            tasks.append((s, self.N - 1, self.data))
 
         exe_pool = Pool(n_core)
-        for ret in exe_pool.imap(_calc_dist_array, tasks_sub):
+        for ret in exe_pool.imap(_calc_dist_array, tasks):
             logger.debug("Received")
             for r in ret:
                 i, dist_array = r
