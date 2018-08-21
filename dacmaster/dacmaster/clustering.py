@@ -18,7 +18,8 @@ import plotly.graph_objs as go
 
 from BITS.seq import revcomp
 from BITS.run import run_edlib, run_consed
-from BITS.utils import run_command, NoDaemonPool
+from BITS.utils import run_command
+from multiprocessing import Pool
 
 from .dpmm import DPMM, DPMMCluster
 #from .dpmm_oldname import Clustering, Cluster
@@ -181,8 +182,8 @@ class ClusteringSeqs(Clustering):
         if total > 0:
             tasks.append((s, self.N - 1, self.data))
 
-        exe_pool = NoDaemonPool(n_core)
-        for ret in exe_pool.map(_calc_dist_array, tasks):
+        exe_pool = Pool(n_core)
+        for ret in exe_pool.imap(_calc_dist_array, tasks):
             logger.debug("Received")
             for r in ret:
                 i, dist_array = r

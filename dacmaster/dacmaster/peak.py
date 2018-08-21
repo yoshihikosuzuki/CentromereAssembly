@@ -4,6 +4,9 @@ import pandas as pd
 import networkx as nx
 from interval import interval
 from logzero import logger
+import multiprocessing
+from multiprocessing import Pool
+
 import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
@@ -12,9 +15,22 @@ from .clustering import ClusteringSeqs
 
 from BITS.seq import revcomp
 from BITS.run import run_edlib, run_consed
-from BITS.utils import NoDaemonPool
+#from BITS.utils import NoDaemonPool
 
 plt.style.use('ggplot')
+
+
+class NoDaemonProcess(multiprocessing.Process):
+    # make 'daemon' attribute always return False
+    def _get_daemon(self):
+        return False
+    def _set_daemon(self, value):
+        pass
+    daemon = property(_get_daemon, _set_daemon)
+
+
+class MyPool(multiprocessing.pool.Pool):
+    Process = NoDaemonProcess
 
 
 def __take_intra_consensus(args):
@@ -95,7 +111,7 @@ class Peak:
         self.cons_units = {}
         index = 0
         logger.debug(f"Scattering tasks with {n_core} cores")
-        exe_pool = NoDaemonPool(n_core)
+        exe_pool = MyPool(n_core)
         for ret in exe_pool.map(_take_intra_consensus, tasks_sub):
             logger.debug(f"Received")
             for r in ret:
