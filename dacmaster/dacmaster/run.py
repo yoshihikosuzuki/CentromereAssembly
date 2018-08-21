@@ -1,3 +1,4 @@
+import os
 import argparse
 import copy
 import pickle
@@ -39,7 +40,7 @@ def main():
     args = load_args()
 
     # You can skip redundant heavy calculation by specifying precomputed pickle
-    if args.precomputed_pkl is not None:
+    if os.path.isfile(args.precomputed_pkl):
         logger.info(f"Loading precomputed data from {args.precomputed_pkl}")
         with open(args.precomputed_pkl, 'rb') as f:
             precomputed = pickle.load(f)
@@ -158,8 +159,8 @@ def load_args():
         "-p",
         "--precomputed_pkl",
         type=str,
-        default=None,
-        help=("Pickle file keeping precomputed variables. [None]"))
+        default="precomputed.pkl",
+        help=("Pickle file keeping precomputed variables. [precomputed.pkl]"))
 
     parser.add_argument(
         "-n",
