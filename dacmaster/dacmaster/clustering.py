@@ -203,6 +203,7 @@ class ClusteringSeqs(Clustering):
             for r in ret:
                 i, dist_array = r
                 self.dist_matrix[i, i + 1:] = self.dist_matrix[i + 1:, i] = dist_array
+                logger.debug(f"Inserted @ row {i}")
         exe_pool.close()
 
     def cluster_hierarchical(self, method="ward", criterion="distance", threshold=0.7, n_core=1):
