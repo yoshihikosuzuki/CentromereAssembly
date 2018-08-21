@@ -93,6 +93,7 @@ class Peak:
         logger.debug(f"Scattering tasks with {n_core} cores")
         exe_pool = Pool(n_core)
         for ret in exe_pool.imap(_take_intra_consensus, tasks):
+            logger.debug(f"Received {ret[0]}({ret[1]})")
             self.cons_units[index] = ret
             index += 1
         exe_pool.close()

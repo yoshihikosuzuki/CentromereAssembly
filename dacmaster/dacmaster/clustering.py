@@ -123,6 +123,28 @@ class Clustering:
         plt.show()
 
 
+def _calc_dist_array(args):
+    """
+    This is just for parallelization of distance matrix calculation
+    """
+
+    i, data = args
+
+    logger.debug(f"Started @ row {i}, columns {i + 1}-{data.shape[0] - 1}")
+
+    # row <i> in the distance matrix
+    dist_array = np.array([run_edlib(data[i],
+                                     data[j],
+                                     only_diff=True,
+                                     revcomp=True,
+                                     cyclic=True)
+                           for j in range(i + 1, data.shape[0])],
+                          dtype='float32')
+
+    logger.debug(f"Finished @ row {i}")
+    return (i, dist_array)   # TODO: how to do "one line + debug message"...?
+
+
 class ClusteringSeqs(Clustering):
     """
     Perform clustering of DNA sequences given.
@@ -136,26 +158,7 @@ class ClusteringSeqs(Clustering):
         self.cyclic = cyclic   # do cyclic alignment between two sequences
         self.revcomp = revcomp   # allow reverse complement when taking alignment
 
-    def calc_dist_array(self, i):
-        """
-        This is just for parallelization of distance matrix calculation
-        """
-
-        logger.debug(f"Started @ row {i}, columns {i + 1}-{self.N - 1}")
-
-        # row <i> in the distance matrix
-        dist_array = np.array([run_edlib(self.data[i],
-                                         self.data[j],
-                                         only_diff=True,
-                                         revcomp=True,
-                                         cyclic=True)
-                               for j in range(i + 1, self.N)],
-                              dtype='float32')
-
-        logger.debug(f"Finished @ row {i}")
-        return (i, dist_array)   # TODO: how to do "one line + debug message"...?
-
-    def calc_dist_mat(self, n_core=1):
+    def calc_dist_mat(self, n_core):
         """
         Calculate all-vs-all distance matrix between the sequences.
         Both cyclic alignment and reverse complement sequence are considered.
@@ -166,7 +169,7 @@ class ClusteringSeqs(Clustering):
         self.dist_matrix = np.zeros((self.N, self.N), dtype='float32')
 
         exe_pool = Pool(n_core)
-        for ret in exe_pool.imap(self.calc_dist_array, np.arange(self.N - 1)):
+        for ret in exe_pool.imap(_calc_dist_array, [(i, self.data) for i in np.arange(self.N - 1)]):
             i, dist_array = ret
             self.dist_matrix[i, i + 1:] = self.dist_matrix[i + 1:, i] = dist_array
         exe_pool.close()
