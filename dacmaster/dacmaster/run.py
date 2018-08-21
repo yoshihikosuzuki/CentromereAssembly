@@ -14,7 +14,7 @@ def load_precomputed(precomputed):
     # <precomputed["peaks"]> corresponds to <PeaksFinder.peaks>
     # Re-create Peak instances so that any modifications on Peak class would not affect loading
     # If any of these members are modified, re-claculate from the begining
-    peaks = [Peak(p.peak_id, p.N, p.unit_len, p.density, p.start_len, p.end_len, p.raw_units)
+    peaks = [Peak(p.peak_id, p.N, p.unit_len, p.density, p.min_len, p.max_len, p.raw_units)
              for p in precomputed["peaks"]]
 
     # These data below take time to calculate, thus re-use if previous one is available

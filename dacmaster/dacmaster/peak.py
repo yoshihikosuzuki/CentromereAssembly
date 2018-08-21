@@ -21,6 +21,24 @@ import consed
 plt.style.use('ggplot')
 
 
+def _take_intra_consensus(args):
+    read_id, path_id, seqs = args
+    cons_seq = consed.consensus([seq if i == 0
+                                 else run_edlib(seqs[0],
+                                                seq,
+                                                mode="glocal",
+                                                cyclic=True,
+                                                return_seq=True)["seq"]
+                                 for i, seq in enumerate(seqs)])
+
+    if cons_seq == "":
+        logger.warn(f"Could not take consensus @ {read_id}({path_id})")
+    else:
+        logger.debug(f"Finished @ {read_id}({path_id})")
+
+    return (read_id, path_id, cons_seq)
+
+
 class Peak:
     """
     Description of the instance variables:
@@ -62,18 +80,6 @@ class Peak:
         self.max_len = max_len
         self.raw_units = raw_units
 
-    def _take_intra_consensus(self, args):
-        read_id, path_id, seqs = args
-        return (read_id,
-                path_id,
-                consed.consensus([seq if i == 0
-                                  else run_edlib(seqs[0],
-                                                 seq,
-                                                 mode="glocal",
-                                                 cyclic=True,
-                                                 return_seq=True)["seq"]
-                                  for i, seq in enumerate(seqs)]))
-
     def take_intra_consensus(self, min_n_units, n_core):
         # TODO: divide into homogeneous TR and heterogeneous TR?
 
@@ -86,12 +92,11 @@ class Peak:
         index = 0
         logger.debug(f"Scattering tasks with {n_core} cores")
         exe_pool = Pool(n_core)
-        for ret in exe_pool.imap(self._take_intra_consensus, tasks):
-            if ret is not None:
-                self.cons_units[index] = ret
-                index += 1
-        logger.debug("Finished all tasks")
+        for ret in exe_pool.imap(_take_intra_consensus, tasks):
+            self.cons_units[index] = ret
+            index += 1
         exe_pool.close()
+        logger.debug("Finished all tasks")
 
         self.cons_units = pd.DataFrame.from_dict(self.cons_units,
                                                  orient="index",
