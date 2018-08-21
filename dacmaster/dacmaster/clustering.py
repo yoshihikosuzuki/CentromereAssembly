@@ -122,7 +122,7 @@ class Clustering:
         plt.show()
 
 
-def _calc_dist_array(args):
+def __calc_dist_array(args):
     """
     This is just for parallelization of distance matrix calculation
     """
@@ -142,6 +142,10 @@ def _calc_dist_array(args):
 
     logger.debug(f"Finished @ row {i}")
     return (i, dist_array)   # TODO: how to do "one line + debug message"...?
+
+
+def _calc_dist_array(args_list):
+    return [__calc_dist_array(args) for args in args_list]
 
 
 class ClusteringSeqs(Clustering):
@@ -167,10 +171,16 @@ class ClusteringSeqs(Clustering):
 
         self.dist_matrix = np.zeros((self.N, self.N), dtype='float32')
 
+        tasks =  [(i, self.data) for i in np.arange(self.N - 1)]
+        n_sub = -(-len(tasks) // n_core)
+        tasks_sub = [tasks[i * n_sub:(i + 1) * n_sub] for i in range(n_sub)]
+
         exe_pool = Pool(n_core)
-        for ret in exe_pool.imap(_calc_dist_array, [(i, self.data) for i in np.arange(self.N - 1)]):
-            i, dist_array = ret
-            self.dist_matrix[i, i + 1:] = self.dist_matrix[i + 1:, i] = dist_array
+        for ret in exe_pool.imap(_calc_dist_array, tasks_sub):
+            logger.debug("Received")
+            for r in ret:
+                i, dist_array = r
+                self.dist_matrix[i, i + 1:] = self.dist_matrix[i + 1:, i] = dist_array
         exe_pool.close()
 
     def cluster_hierarchical(self, method="ward", criterion="distance", threshold=0.7, n_core=1):
