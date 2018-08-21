@@ -189,7 +189,8 @@ class ClusteringSeqs(Clustering):
                                                  mode="glocal",
                                                  cyclic=True,
                                                  return_seq=True)["seq"]
-                                  for i, seq in enumerate(seqs)]))
+                                  for i, seq in enumerate(seqs)]),
+                0)
 
     def generate_consensus(self, skip_threshold=0.15):
         """
