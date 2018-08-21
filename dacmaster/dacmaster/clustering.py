@@ -150,12 +150,16 @@ def __calc_dist_array(i, data):
                           dtype='float32')
 
     logger.debug(f"Finished @ row {i}")
+    sys.stdout.flush()
+    sys.stderr.flush()
     return (i, dist_array)   # TODO: how to do "one line + debug message"...?
 
 
 def _calc_dist_array(args):
     s, t, data = args
     logger.debug(f"Starting row {s}-{t}")
+    sys.stdout.flush()
+    sys.stderr.flush()
     return [__calc_dist_array(i, data) for i in range(s, t)]
 
 
