@@ -1,9 +1,7 @@
+from dataclasses import dataclass
 import numpy as np
-import pandas as pd
-import networkx as nx
 from interval import interval
 from logzero import logger
-
 from BITS.utils import make_line, interval_len, subtract_interval
 
 
@@ -26,7 +24,9 @@ def calc_cover_set(datruf):
         for intvl in intersect.components:
             if interval_len(intvl) <= 500:
                 short_intervals |= intvl
-        intersect = subtract_interval(intersect, short_intervals, length_threshold=0)
+        intersect = subtract_interval(intersect,
+                                      short_intervals,
+                                      length_threshold=0)
 
         # Detect deletion around only 1 border
         flag_deletion = False
@@ -36,7 +36,9 @@ def calc_cover_set(datruf):
         # Outer TR, or more than 1 units are in the uncovered regions
         if (not flag_deletion and intersect != interval()) or (interval_len(intersect) >= 1.5 * (ab - bb)):
             cover_set.add((bb, ae, ab, be))    # NOTE: be careful with the order!
-            uncovered_intervals = subtract_interval(uncovered_intervals, interval[bb, ae], length_threshold=100)
+            uncovered_intervals = subtract_interval(uncovered_intervals,
+                                                    interval[bb, ae],
+                                                    length_threshold=100)
             if uncovered_intervals == interval():
                 break
 
@@ -76,25 +78,25 @@ def calc_min_cover_set(cover_set):
     return min_cover_set
 
 
+@dataclass
 class Alignment:
-    def __init__(self, aseq, bseq, symbol):
-        self.aseq = aseq
-        self.bseq = bseq
-        self.symbol = symbol
+    aseq: str
+    bseq: str
+    symbol: str
 
 
+@dataclass
 class Path:
     """
     Alignments whose paths are to be inspected. They normally belong to
     (minimum) cover set.
     """
 
-    def __init__(self, ab, ae, bb, be, alignment):
-        self.ab = ab
-        self.ae = ae
-        self.bb = bb
-        self.be = be
-        self.alignment = alignment   # entire alignment
+    ab: int
+    ae: int
+    bb: int
+    be: int
+    alignment: Alignment
 
     def split_alignment(self, plot=False, snake=False):
         # split entire alignment into all unit-vs-unit alignments
@@ -128,7 +130,7 @@ class Path:
         unit_lens = [len(unit_seq) for unit_seq in self.unit_seqs]
         if len(unit_lens) < 2:
             logger.warn(f"Num of units are less than 2!")
-            return (np.nan, np.nan)
+            return (0, np.nan)   # TODO: # XXX: this should be 1 because this region was indeed detected by datander
         else:
             cv = np.std(unit_lens, ddof=1) / np.mean(unit_lens)
             return (int(np.mean(unit_lens)), cv)
@@ -216,6 +218,8 @@ def trace_alignment(path, plot=False, snake=False):
 
 
 def take_consensus(unit_alignments):   # TODO: refactor though this will no longer be used
+    import networkx as nx
+
     aseqs = [x.aseq for x in unit_alignments]
     bseqs = [x.bseq for x in unit_alignments]
     symbols = [x.symbol for x in unit_alignments]

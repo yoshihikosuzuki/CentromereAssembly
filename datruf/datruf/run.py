@@ -1,14 +1,10 @@
-import argparse
-import os
+import os.path
 import numpy as np
 import pandas as pd
-from multiprocessing import Pool
 import logging
 import logzero
 from logzero import logger
-
 from BITS.utils import run_command
-
 from .io import load_dbdump, load_ladump, load_tr_intervals, load_alignments, load_paths
 from .core import calc_cover_set, calc_min_cover_set
 
@@ -134,7 +130,7 @@ class Runner():
                                               "end",
                                               "unit_count",
                                               "mean_unit_length",
-                                              "unit_cv"))
+                                              "unit_cv")).round(3)
         units = pd.DataFrame.from_dict(units,
                                        orient="index",
                                        columns=("read_id",
@@ -152,6 +148,8 @@ def run_runner(r):
 
 
 def main():
+    from multiprocessing import Pool
+
     args = load_args()
     n_core, out_main_fname, out_units_fname = args.n_core, args.out_main_fname, args.out_units_fname
     del args.n_core
@@ -212,8 +210,9 @@ def main():
 
 
 def load_args():
+    import argparse
     parser = argparse.ArgumentParser(
-        description="Report rough estimate of tandem repeat units in PacBio reads.")
+        description="Detect tandem repeat intervals and their unit sequences in PacBio reads.")
 
     parser.add_argument(
         "db_file",

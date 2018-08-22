@@ -1,13 +1,9 @@
-import os
-import networkx as nx
-from networkx.drawing.nx_agraph import graphviz_layout
+import os.path
 import matplotlib.pyplot as plt
 import matplotlib.image as img
 import plotly.offline as py
 import plotly.graph_objs as go
-
 from BITS.utils import run_command, make_line
-
 from .io import load_tr_intervals, load_alignments, load_paths
 from .core import calc_cover_set, calc_min_cover_set
 
@@ -244,6 +240,9 @@ class Viewer:
         py.iplot(go.Figure(data=[trace1, trace2], layout=layout))
 
     def consensus(self):
+        import networkx as nx
+        from networkx.drawing.nx_agraph import graphviz_layout
+
         self._load_paths()
 
         for path in self.paths:

@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 from matplotlib_venn import venn2, venn3
 import plotly.offline as py
 import plotly.graph_objs as go
-
 from BITS.utils import make_line, interval_len
 
 plt.style.use('ggplot')

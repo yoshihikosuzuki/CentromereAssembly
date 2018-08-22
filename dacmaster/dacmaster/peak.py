@@ -14,7 +14,8 @@ import plotly.graph_objs as go
 from .clustering import ClusteringSeqs
 
 from BITS.seq import revcomp
-from BITS.run import run_edlib, run_consed
+from BITS.run import run_edlib
+import consed
 
 plt.style.use('ggplot')
 
@@ -36,14 +37,14 @@ class NoDaemonPool(multiprocessing.pool.Pool):
 
 def __take_intra_consensus(args):
     read_id, path_id, seqs = args
-    cons_seq = run_consed([seq if i == 0
-                           else run_edlib(seqs[0],
-                                          seq,
-                                          mode="glocal",
-                                          cyclic=True,
-                                          return_seq=True)["seq"]
-                           for i, seq in enumerate(seqs)],
-                          n_iteration=2)
+    cons_seq = consed.consensus([seq if i == 0
+                                 else run_edlib(seqs[0],
+                                                seq,
+                                                mode="glocal",
+                                                cyclic=True,
+                                                return_seq=True)["seq"]
+                                 for i, seq in enumerate(seqs)],
+                                n_iter=2)
     
     if cons_seq == "":
         logger.warn(f"Could not take consensus @ {read_id}({path_id})")
@@ -178,10 +179,10 @@ class Peak:
         logger.debug(f"\ndist mat:\n{dm}\nstrand:\n{strand}")
         self.master_units = self.master_units.drop(del_row)
         self.master_units = self.master_units.reset_index(drop=True)
-        np.delete(dm, del_row, axis=0)
-        np.delete(dm, del_row, axis=1)
-        np.delete(strand, del_row, axis=0)
-        np.delete(strand, del_row, axis=1)
+        dm = np.delete(dm, del_row, axis=0)
+        dm = np.delete(dm, del_row, axis=1)
+        strand = np.delete(strand, del_row, axis=0)
+        strand = np.delete(strand, del_row, axis=1)
         logger.debug(f"After removing redundancy:\n{self.master_units}")
         logger.debug(f"\ndist mat:\n{dm}\nstrand:\n{strand}")
 

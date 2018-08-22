@@ -1,9 +1,8 @@
+from io import StringIO
 import re
 import numpy as np
 import pandas as pd
-from io import StringIO
 from logzero import logger
-
 from BITS.utils import run_command
 from .core import Alignment, Path
 
@@ -122,7 +121,7 @@ def convert_symbol(aseq, bseq, symbols):
             elif bseq[i] == '-':
                 symbol = "D"
             else:
-                symbol = "N"
+                symbol = "N"   # TODO: change to "X"
         converted += symbol
     return converted
 
@@ -173,7 +172,7 @@ def load_paths(datruf):
                 aseq += data
                 if '.' in data:
                     if counter == 0:
-                        prefix_cut = re.search(r'\.+', data).span()[1]
+                        prefix_cut = re.search(r'\.+', data).span()[1]   # TODO: avoid using re
                     else:
                         suffix_cut += len(data) - re.search(r'\.+', data).span()[0]   # there is a possibility that the "..." region spans 2 rows
             elif counter % 3 == 1:

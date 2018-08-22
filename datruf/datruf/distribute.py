@@ -1,12 +1,11 @@
-import argparse
 import numpy as np
 from logzero import logger
-
-from .run import Runner
 from BITS.utils import run_command, sge_nize, slurm_nize
 
 
 def main():
+    from .run import Runner
+
     args = load_args()
 
     # Use Runner instance just for some preparation of data
@@ -61,6 +60,7 @@ def main():
 
 
 def load_args():
+    import argparse
     parser = argparse.ArgumentParser(
         description="Distribute datruf_run.py jobs using a job scheduler.")
 
