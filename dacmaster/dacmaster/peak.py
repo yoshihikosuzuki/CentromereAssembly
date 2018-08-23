@@ -6,6 +6,8 @@ import networkx as nx
 from interval import interval
 from logzero import logger
 import multiprocessing
+from typing import List
+from dataclasses import dataclass, field, InitVar
 
 import matplotlib.pyplot as plt
 import plotly.offline as py
@@ -60,6 +62,7 @@ def _take_intra_consensus(args_list):
     return [__take_intra_consensus(args) for args in args_list]
 
 
+# TODO: use dataclass
 class Peak:
     """
     Description of the instance variables:
@@ -245,32 +248,32 @@ class Peak:
         logger.info("Finished cluster consensus")
 
 
+@dataclass(repr=False, eq=False)   # TODO: move to another file?
 class PeaksFinder:
-    def __init__(self,
-                 units_fname,
-                 min_len=50,   # peak length must be longer than this
-                 max_len=1000,   # must be shorter than this
-                 band_width=5,   # parameter for KDE
-                 min_density=0.001,   # threshold of peak hight
-                 deviation=0.1):   # units inside of "peak_len +- deviation %" are collected as Peak.units
+    """
+    Class for identifying peaks in raw unit length distribution using kernel density estimation.
+    """
 
-        if min_len < 50:
-            logger.warn(f"Specified minimum unit length ({min_len} bp) is "
-                        f"shorter than 50 bp, which is generally detection "
-                        f"threshold of datander & datruf!")
+    units_fname: InitVar[str] = "datruf_units"
+    min_len: int = 50   # only peaks longer than <min_len> and shorter than <max_len> will be found
+    max_len: int = 1000
+    band_width: int = 5   # param. for KDE
+    min_density: float = 0.001   # threshold for peaks
+    deviation: float = 0.1   # <peak_len> * (1 +- <deviation>) will be the range of each peak
 
-        self.units = pd.read_table(units_fname, index_col=0)
-        self.min_len = min_len
-        self.max_len = max_len
-        self.band_width = band_width
-        self.min_density = min_density
-        self.deviation = deviation
+    units: pd.DataFrame = field(init=False)
 
-    def run(self):
+    def __post_init__(self, units_fname):
+        if self.min_len < 50:
+            logger.warn(f"Specified minimum unit length ({self.min_len} bp) is shorter than 50 bp, "
+                        f"which is typical detection limit of datander & datruf!")
+        self.units = pd.read_table(units_fname, index_col=0)   # TODO: exclude "unit_id" and "sequence"?
+
+    def run(self):   # TODO: should run inside of __post_init__?
         self.smooth_unit_len_dist()
         self.detect_peaks()
 
-    def smooth_unit_len_dist(self):
+    def smooth_unit_len_dist(self):   # TODO: avoid redundant variables and "self"s
         """
         Calculate unit length distribution smoothed by kernel density estimation.
         """

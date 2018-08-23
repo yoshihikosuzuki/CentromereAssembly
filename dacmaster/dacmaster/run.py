@@ -1,14 +1,28 @@
 import os
-import argparse
-import copy
 import pickle
 import logging
 import logzero
 from logzero import logger
+import numpy as np
 import pandas as pd
-
 from .peak import Peak, PeaksFinder
 from .clustering import ClusteringSeqs
+
+
+# TODO: save whole Peak instances into a pickle, and load only necessary variables and create new instances
+
+"""
+@dataclass(repr=False, eq=False)
+class Precomputed:
+    n_peak    : InitVar[int]
+    peaks     : list = field(init=False)
+    cons_units: list = field(init=False)
+    dist_mat  : list = field(init=False)
+    hc_res_pre: list = field(init=False)
+
+    def __post_init__(self):
+        self.peaks = 
+"""
 
 
 def load_precomputed(precomputed):
@@ -61,10 +75,7 @@ def main():
         # Detect peaks in the unit length distribution
         finder = PeaksFinder(args.units_fname)
         finder.run()
-
-        # Keep only Peak instances and discard the others
-        peaks = copy.deepcopy(finder.peaks)
-        del finder
+        peaks = finder.peaks   # TODO: maybe should rollback to previous one
 
         # Update precomputed data
         # Regardless of the following computation, save it here
@@ -146,20 +157,23 @@ def main():
 
 
 def load_args():
+    import argparse
     parser = argparse.ArgumentParser(
         description=("Construct master units and representative units."))
 
     parser.add_argument(
-        "units_fname",
-        help=("Input file of the unit sequences reported by datruf."))
+        "-u",
+        "--units_fname",
+        type=str,
+        default="datruf_units",
+        help=("Input file of the unit sequences reported by datruf. [datruf_units]"))
 
     parser.add_argument(
         "-m",
         "--min_n_units",
         type=int,
         default=10,
-        help=("Minimum number of units in a single TR whose consensus will be"
-              "taken. [10]"))
+        help=("Minimum number of units in a single TR whose consensus will be taken. [10]"))
 
     parser.add_argument(
         "-p",
