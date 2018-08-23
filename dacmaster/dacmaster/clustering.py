@@ -4,7 +4,6 @@ import pickle
 import random
 from logzero import logger
 from collections import Counter
-import multiprocessing
 import numpy as np
 import pandas as pd
 from scipy.spatial.distance import pdist, squareform
@@ -16,29 +15,12 @@ from sklearn.decomposition import NMF
 import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
-
 from BITS.seq import revcomp
 from BITS.run import run_edlib
-from BITS.utils import run_command
+from BITS.utils import run_command, NoDaemonPool
 import consed
-
 from .dpmm import DPMM, DPMMCluster
 #from .dpmm_oldname import Clustering, Cluster
-
-
-class NoDaemonProcess(multiprocessing.Process):
-    # make 'daemon' attribute always return False
-    def _get_daemon(self):
-        return False
-
-    def _set_daemon(self, value):
-        pass
-
-    daemon = property(_get_daemon, _set_daemon)
-
-
-class NoDaemonPool(multiprocessing.pool.Pool):
-    Process = NoDaemonProcess
 
 
 class Clustering:

@@ -1,6 +1,5 @@
 import sys
 import copy
-import multiprocessing
 from typing import List
 from dataclasses import dataclass, field, InitVar
 from logzero import logger
@@ -14,25 +13,11 @@ import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.seq import revcomp
 from BITS.run import run_edlib
+from BITS.utils import NoDaemonPool
 import consed
 from .clustering import ClusteringSeqs
 
 plt.style.use('ggplot')
-
-
-class NoDaemonProcess(multiprocessing.Process):
-    # make 'daemon' attribute always return False
-    def _get_daemon(self):
-        return False
-
-    def _set_daemon(self, value):
-        pass
-
-    daemon = property(_get_daemon, _set_daemon)
-
-
-class NoDaemonPool(multiprocessing.pool.Pool):
-    Process = NoDaemonProcess
 
 
 def __take_intra_consensus(args):
