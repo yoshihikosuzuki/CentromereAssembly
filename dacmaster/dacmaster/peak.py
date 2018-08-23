@@ -1,5 +1,7 @@
+import os
 import sys
 import copy
+import pickle
 from typing import List
 from dataclasses import dataclass, field, InitVar
 from logzero import logger
@@ -18,6 +20,106 @@ import consed
 from .clustering import ClusteringSeqs
 
 plt.style.use('ggplot')
+
+
+def save_peaks(peaks, pkl_fname="peaks.pkl"):
+    """
+    Save a list of Peak instances into a pickle file.
+    """
+
+    with open(pkl_fname, 'wb') as f:
+        pickle.dump(peaks, f)
+
+
+def load_peaks(pkl_fname="peaks.pkl"):
+    """
+    Load a list of Peak instances.
+    """
+
+    if not os.path.isfile(pkl_fname):
+        logger.error(f"{pkl_fname} does not exist")
+        sys.exit(1)
+
+    with open(pkl_fname, 'rb') as f:
+        peaks = [peak_from_old_data(p) for p in pickle.load(f)]
+        if len(peaks) == 0:
+            logger.warn("No peak was loaded")
+        else:
+            logger.info(f"{len(peaks)} peaks were loaded")
+        return peaks
+
+
+@dataclass(repr=False, eq=False)
+class PeakInfo:
+    """
+    Metadata for Peak class. Also used in the peak detection.
+    """
+
+    length: InitVar[int]
+    density: InitVar[float]
+    intvl: interval()   # units whose lengths are within this interval belong to this peak
+
+    lens: List[int] = field(init=False)   # unit lengths of sub-peaks
+    dens: List[float] = field(init=False)   # density of sub-peaks
+
+    def __post_init__(self, length, density):
+        self.lens = [length]
+        self.dens = [density]
+
+    @property
+    def N(self):
+        """
+        Get the number of sub-peaks inside of this peak.
+        """
+        assert len(self.lens) == len(self.dens), "Inconsistent unit length range"
+        return len(self.lens)
+
+    @property
+    def min_len(self):
+        """
+        Get the minimum unit length in this peak.
+        """
+        return self.intvl[0][0]
+
+    @property
+    def max_len(self):
+        """
+        Get the maximum unit length in this peak.
+        """
+        return self.intvl[0][1]
+
+    def add_peak(self, length, density, intvl):
+        self.lens.append(length)
+        self.dens.append(density)
+        self.intvl |= intvl
+        assert len(self.intvl) == 1, "Split peak intervals"
+
+    def overlaps_to(self, intvl):
+        return True if self.intvl & intvl != interval() else False
+
+
+def peak_from_old_data(p):
+    """
+    Reconstruct Peak instance and its instance variables with the latest instance methods.
+    """
+
+    peak = Peak(None, None)
+
+    # instance variables of Peak class
+    for attr in ("info", "raw_untis", "cons_units", "master_units", "master_original"):
+        if hasattr(p, attr):
+            setattr(peak, attr, getattr(p, attr))
+
+    # ClusteringSeqs instance
+    if hasattr(peak, "cons_units"):
+        peak.cl_master = ClusteringSeqs(peak.cons_units["sequence"])
+
+    # instance variables of ClusteringSeqs class
+    for attr in ("hc_result", "hc_result_precomputed", "assignment", "dist_matrix", "hc_input", "coord"):
+        if hasattr(p.cl_master, attr):
+            setattr(peak.cl_master, attr, getattr(p.cl_master, attr))
+
+    return peak
 
 
 def __take_intra_consensus(args):
@@ -45,7 +147,7 @@ def _take_intra_consensus(args_list):
     return [__take_intra_consensus(args) for args in args_list]
 
 
-# TODO: use dataclass
+@dataclass
 class Peak:
     """
     Description of the instance variables:
@@ -67,18 +169,12 @@ class Peak:
       <cl_unit>      : ClusteringVarMat :
     """
 
+    info: PeakInfo
+    raw_units: pd.DataFrame
+
     # TODO:
     # func to load <reads>
     # remove unit_id and sequence columns in <raw_units>
-
-    def __init__(self, peak_id, N, unit_len, density, min_len, max_len, raw_units):
-        self.peak_id = peak_id
-        self.N = N
-        self.unit_len = unit_len
-        self.density = density
-        self.min_len = min_len
-        self.max_len = max_len
-        self.raw_units = raw_units
 
     def take_intra_consensus(self, min_n_units, n_core):
         # TODO: divide into homogeneous TR and heterogeneous TR?
@@ -222,55 +318,6 @@ class Peak:
         # after that, start-position adjustment and strand adjustment of close seqs
         self.filter_master_units()
         logger.info("Finished cluster consensus")
-
-
-@dataclass(repr=False, eq=False)
-class PeakInfo:
-    """
-    Metadata for Peak class. Also used in the peak detection.
-    """
-
-    length: InitVar[int]
-    density: InitVar[float]
-    intvl: interval()   # units whose lengths are within this interval belong to this peak
-
-    lens: List[int] = field(init=False)   # unit lengths of sub-peaks
-    dens: List[float] = field(init=False)   # density of sub-peaks
-
-    def __post_init__(self, length, density):
-        self.lens = [length]
-        self.dens = [density]
-
-    @property
-    def N(self):
-        """
-        Get the number of sub-peaks inside of this peak.
-        """
-        assert len(self.lens) == len(self.dens), "Inconsistent unit length range"
-        return len(self.lens)
-
-    @property
-    def min_len(self):
-        """
-        Get the minimum unit length in this peak.
-        """
-        return self.intvl[0][0]
-
-    @property
-    def max_len(self):
-        """
-        Get the maximum unit length in this peak.
-        """
-        return self.intvl[0][1]
-
-    def add_peak(self, length, density, intvl):
-        self.lens.append(length)
-        self.dens.append(density)
-        self.intvl |= intvl
-        assert len(self.intvl) == 1, "Split peak intervals"
-
-    def overlaps_to(self, intvl):
-        return True if self.intvl & intvl != interval() else False
 
 
 @dataclass(repr=False, eq=False)
