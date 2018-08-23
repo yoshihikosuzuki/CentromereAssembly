@@ -1,4 +1,3 @@
-import os
 import sys
 import copy
 import pickle
@@ -20,33 +19,6 @@ import consed
 from .clustering import ClusteringSeqs
 
 plt.style.use('ggplot')
-
-
-def save_peaks(peaks, pkl_fname="peaks.pkl"):
-    """
-    Save a list of Peak instances into a pickle file.
-    """
-
-    with open(pkl_fname, 'wb') as f:
-        pickle.dump(peaks, f)
-
-
-def load_peaks(pkl_fname="peaks.pkl"):
-    """
-    Load a list of Peak instances.
-    """
-
-    if not os.path.isfile(pkl_fname):
-        logger.error(f"{pkl_fname} does not exist")
-        sys.exit(1)
-
-    with open(pkl_fname, 'rb') as f:
-        peaks = [peak_from_old_data(p) for p in pickle.load(f)]
-        if len(peaks) == 0:
-            logger.warn("No peak was loaded")
-        else:
-            logger.info(f"{len(peaks)} peaks were loaded")
-        return peaks
 
 
 @dataclass(repr=False, eq=False)
@@ -98,6 +70,18 @@ class PeakInfo:
         return True if self.intvl & intvl != interval() else False
 
 
+def save_peaks(peaks, pkl_fname="peaks.pkl"):
+    with open(pkl_fname, 'wb') as f:
+        pickle.dump(peaks, f)
+
+
+def load_peaks(pkl_fname="peaks.pkl"):
+    with open(pkl_fname, 'rb') as f:
+        peaks = [peak_from_old_data(p) for p in pickle.load(f)]
+        logger.info(f"{len(peaks)} peaks were loaded")
+        return peaks
+
+
 def peak_from_old_data(p):
     """
     Reconstruct Peak instance and its instance variables with the latest instance methods.
@@ -114,10 +98,10 @@ def peak_from_old_data(p):
     if hasattr(peak, "cons_units"):
         peak.cl_master = ClusteringSeqs(peak.cons_units["sequence"])
 
-    # instance variables of ClusteringSeqs class
-    for attr in ("hc_result", "hc_result_precomputed", "assignment", "dist_matrix", "hc_input", "coord"):
-        if hasattr(p.cl_master, attr):
-            setattr(peak.cl_master, attr, getattr(p.cl_master, attr))
+        # instance variables of ClusteringSeqs class
+        for attr in ("hc_result", "hc_result_precomputed", "assignment", "dist_matrix", "hc_input", "coord"):
+            if hasattr(p.cl_master, attr):
+                setattr(peak.cl_master, attr, getattr(p.cl_master, attr))
 
     return peak
 
@@ -344,10 +328,10 @@ class PeaksFinder:
             logger.warn(f"Specified minimum unit length ({self.min_len} bp) is shorter than 50 bp, "
                         f"which is typical detection limit of datander & datruf!")
 
-        self.units = pd.read_table(units_fname, index_col=0)   # TODO: exclude "unit_id" and "sequence"?
+        self.units = pd.read_table(units_fname, index_col=0)   # TODO: exclude "unit_id" and "sequence"
         self.ulens = np.array(self.units["length"]
-                              .where(lambda s: self.min_len < s)
-                              .where(lambda s: s < self.max_len))
+                              .pipe(lambda s: s[self.min_len < s])
+                              .pipe(lambda s: s[s < self.max_len]))
         self.x = np.arange(self.min_len, self.max_len + 1)
 
         self.smooth_dist()
