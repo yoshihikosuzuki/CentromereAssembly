@@ -4,7 +4,6 @@ import logzero
 from logzero import logger
 import pandas as pd
 from .peak import save_peaks, load_peaks
-from .clustering import ClusteringSeqs
 
 
 def main():
@@ -18,7 +17,6 @@ def main():
         logger.info(f"Data will be stored to {pkl_fname} and re-used next time")
 
         # Detect peaks in the unit length distribution
-        logger.info("Starting peak detection")
         from .peak import PeaksFinder
         peaks = PeaksFinder(args.units_fname).detect_peaks()
         save_peaks(peaks, pkl_fname)
@@ -28,25 +26,16 @@ def main():
             continue
 
         # Generate intra-TR consensus units
-        if args.from_scratch or not hasattr(peak, "cons_units"):
-            logger.info("Starting taking intra-TR consensus")
+        if not hasattr(peak, "cons_units"):
             peak.take_intra_consensus(args.min_n_units, args.n_core)
-            logger.info("Finished intra-TR consensus")
             save_peaks(peaks, pkl_fname)
 
         # Cluster the intra-TR consensus units
-        if args.from_scratch or not hasattr(peak, "cl_master"):   # TODO: incorporate from_scratch and clustering
-            peak.cl_master = ClusteringSeqs(peak.cons_units["sequence"])
-        logger.info("Starting hierarchical clustering")
-        peak.cl_master.cluster_hierarchical(n_core=args.n_core)
-        logger.info("Finished hierarchical clustering")
+        peak.cluster_cons_units(args.n_core)
         save_peaks(peaks, pkl_fname)
 
         # Generate master units
-        peak.master_original = peak.cl_master.generate_consensus()
-        logger.debug(f"\n{peak.master_original}")
-        peak.filter_master_units()
-        logger.info("Finished cluster consensus")
+        peak.generate_master_units()
         save_peaks(peaks, pkl_fname)
 
         #peak.construct_repr_units(n_core=args.n_core)
@@ -95,7 +84,7 @@ def load_args():
     args = parser.parse_args()
     if args.debug_mode:
         logzero.loglevel(logging.DEBUG)
-        pd.set_option('expand_frame_repr', False)   # to show full df
+        pd.set_option('expand_frame_repr', False)   # show entire dataframe
     else:
         logzero.loglevel(logging.INFO)
     del args.debug_mode

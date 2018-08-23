@@ -1,6 +1,4 @@
-import os
 import sys
-import pickle
 import random
 from logzero import logger
 from collections import Counter
@@ -17,7 +15,7 @@ import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.seq import revcomp
 from BITS.run import run_edlib
-from BITS.utils import run_command, NoDaemonPool
+from BITS.utils import run_command, print_log, NoDaemonPool
 import consed
 from .dpmm import DPMM, DPMMCluster
 #from .dpmm_oldname import Clustering, Cluster
@@ -133,16 +131,16 @@ def __calc_dist_array(i, data):
                           dtype='float32')
 
     logger.debug(f"Finished @ row {i}")
-    sys.stdout.flush()
-    sys.stderr.flush()
+    #sys.stdout.flush()
+    #sys.stderr.flush()
     return (i, dist_array)   # TODO: how to do "one line + debug message"...?
 
 
 def _calc_dist_array(args):
     s, t, data = args
     logger.debug(f"Starting row {s}-{t}")
-    sys.stdout.flush()
-    sys.stderr.flush()
+    #sys.stdout.flush()
+    #sys.stderr.flush()
     return [__calc_dist_array(i, data) for i in range(s, t)]
 
 
@@ -159,6 +157,7 @@ class ClusteringSeqs(Clustering):
         self.cyclic = cyclic   # do cyclic alignment between two sequences
         self.revcomp = revcomp   # allow reverse complement when taking alignment
 
+    @print_log("distance matrix calculation")
     def calc_dist_mat(self, n_core):
         """
         Calculate all-vs-all distance matrix between the sequences.
@@ -170,7 +169,6 @@ class ClusteringSeqs(Clustering):
         self.dist_matrix = np.zeros((self.N, self.N), dtype='float32')
 
         # Split jobs while considering that weight is different for each row
-        #tasks = [i for i in np.arange(self.N - 1)]
         tasks = []
         n_sub = -(-((self.N - 1) * (self.N - 1)) // n_core / 2)
         s = 0
@@ -186,58 +184,47 @@ class ClusteringSeqs(Clustering):
 
         exe_pool = NoDaemonPool(n_core)
         for ret in exe_pool.map(_calc_dist_array, tasks):
-            logger.debug("Received")
-            sys.stdout.flush()
-            sys.stderr.flush()
+            #logger.debug("Received")
+            #sys.stdout.flush()
+            #sys.stderr.flush()
             for r in ret:
                 i, dist_array = r
                 self.dist_matrix[i, i + 1:] = self.dist_matrix[i + 1:, i] = dist_array
-                logger.debug(f"Inserted @ row {i}")
-                sys.stdout.flush()
-                sys.stderr.flush()
+                #logger.debug(f"Inserted @ row {i}")
+                #sys.stdout.flush()
+                #sys.stderr.flush()
         exe_pool.close()
 
     def cluster_hierarchical(self, method="ward", criterion="distance", threshold=0.7, n_core=1):
         if not hasattr(self, "dist_matrix"):
-            logger.info(f"Starting calculation of distance matrix with {n_core} cores")
             self.calc_dist_mat(n_core)
-            logger.info(f"Finished calculation distance matrix")
-        
+
         if not hasattr(self, "hc_input"):
             self.hc_input = squareform(self.dist_matrix)
 
         super().cluster_hierarchical(method, criterion, threshold)
 
-    def _take_consensus(self, seqs, skip_threshold):
-        return (consed.consensus([seq if i == 0
-                                  else run_edlib(seqs.iloc[0],
-                                                 seq,
-                                                 mode="glocal",
-                                                 cyclic=True,
-                                                 return_seq=True)["seq"]
-                                  for i, seq in enumerate(seqs)],
-                                 n_iter=3),
-                0)
-
-    def generate_consensus(self, skip_threshold=0.15):
+    def generate_consensus(self):
         """
         Determine a representative sequence for each cluster.
-        If sequence dissimilarity of a sequence from the first seed sequence 
-        exceeds <skip_threshold>, skip the sequence for the calculation of consensus.
         """
-
-        # NOTE: setting <skip_threshold> as 0.15 means cluster diameter is less than 0.3,
-        #       thus in most cases no error happens in Consed?
 
         ret = {}
         index = 0
         for cluster_id, seqs in super().clusters():
-            cons_seq, skip_count = self._take_consensus(seqs, skip_threshold)   # TODO: remove skip_threshold and rename skip_count to n_bad_align
-            ret[index] = (cluster_id, seqs.shape[0], skip_count, cons_seq)
+            cons_seq = consed.consensus([seq if i == 0
+                                         else run_edlib(seqs.iloc[0],
+                                                        seq,
+                                                        mode="glocal",
+                                                        cyclic=True,
+                                                        return_seq=True)["seq"]
+                                         for i, seq in enumerate(seqs)],
+                                        n_iter=3)
+            ret[index] = (cluster_id, seqs.shape[0], cons_seq)
             index += 1
 
         return pd.DataFrame.from_dict(ret, orient="index",
-                                      columns=("cluster_id", "cluster_size", "skip_count", "sequence"))
+                                      columns=("cluster_id", "cluster_size", "sequence"))
 
     def dendrogram(self, method="ward"):
         super().dendrogram(method)
@@ -250,7 +237,7 @@ class ClusteringSeqs(Clustering):
         for i, data in enumerate(super().clusters(return_where=True)):
             cluster_id, where = data
             ax.scatter(self.coord[where, 0], self.coord[where, 1], marker=".", s=20,
-                       c=f"#{random.randint(0, 0xFFFFFF):06x}",   # TODO: secure any two colors are distant enough
+                       c=f"#{random.randint(0, 0xFFFFFF):06x}",
                        label=f"{cluster_id} ({where.shape[0]} seqs)")
             # TODO: add represetatives
 
@@ -276,9 +263,7 @@ class ClusteringSeqs(Clustering):
         read_id = random.choice(remaining_read_id)
         query = self.units_consensus["sequence"].iloc[read_id]
         
-        if not os.path.isdir(out_dir):
-            run_command(f"mkdir {out_dir}")
-        out_fname = os.path.join(out_dir, "input.seq")   # temporary file for Consed input
+        out_fname = out_dir +  "/input.seq"   # temporary file for Consed input
         seq_writer = open(out_fname, 'w')
     
         # Output the first sequence as seed for consensus
@@ -566,10 +551,6 @@ class ClusteringVarMat:   # TOOD: change to a child class of Clustering
         with open(out_fname, 'w') as f:
             for c_idx, r_seq in self.r_units.items():
                 f.write(">repr/%d/0_%d\n%s\n" % (c_idx, len(r_seq), r_seq))
-
-    def save_pickle(self, out_fname):
-        with open(out_fname, 'wb') as f:
-            pickle.dump(self, f)
 
 
 """

@@ -1,5 +1,3 @@
-import sys
-import copy
 import pickle
 from typing import List
 from dataclasses import dataclass, field, InitVar
@@ -7,14 +5,12 @@ from logzero import logger
 from interval import interval
 import numpy as np
 import pandas as pd
-import networkx as nx
 from sklearn.neighbors import KernelDensity
 import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
-from BITS.seq import revcomp
 from BITS.run import run_edlib
-from BITS.utils import NoDaemonPool
+from BITS.utils import print_log, NoDaemonPool
 import consed
 from .clustering import ClusteringSeqs
 
@@ -116,13 +112,11 @@ def __take_intra_consensus(args):
                                                 return_seq=True)["seq"]
                                  for i, seq in enumerate(seqs)],
                                 n_iter=2)
-    
+
     if cons_seq == "":
         logger.warn(f"Could not take consensus @ {read_id}({path_id})")
     else:
         logger.debug(f"Finished @ {read_id}({path_id})")
-    sys.stdout.flush()
-    sys.stderr.flush()
 
     return (read_id, path_id, cons_seq)
 
@@ -131,42 +125,45 @@ def _take_intra_consensus(args_list):
     return [__take_intra_consensus(args) for args in args_list]
 
 
-@dataclass
+@dataclass(repr=False, eq=False)
 class Peak:
     """
-    Description of the instance variables:
-      <reads>        : pd.df            : # TODO: let this include encodings?
-        [read_id, sequence]
+    Instance variables:
+      @ reads <pd.df>: # TODO: let this include encodings?
+          [read_id, sequence]
 
-      <raw_units>    : pd.df            : unsynchronized raw units between <min_len> and <max_len> bp
-        [read_id, path_id, start, end, length]
-      <cons_units>   : pd.df            : unsynchronized intra-TR consensus units
-        [read_id, path_id, length, sequence]
-      <master_units> : pd.df            : synchronized, global-level representative units
-        [master_id, cluster_id, cluster_size, n_bad_align, length, sequence]
-      <repr_units>   : pd.df            : synchronized, local-level representative units
-        [repr_id, cluster_id, cluster_size, length, sequence]
-      <encodings>    : pd.df            : synchronized raw units   # TODO: separate into master_encodings and repr_encodings?
+      @ raw_units <pd.df>: unsynchronized raw units
+          [read_id, path_id, start, end, length]
 
-      <cl_master>    : ClusteringSeqs   : perform clustering of <raw_units> to construct master units
-      <cl_repr>      : ClusteringSeqs   : 
-      <cl_unit>      : ClusteringVarMat :
+      @ cons_units <pd.df>: unsynchronized intra-TR consensus units
+          [read_id, path_id, length, sequence]
+
+      @ master_units <pd.df>: synchronized, global-level representative units
+          [master_id, cluster_id, cluster_size, n_bad_align, length, sequence]
+
+      @ repr_units <pd.df>: synchronized, local-level representative units
+          [repr_id, cluster_id, cluster_size, length, sequence]
+
+      @ encodings <pd.df>: by synchronized raw units
+
+      @ cl_master <ClusteringSeqs>: perform clustering of <raw_units> to construct master units
+
+      @ cl_repr <ClusteringSeqs>: 
+
+      @ cl_unit <ClusteringVarMat>:
     """
 
     info: PeakInfo
     raw_units: pd.DataFrame
 
-    # TODO:
-    # func to load <reads>
-    # remove unit_id and sequence columns in <raw_units>
-
+    @print_log("intra-TR consensus")
     def take_intra_consensus(self, min_n_units, n_core):
         # TODO: divide into homogeneous TR and heterogeneous TR?
 
         tasks = [(read_id, path_id, list(df_path["sequence"]))
                  for read_id, df_read in self.raw_units.groupby("read_id")
                  for path_id, df_path in df_read.groupby("path_id")
-                 if df_path.shape[0] >= min_n_units]   # filter by min. num. of units in a TR   # TODO: add a filter of minimum coverage in the read
+                 if df_path.shape[0] >= min_n_units]   # filter by min. num. of units in a TR
 
         n_sub = -(-len(tasks) // n_core)   # num. of tasks for each core
         tasks_sub = [tasks[i * n_sub:(i + 1) * n_sub - 1] for i in range(n_core)]
@@ -176,17 +173,12 @@ class Peak:
         logger.debug(f"Scattering tasks with {n_core} cores")
         exe_pool = NoDaemonPool(n_core)
         for ret in exe_pool.map(_take_intra_consensus, tasks_sub):
-            logger.debug(f"Received")
-            sys.stdout.flush()
-            sys.stderr.flush()
             for r in ret:
-                if r[2] == "":
-                    continue
-                self.cons_units[index] = r
-                index += 1
+                if r[2] != "":
+                    self.cons_units[index] = r
+                    index += 1
         exe_pool.close()
         exe_pool.join()
-        logger.debug("Finished all tasks")
 
         self.cons_units = pd.DataFrame.from_dict(self.cons_units,
                                                  orient="index",
@@ -194,114 +186,58 @@ class Peak:
                                                           "path_id",
                                                           "sequence"))
 
-    def adjust_two_units(self, seed, seq):   # allow only forward-forward
-        return run_edlib(seed, seq, mode="glocal", cyclic=True, return_seq=True)["seq"]
-
-    def filter_master_units(self, redundant_threshold=0.05, similar_threshold=0.2):
-        """
-        Filter "noisy" master units from the cluster consensus sequences.
-        """
-
-        self.master_units = copy.deepcopy(self.master_original)
-
-        del_row = []
-        for index, df in self.master_original.iterrows():
-            cluster_id, cluster_size, skip_count, seq = df
-            if cluster_size < self.cl_master.N * 0.01:   # too small cluster
-                del_row.append(index)
-            elif len(seq) == 0 or seq[0] in ['W', '*']:   # strange consensus seq
-                del_row.append(index)
-        self.master_units = self.master_units.drop(del_row)
-        self.master_units = self.master_units.reset_index(drop=True)
-
-        logger.debug(f"After removing noisy clusters:\n{self.master_units}")
-        
-        # due to redundancy
-        n_master = self.master_units.shape[0]
-        dm = np.zeros((n_master, n_master), dtype='float32')
-        strand = np.zeros((n_master, n_master), dtype='int')    # 0 for forward, 1 for revcomp
-        del_row = []
-        for i in range(n_master - 1):
-            for j in range(i + 1, n_master):
-                align = run_edlib(self.master_units["sequence"][i],
-                                  self.master_units["sequence"][j],
-                                  mode="glocal",
-                                  revcomp=True,
-                                  cyclic=True)
-                dm[i, j] = dm[j, i] = align["diff"]
-                strand[i, j] = strand[j, i] = align["strand"]
-                if dm[i, j] < redundant_threshold:
-                    if self.master_units["cluster_size"][i] >= self.master_units["cluster_size"][j]:
-                        del_row.append(j)
-                    else:
-                        del_row.append(i)
-        logger.debug(f"\ndist mat:\n{dm}\nstrand:\n{strand}")
-        self.master_units = self.master_units.drop(del_row)
-        self.master_units = self.master_units.reset_index(drop=True)
-        dm = np.delete(dm, del_row, axis=0)
-        dm = np.delete(dm, del_row, axis=1)
-        strand = np.delete(strand, del_row, axis=0)
-        strand = np.delete(strand, del_row, axis=1)
-        logger.debug(f"After removing redundancy:\n{self.master_units}")
-        logger.debug(f"\ndist mat:\n{dm}\nstrand:\n{strand}")
-
-        # for similar seqs, adjust start positions and strands
-        for i in range(dm.shape[0]):
-            dm[i, i] = np.inf
-        g = nx.Graph()
-        while np.min(dm) <= similar_threshold:
-            i, j = np.unravel_index(dm.argmin(), dm.shape)   # index of min diff
-            logger.debug(f"argmin @ {i}, {j}")
-            g.add_node(i)
-            g.add_node(j)
-            g.add_edge(i, j)
-            dm[i, j] = dm[j, i] = np.inf
-        for c in nx.connected_components(g):
-            nodes = sorted([node for node in c])
-            logger.debug(f"cc: {nodes}")
-            seed = nodes[0]
-            revs = [node for node in nodes if strand[seed, node] == 1]
-            logger.debug(f"rev: {revs}")
-            for rev in revs:   # strand
-                self.master_units.loc[rev, "sequence"] = revcomp(self.master_units.loc[rev, "sequence"])
-                strand[rev, :] = 1 - strand[rev, :]
-                strand[:, rev] = 1 - strand[:, rev]
-            for node in nodes[1:]:   # revcomp
-                self.master_units.loc[node, "sequence"] = self.adjust_two_units(self.master_units.loc[seed, "sequence"],
-                                                                                self.master_units.loc[node, "sequence"])   # TODO: simply running and replacing to run_edlib(return_seq=True, return_seq_diff_th=similar_threshold)["seq"] for each row is enough?
-        logger.debug(f"\n{self.master_units}\ndist mat:\n{dm}\nstrand:\n{strand}")
-
-    def construct_master_units(self, min_n_units, n_core):
-        """
-        From all units in a peak, construct a set of "master units".
-        The main purpose here is to adjust and fix the boundaries of the raw
-        units in the reads. In other words, master units play a role of "phase
-        adjustment" among the units. As side effect, these master units play
-        another role of large scale-level (almost chromosome-level) segregation
-        of the units.
-        """
-
-        # Calculate intra-TR consensus unit for each TR
-        if not hasattr(self, "cons_units"):
-            logger.info("Starting taking intra-TR consensus")
-            self.take_intra_consensus(min_n_units, n_core)
-            logger.info("Finished intra-TR consensus")
-
+    @print_log("hierarchical clustering of consensus units")
+    def cluster_cons_units(self, n_core):
         # Cluster the intra-TR consensus units
         if not hasattr(self, "cl_master"):
             self.cl_master = ClusteringSeqs(self.cons_units["sequence"])
-        logger.info("Starting hierarchical clustering")
         self.cl_master.cluster_hierarchical(n_core=n_core)
-        #self.cl_master.cluster_greedy()   # too greedy way
-        logger.info("Finished hierarchical clustering")
 
-        # Generate master units
-        self.master_original = self.cl_master.generate_consensus()   # NOTE: dataframe
-        logger.debug(f"\n{self.master_original}")
-        # remove strange sequences and redundancy
-        # after that, start-position adjustment and strand adjustment of close seqs
-        self.filter_master_units()
-        logger.info("Finished cluster consensus")
+    @print_log("master units construction")
+    def generate_master_units(self, redundant_threshold=0.05, similar_threshold=0.3):
+        """
+        Take consensus for each cluster of consensus units while removing noisy results.
+        """
+
+        self.master_units = self.cl_master.generate_consensus()
+        logger.info(f"Original master units:\n{self.master_units}")
+
+        # Remove noisy clusters
+        del_row = [index for index, df in self.master_units.iterrows()
+                   if df["cluster_size"] < self.cl_master.N * 0.01    # too small cluster
+                   or len(df["sequence"]) == 0]   # Consed failure
+        self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
+        logger.debug(f"After removing noisy clusters:\n{self.master_units}")
+
+        # Remove redundant clusters   # TODO: recompute consensus sequence after merging similar clusters
+        n_master = self.master_units.shape[0]
+        del_row = [i if self.master_units["cluster_size"][i] < self.master_units["cluster_size"][j]
+                   else j
+                   for i in range(n_master - 1)
+                   for j in range(i + 1, n_master)
+                   if run_edlib(self.master_units["sequence"][i],
+                                self.master_units["sequence"][j],
+                                mode="glocal",
+                                revcomp=True,
+                                cyclic=True)["diff"] < redundant_threshold]
+        self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
+        logger.debug(f"After removing redundancy:\n{self.master_units}")
+
+        # Adjust start positions and strands of similar master units
+        n_master = self.master_units.shape[0]
+        for i in range(n_master - 1):
+            for j in range(i + 1, n_master):
+                align = run_edlib(self.master_units.loc[i, "sequence"],
+                                  self.master_units.loc[j, "sequence"],
+                                  mode="glocal",
+                                  cyclic=True,
+                                  revcomp=True,
+                                  return_seq=True,
+                                  return_seq_diff_th=similar_threshold)
+                if align["seq"] is not None:
+                    logger.debug(f"Synchronized {i} and {j} (strand = {align['strand']})")
+                    self.master_units.loc[j, "sequence"] = align["seq"]
+        logger.info(f"Final mater units:\n{self.master_units}")
 
 
 @dataclass(repr=False, eq=False)
@@ -366,6 +302,7 @@ class PeaksFinder:
                            yaxis=dict(title="Density"))
         py.iplot(go.Figure(data=data, layout=layout))
 
+    @print_log("peak detection")
     def detect_peaks(self):
         """
         Detect peaks in the unit length distribution.
