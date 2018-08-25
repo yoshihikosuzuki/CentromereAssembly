@@ -209,34 +209,27 @@ class Peak:
         self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
         logger.debug(f"After removing noisy clusters:\n{self.master_units}")
 
-        # Remove redundant clusters   # TODO: recompute consensus sequence after merging similar clusters
-        n_master = self.master_units.shape[0]
-        del_row = [i if self.master_units["cluster_size"][i] < self.master_units["cluster_size"][j]
-                   else j
-                   for i in range(n_master - 1)
-                   for j in range(i + 1, n_master)
-                   if run_edlib(self.master_units["sequence"][i],
-                                self.master_units["sequence"][j],
-                                mode="glocal",
-                                revcomp=True,
-                                cyclic=True)["diff"] < redundant_threshold]
-        self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
-        logger.debug(f"After removing redundancy:\n{self.master_units}")
-
-        # Adjust start positions and strands of similar master units
+        # Redundancy removal and phase synchronization
+        del_row = []
         n_master = self.master_units.shape[0]
         for i in range(n_master - 1):
+            df_i = self.master_units.iloc[i]
             for j in range(i + 1, n_master):
-                align = run_edlib(self.master_units.loc[i, "sequence"],
-                                  self.master_units.loc[j, "sequence"],
+                df_j = self.master_units.iloc[j]
+                align = run_edlib(df_i["sequence"],
+                                  df_j["sequence"],
                                   mode="glocal",
                                   cyclic=True,
                                   revcomp=True,
                                   return_seq=True,
                                   return_seq_diff_th=similar_threshold)
-                if align["seq"] is not None:
-                    logger.debug(f"Synchronized {i} and {j} (strand = {align['strand']})")
+                if align["diff"] < redundant_threshold:   # remove too similar master units   # TODO: recompute consensus
+                    del_row.append(i if df_i["cluster_size"] < df_j["cluster_size"]
+                                   else j)
+                elif align["seq"] is not None:   # synchronize similar master units
+                    logger.debug(f"Synchronize {i} and {j} (strand = {align['strand']})")
                     self.master_units.loc[j, "sequence"] = align["seq"]
+        self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
         logger.info(f"Final mater units:\n{self.master_units}")
 
 
