@@ -251,7 +251,7 @@ class Peaks:
                 del_row.update(df.index)
         del all_reads
         del dbid_header
-        self.units.drop(del_row).reset_index(drop=True)
+        self.units = self.units.drop(del_row).reset_index(drop=True)
         logger.debug(f"{len(self.reads)} out of {n_all_reads} reads and {self.units.shape[0]} out of {n_all_units} units were loaded")
 
         self.ulens = np.array(self.units["length"]
