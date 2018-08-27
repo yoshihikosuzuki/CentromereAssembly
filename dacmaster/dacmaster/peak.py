@@ -235,6 +235,8 @@ class Peaks:
         self.reads = {}   # TODO: change to df and split for each peak like raw_units
         self.units = pd.read_table(units_fname, index_col=0)
         all_reads = load_fasta(reads_fname)
+        n_all_reads = len(all_reads)
+        n_all_units = self.units.shape[0]
         dbid_header = {}
         with open(dbid_header_fname, 'r') as f:
             for line in f:
@@ -250,7 +252,7 @@ class Peaks:
         del all_reads
         del dbid_header
         self.units.drop(del_row).reset_index(drop=True)
-        logger.debug(f"{len(self.reads)} reads and {self.units.shape[0]} untis were loaded")
+        logger.debug(f"{len(self.reads)} out of {n_all_reads} reads and {self.units.shape[0]} out of {n_all_units} units were loaded")
 
         self.ulens = np.array(self.units["length"]
                               .pipe(lambda s: s[self.min_len < s])
@@ -262,6 +264,7 @@ class Peaks:
     def save(self, pkl_fname="peaks.pkl"):
         with open(pkl_fname, 'wb') as f:
             pickle.dump(self, f)
+        logger.info("Peaks saved")
 
     def smooth_dist(self):
         """
