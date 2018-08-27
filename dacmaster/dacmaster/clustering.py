@@ -124,6 +124,7 @@ def __calc_dist_array(i, data):
     # row <i> in the distance matrix
     dist_array = np.array([run_edlib(data[i],
                                      data[j],
+                                     "glocal",
                                      only_diff=True,
                                      revcomp=True,
                                      cyclic=True)
@@ -215,7 +216,7 @@ class ClusteringSeqs(Clustering):
             cons_seq = consed.consensus([seq if i == 0
                                          else run_edlib(seqs.iloc[0],
                                                         seq,
-                                                        mode="glocal",
+                                                        "glocal",
                                                         cyclic=True,
                                                         return_seq=True)["seq"]
                                          for i, seq in enumerate(seqs)],

@@ -77,7 +77,7 @@ def __take_intra_consensus(args):
     cons_seq = consed.consensus([seq if i == 0
                                  else run_edlib(seqs[0],
                                                 seq,
-                                                mode="glocal",
+                                                "glocal",
                                                 cyclic=True,
                                                 return_seq=True)["seq"]
                                  for i, seq in enumerate(seqs)],
@@ -189,7 +189,7 @@ class Peak:
                 df_j = self.master_units.iloc[j]
                 align = run_edlib(df_i["sequence"],
                                   df_j["sequence"],
-                                  mode="glocal",
+                                  "glocal",
                                   cyclic=True,
                                   revcomp=True,
                                   return_seq=True,
