@@ -10,11 +10,17 @@ import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.run import run_edlib
+from BITS.seq import load_fasta
 from BITS.utils import print_log, NoDaemonPool
 import consed
 from .clustering import ClusteringSeqs
 
 plt.style.use('ggplot')
+
+
+def load_peaks(pkl_fname="peaks.pkl"):
+    with open(pkl_fname, 'rb') as f:
+        return pickle.load(f)
 
 
 @dataclass(repr=False, eq=False)
@@ -66,42 +72,6 @@ class PeakInfo:
         return True if self.intvl & intvl != interval() else False
 
 
-def save_peaks(peaks, pkl_fname="peaks.pkl"):
-    with open(pkl_fname, 'wb') as f:
-        pickle.dump(peaks, f)
-
-
-def load_peaks(pkl_fname="peaks.pkl"):
-    with open(pkl_fname, 'rb') as f:
-        peaks = [peak_from_old_data(p) for p in pickle.load(f)]
-        logger.info(f"{len(peaks)} peaks were loaded")
-        return peaks
-
-
-def peak_from_old_data(p):
-    """
-    Reconstruct Peak instance and its instance variables with the latest instance methods.
-    """
-
-    peak = Peak(None, None)
-
-    # instance variables of Peak class
-    for attr in ("info", "raw_untis", "cons_units", "master_units", "master_original"):
-        if hasattr(p, attr):
-            setattr(peak, attr, getattr(p, attr))
-
-    # ClusteringSeqs instance
-    if hasattr(peak, "cons_units"):
-        peak.cl_master = ClusteringSeqs(peak.cons_units["sequence"])
-
-        # instance variables of ClusteringSeqs class
-        for attr in ("hc_result", "hc_result_precomputed", "assignment", "dist_matrix", "hc_input", "coord"):
-            if hasattr(p.cl_master, attr):
-                setattr(peak.cl_master, attr, getattr(p.cl_master, attr))
-
-    return peak
-
-
 def __take_intra_consensus(args):
     read_id, path_id, seqs = args
     cons_seq = consed.consensus([seq if i == 0
@@ -129,11 +99,11 @@ def _take_intra_consensus(args_list):
 class Peak:
     """
     Instance variables:
-      @ reads <pd.df>: # TODO: let this include encodings?
-          [read_id, sequence]
+      @ reads dict: all reads
+          {read_id: sequence}
 
       @ raw_units <pd.df>: unsynchronized raw units
-          [read_id, path_id, start, end, length]
+          [read_id, path_id, start, end, length, sequence]
 
       @ cons_units <pd.df>: unsynchronized intra-TR consensus units
           [read_id, path_id, length, sequence]
@@ -154,6 +124,7 @@ class Peak:
     """
 
     info: PeakInfo
+    reads: dict
     raw_units: pd.DataFrame
 
     @print_log("intra-TR consensus")
@@ -234,36 +205,63 @@ class Peak:
 
 
 @dataclass(repr=False, eq=False)
-class PeaksFinder:
+class Peaks:
     """
     Class for identifying peaks in raw unit length distribution using kernel density estimation.
     """
 
+    reads_fname: InitVar[str] = "reads.fasta"
     units_fname: InitVar[str] = "datruf_units"
+    dbid_header_fname: InitVar[str] = "dbid_header"
     min_len: int = 50   # only peaks longer than <min_len> and shorter than <max_len> will be found
     max_len: int = 1000
     band_width: int = 5   # param. for KDE
     min_density: float = 0.001   # threshold for peaks
     deviation: float = 0.1   # <peak_len> * (1 +- <deviation>) will be the range of each peak
 
+    reads: dict = field(init=False)   # {dbid: sequence}
     units: pd.DataFrame = field(init=False)   # whole raw units data
     ulens: np.ndarray = field(init=False)   # unit lengths within [min_len, max_len]
     x: np.ndarray = field(init=False)   # [min_len, min_len + 1, ..., max_len]
     dens: np.ndarray = field(init=False)   # estimated density for each unit length
     peaks: List[Peak] = field(init=False)
 
-    def __post_init__(self, units_fname):
+    def __post_init__(self, reads_fname, units_fname, dbid_header_fname, cov_th=0.8):
         if self.min_len < 50:
             logger.warn(f"Specified minimum unit length ({self.min_len} bp) is shorter than 50 bp, "
                         f"which is typical detection limit of datander & datruf!")
 
-        self.units = pd.read_table(units_fname, index_col=0)   # TODO: exclude "unit_id" and "sequence"
+        # Load Reads covered by TRs and units inside them
+        self.reads = {}   # TODO: change to df and split for each peak like raw_units
+        self.units = pd.read_table(units_fname, index_col=0)
+        all_reads = load_fasta(reads_fname)
+        dbid_header = {}
+        with open(dbid_header_fname, 'r') as f:
+            for line in f:
+                dbid, header = line.strip().split('\t')
+                dbid_header[int(dbid)] = header
+        del_row = set()
+        for read_id, df in self.units.groupby("read_id"):
+            header = dbid_header[read_id]
+            if sum(df["length"]) >= len(all_reads[header]) * cov_th:
+                self.reads[read_id] = all_reads[header]
+            else:
+                del_row.update(df.index)
+        del all_reads
+        del dbid_header
+        self.units.drop(del_row).reset_index(drop=True)
+        logger.debug(f"{len(self.reads)} reads and {self.units.shape[0]} untis were loaded")
+
         self.ulens = np.array(self.units["length"]
                               .pipe(lambda s: s[self.min_len < s])
                               .pipe(lambda s: s[s < self.max_len]))
         self.x = np.arange(self.min_len, self.max_len + 1)
 
         self.smooth_dist()
+
+    def save(self, pkl_fname="peaks.pkl"):
+        with open(pkl_fname, 'wb') as f:
+            pickle.dump(self, f)
 
     def smooth_dist(self):
         """
@@ -323,7 +321,35 @@ class PeaksFinder:
                 logger.info(f"Sub-peak merged: {self.x[i]} bp (density = {self.dens[i]:.5f})")
                 peak_infos[-1].add_peak(self.x[i], self.dens[i], intvl)
 
-        return [Peak(peak_info,
-                     (self.units[self.units["length"] >= peak_info.min_len]
-                      .pipe(lambda df: df[df["length"] <= peak_info.max_len])))
-                for peak_info in peak_infos]
+        self.peaks = [Peak(peak_info,
+                           self.reads,
+                           (self.units[self.units["length"] >= peak_info.min_len]
+                            .pipe(lambda df: df[df["length"] <= peak_info.max_len])))
+                      for peak_info in peak_infos]
+
+"""   # TODO: to be obsolete
+def load_peaks(pkl_fname="peaks.pkl"):
+    with open(pkl_fname, 'rb') as f:
+        peaks = [peak_from_old_data(p) for p in pickle.load(f)]
+        logger.info(f"{len(peaks)} peaks were loaded")
+        return peaks
+
+def peak_from_old_data(p):
+    peak = Peak(None, None)
+
+    # instance variables of Peak class
+    for attr in ("info", "raw_units", "cons_units", "master_units", "master_original"):
+        if hasattr(p, attr):
+            setattr(peak, attr, getattr(p, attr))
+
+    # ClusteringSeqs instance
+    if hasattr(peak, "cons_units"):
+        peak.cl_master = ClusteringSeqs(peak.cons_units["sequence"])
+
+        # instance variables of ClusteringSeqs class
+        for attr in ("hc_result", "hc_result_precomputed", "assignment", "dist_matrix", "hc_input", "coord"):
+            if hasattr(p.cl_master, attr):
+                setattr(peak.cl_master, attr, getattr(p.cl_master, attr))
+
+    return peak
+"""
