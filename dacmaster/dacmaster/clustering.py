@@ -124,7 +124,7 @@ def __calc_dist_array(i, data):
     # row <i> in the distance matrix
     dist_array = np.array([run_edlib(data[i],
                                      data[j],
-                                     "glocal",
+                                     "global",
                                      only_diff=True,
                                      revcomp=True,
                                      cyclic=True)
@@ -132,16 +132,12 @@ def __calc_dist_array(i, data):
                           dtype='float32')
 
     logger.debug(f"Finished @ row {i}")
-    #sys.stdout.flush()
-    #sys.stderr.flush()
-    return (i, dist_array)   # TODO: how to do "one line + debug message"...?
+    return (i, dist_array)
 
 
 def _calc_dist_array(args):
     s, t, data = args
     logger.debug(f"Starting row {s}-{t}")
-    #sys.stdout.flush()
-    #sys.stderr.flush()
     return [__calc_dist_array(i, data) for i in range(s, t)]
 
 
@@ -216,7 +212,7 @@ class ClusteringSeqs(Clustering):
             cons_seq = consed.consensus([seq if i == 0
                                          else run_edlib(seqs.iloc[0],
                                                         seq,
-                                                        "glocal",
+                                                        "global",
                                                         cyclic=True,
                                                         return_seq=True)["seq"]
                                          for i, seq in enumerate(seqs)],
@@ -240,9 +236,8 @@ class ClusteringSeqs(Clustering):
             ax.scatter(self.coord[where, 0], self.coord[where, 1], marker=".", s=20,
                        c=f"#{random.randint(0, 0xFFFFFF):06x}",
                        label=f"{cluster_id} ({where.shape[0]} seqs)")
-            # TODO: add represetatives
-
         ax.legend(loc="upper right", bbox_to_anchor=(1.2, 1.0), prop={"size": 12})
+        #ax.legend..legendHandles[0]._legmarker.set_markersize(6)   # TODO: enlarge points in the legend
 
         if out_fname is not None:
             plt.savefig(out_fname)

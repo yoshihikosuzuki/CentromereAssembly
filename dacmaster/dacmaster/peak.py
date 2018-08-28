@@ -77,7 +77,7 @@ def __take_intra_consensus(args):
     cons_seq = consed.consensus([seq if i == 0
                                  else run_edlib(seqs[0],
                                                 seq,
-                                                "glocal",
+                                                "global",   # TODO: change to "extension"
                                                 cyclic=True,
                                                 return_seq=True)["seq"]
                                  for i, seq in enumerate(seqs)],
@@ -183,13 +183,13 @@ class Peak:
         # Redundancy removal and phase synchronization
         del_row = []
         n_master = self.master_units.shape[0]
-        for i in range(n_master - 1):
+        for i in range(n_master - 1):   # TODO: simultaneously synchronize, or fix single seed
             df_i = self.master_units.iloc[i]
             for j in range(i + 1, n_master):
                 df_j = self.master_units.iloc[j]
                 align = run_edlib(df_i["sequence"],
                                   df_j["sequence"],
-                                  "glocal",
+                                  "global",
                                   cyclic=True,
                                   revcomp=True,
                                   return_seq=True,
