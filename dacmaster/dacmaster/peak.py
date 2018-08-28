@@ -191,7 +191,7 @@ class Peak:
                                   df_j["sequence"],
                                   "global",
                                   cyclic=True,
-                                  revcomp=True,
+                                  rc=True,
                                   return_seq=True,
                                   return_seq_diff_th=similar_threshold)
                 if align["diff"] < redundant_threshold:   # remove too similar master units   # TODO: recompute consensus

@@ -126,7 +126,7 @@ def __calc_dist_array(i, data):
                                      data[j],
                                      "global",
                                      only_diff=True,
-                                     revcomp=True,
+                                     rc=True,
                                      cyclic=True)
                            for j in range(i + 1, data.shape[0])],
                           dtype='float32')
@@ -149,10 +149,10 @@ class ClusteringSeqs(Clustering):
     Run <self.cluster_greedy> for former, and <self.cluster_hierarchical> for latter.
     """
 
-    def __init__(self, input_data, cyclic=True, revcomp=True):
+    def __init__(self, input_data, cyclic=True, rc=True):
         super().__init__(input_data)
         self.cyclic = cyclic   # do cyclic alignment between two sequences
-        self.revcomp = revcomp   # allow reverse complement when taking alignment
+        self.rc = rc   # allow reverse complement when taking alignment
 
     @print_log("distance matrix calculation")
     def calc_dist_mat(self, n_core):
