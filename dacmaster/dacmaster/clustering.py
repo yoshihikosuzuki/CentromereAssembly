@@ -217,16 +217,16 @@ class ClusteringSeqs(Clustering):
                                                         return_seq=True)["seq"]
                                          for i, seq in enumerate(seqs)],
                                         n_iter=3)
-            ret[index] = (cluster_id, seqs.shape[0], cons_seq)
+            ret[index] = (cluster_id, seqs.shape[0], len(cons_seq), cons_seq)
             index += 1
 
         return pd.DataFrame.from_dict(ret, orient="index",
-                                      columns=("cluster_id", "cluster_size", "sequence"))
+                                      columns=("cluster_id", "cluster_size", "length", "sequence"))
 
     def dendrogram(self, method="ward"):
         super().dendrogram(method)
 
-    def plot_tsne(self, figsize=(12, 12), out_fname=None):
+    def plot_tsne(self, figsize=(12, 12), leg_marker_size=200, out_fname=None):
         if not hasattr(self, "coord"):
             self.coord = TSNE(n_components=2, metric='precomputed').fit_transform(self.dist_matrix)
 
@@ -237,7 +237,9 @@ class ClusteringSeqs(Clustering):
                        c=f"#{random.randint(0, 0xFFFFFF):06x}",
                        label=f"{cluster_id} ({where.shape[0]} seqs)")
         ax.legend(loc="upper right", bbox_to_anchor=(1.2, 1.0), prop={"size": 12})
-        #ax.legend..legendHandles[0]._legmarker.set_markersize(6)   # TODO: enlarge points in the legend
+        leg = ax.get_legend()
+        for handle in leg.legendHandles:
+            handle._sizes = [leg_marker_size]
 
         if out_fname is not None:
             plt.savefig(out_fname)

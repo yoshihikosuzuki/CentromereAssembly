@@ -88,7 +88,7 @@ def __take_intra_consensus(args):
     else:
         logger.debug(f"Finished @ {read_id}({path_id})")
 
-    return (read_id, path_id, cons_seq)
+    return (read_id, path_id, len(cons_seq), cons_seq)
 
 
 def _take_intra_consensus(args_list):
@@ -155,6 +155,7 @@ class Peak:
                                                  orient="index",
                                                  columns=("read_id",
                                                           "path_id",
+                                                          "length",
                                                           "sequence"))
 
     @print_log("hierarchical clustering of consensus units")
