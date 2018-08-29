@@ -125,9 +125,9 @@ def __calc_dist_array(i, data):
     dist_array = np.array([run_edlib(data[i],
                                      data[j],
                                      "global",
-                                     only_diff=True,
+                                     cyclic=True,
                                      rc=True,
-                                     cyclic=True)
+                                     only_diff=True)
                            for j in range(i + 1, data.shape[0])],
                           dtype='float32')
 
@@ -208,6 +208,7 @@ class ClusteringSeqs(Clustering):
                                                         seq,
                                                         "global",
                                                         cyclic=True,
+                                                        rc=True,
                                                         return_seq=True)["seq"]
                                          for i, seq in enumerate(seqs)],
                                         n_iter=3)

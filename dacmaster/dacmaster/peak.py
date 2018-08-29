@@ -77,7 +77,7 @@ def __take_intra_consensus(args):
     cons_seq = consed.consensus([seq if i == 0
                                  else run_edlib(seqs[0],
                                                 seq,
-                                                "global",   # TODO: change to "extension"
+                                                "global",   # TODO: change to "extension"?
                                                 cyclic=True,
                                                 return_seq=True)["seq"]
                                  for i, seq in enumerate(seqs)],
