@@ -98,6 +98,9 @@ class Clustering:
             else:
                 yield (cluster_id, self.data[where])
 
+    def merge_cluster(self, cluster_to, cluster_from):
+        self.assignment[self.cluster(cluster_from, return_where=True)] = cluster_to
+
     def hist_cluster_size(self, bins=100, n_print=5):
         """
         Histogram of the size of the clusters.

@@ -19,7 +19,7 @@ N_CORE_DATRUF = 4
 
 # for damaster
 MIN_N_UNITS = 10
-N_CORE_DACMASTER = 1
+N_CORE_DACMASTER = 24
 
 #####################
 
@@ -58,7 +58,7 @@ datruf_result datruf_units: $(DB_PREFIX).db TAN.$(DB_PREFIX).las
 ## Run dacmaster
 
 peaks.pkl: datruf_units
-	echo "dacmaster_run.py -m $(MIN_N_UNITS) -n $(N_CORE_DACMASTER) -D -p precomputed.pkl $^" > run_dacmaster.sh
+	echo "dacmaster_run.py -m $(MIN_N_UNITS) -n $(N_CORE_DACMASTER) -D" > run_dacmaster.sh
 	python -m BITS.$(JOB_SCHEDULER)_nize run_dacmaster.sh job_name="run_dacmaster" n_core=$(N_CORE_DACMASTER) wait=False
 	$(SUBMIT_JOB) run_dacmaster.sh.$(JOB_SCHEDULER)
 

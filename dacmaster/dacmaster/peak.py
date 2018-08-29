@@ -136,7 +136,8 @@ class Peak:
                  for path_id, df_path in df_read.groupby("path_id")
                  if df_path.shape[0] >= min_n_units]   # filter by min. num. of units in a TR
 
-        n_sub = -(-len(tasks) // n_core)   # num. of tasks for each core
+        n_tasks = len(tasks)
+        n_sub = -(-n_tasks // n_core)   # num. of tasks for each core
         tasks_sub = [tasks[i * n_sub:(i + 1) * n_sub - 1] for i in range(n_core)]
 
         self.cons_units = {}
@@ -150,6 +151,7 @@ class Peak:
                     index += 1
         exe_pool.close()
         exe_pool.join()
+        logger.info(f"{len(self.cons_units)} out of {n_tasks} succeeded")
 
         self.cons_units = pd.DataFrame.from_dict(self.cons_units,
                                                  orient="index",
@@ -174,32 +176,51 @@ class Peak:
         self.master_units = self.cl_master.generate_consensus()
         logger.info(f"Original master units:\n{self.master_units}")
 
-        # Remove noisy clusters
+        # Merge too close clusters
+        n_master = self.master_units.shape[0]
+        for i in range(n_master - 1):
+            seq_i = self.master_units["sequence"].iloc[i]
+            if seq_i == "":
+                continue
+            for j in range(i + 1, n_master):
+                seq_j = self.master_units["sequence"].iloc[j]
+                if seq_j == "":
+                    continue
+                diff = run_edlib(seq_i,
+                                 seq_j,
+                                 "global",
+                                 cyclic=True,
+                                 rc=True,
+                                 only_diff=True)
+                if diff < redundant_threshold:
+                    self.cl_master.merge_cluster(self.master_units["cluster_id"].iloc[i],
+                                                 self.master_units["cluster_id"].iloc[j])
+        self.master_units = self.cl_master.generate_consensus()
+        logger.info(f"After merging close units:\n{self.master_units}")
+
+        # Remove remaining noisy clusters
         del_row = [index for index, df in self.master_units.iterrows()
                    if df["cluster_size"] < self.cl_master.N * 0.01    # too small cluster
                    or len(df["sequence"]) == 0]   # Consed failure
         self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
         logger.debug(f"After removing noisy clusters:\n{self.master_units}")
 
-        # Redundancy removal and phase synchronization
+        # Synchronize phase, i.e. start position
         del_row = []
         n_master = self.master_units.shape[0]
         for i in range(n_master - 1):   # TODO: simultaneously synchronize, or fix single seed
-            df_i = self.master_units.iloc[i]
+            seq_i = self.master_units["sequence"].iloc[i]
             for j in range(i + 1, n_master):
-                df_j = self.master_units.iloc[j]
-                align = run_edlib(df_i["sequence"],
-                                  df_j["sequence"],
+                seq_j = self.master_units["sequence"].iloc[j]
+                align = run_edlib(seq_i,
+                                  seq_j,
                                   "global",
                                   cyclic=True,
                                   rc=True,
                                   return_seq=True,
                                   return_seq_diff_th=similar_threshold)
-                if align["diff"] < redundant_threshold:   # remove too similar master units   # TODO: recompute consensus
-                    del_row.append(i if df_i["cluster_size"] < df_j["cluster_size"]
-                                   else j)
-                elif align["seq"] is not None:   # synchronize similar master units
-                    logger.debug(f"Synchronize {i} and {j} (strand = {align['strand']})")
+                if align["seq"] is not None:
+                    #logger.debug(f"Synchronize {i} and {j} (strand = {align['strand']})")
                     self.master_units.loc[j, "sequence"] = align["seq"]
         self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
         logger.info(f"Final mater units:\n{self.master_units}")
@@ -330,30 +351,3 @@ class Peaks:
                            (self.units[self.units["length"] >= peak_info.min_len]
                             .pipe(lambda df: df[df["length"] <= peak_info.max_len])))
                       for peak_info in peak_infos]
-
-"""   # TODO: to be obsolete
-def load_peaks(pkl_fname="peaks.pkl"):
-    with open(pkl_fname, 'rb') as f:
-        peaks = [peak_from_old_data(p) for p in pickle.load(f)]
-        logger.info(f"{len(peaks)} peaks were loaded")
-        return peaks
-
-def peak_from_old_data(p):
-    peak = Peak(None, None)
-
-    # instance variables of Peak class
-    for attr in ("info", "raw_units", "cons_units", "master_units", "master_original"):
-        if hasattr(p, attr):
-            setattr(peak, attr, getattr(p, attr))
-
-    # ClusteringSeqs instance
-    if hasattr(peak, "cons_units"):
-        peak.cl_master = ClusteringSeqs(peak.cons_units["sequence"])
-
-        # instance variables of ClusteringSeqs class
-        for attr in ("hc_result", "hc_result_precomputed", "assignment", "dist_matrix", "hc_input", "coord"):
-            if hasattr(p.cl_master, attr):
-                setattr(peak.cl_master, attr, getattr(p.cl_master, attr))
-
-    return peak
-"""
