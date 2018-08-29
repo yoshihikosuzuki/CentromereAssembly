@@ -181,15 +181,9 @@ class ClusteringSeqs(Clustering):
 
         exe_pool = NoDaemonPool(n_core)
         for ret in exe_pool.map(_calc_dist_array, tasks):
-            #logger.debug("Received")
-            #sys.stdout.flush()
-            #sys.stderr.flush()
             for r in ret:
                 i, dist_array = r
                 self.dist_matrix[i, i + 1:] = self.dist_matrix[i + 1:, i] = dist_array
-                #logger.debug(f"Inserted @ row {i}")
-                #sys.stdout.flush()
-                #sys.stderr.flush()
         exe_pool.close()
 
     def cluster_hierarchical(self, method="ward", criterion="distance", threshold=0.7, n_core=1):
