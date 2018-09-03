@@ -11,6 +11,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.manifold import TSNE
 from sklearn.decomposition import NMF
 import matplotlib.pyplot as plt
+from matplotlib.cm import Spectral
 import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.seq import revcomp
@@ -35,6 +36,10 @@ class Clustering:
         self.N = input_data.shape[0]   # NOTE: <input_data> must be this kind of data
         self.assignment = np.full(self.N, -1, dtype='int8')   # cluster assignment for each data
         self.hc_result_precomputed = {}   # used to avoid re-calculation of hierarchical clustering
+
+    @property
+    def n_clusters(self):
+        return len(set(self.assignment))
 
     def cluster_hierarchical(self, method, criterion, threshold):
         """
@@ -224,20 +229,18 @@ class ClusteringSeqs(Clustering):
     def dendrogram(self, method="ward"):
         super().dendrogram(method)
 
-    def plot_tsne(self, figsize=(12, 12), leg_marker_size=200, out_fname=None):
+    def plot_tsne(self, figsize=(12, 12), out_fname=None):
         if not hasattr(self, "coord"):
             self.coord = TSNE(n_components=2, metric='precomputed').fit_transform(self.dist_matrix)
 
-        fig, ax = plt.subplots(figsize=figsize)
+        n_clusters = super().n_clusters
+        cols = Spectral(np.array(range(n_clusters)) / n_clusters)
+        plt.figure(figsize=figsize)
         for i, data in enumerate(super().clusters(return_where=True)):
             cluster_id, where = data
-            ax.scatter(self.coord[where, 0], self.coord[where, 1], marker=".", s=20,
-                       c=f"#{random.randint(0, 0xFFFFFF):06x}",
-                       label=f"{cluster_id} ({where.shape[0]} seqs)")
-        ax.legend(loc="upper right", bbox_to_anchor=(1.2, 1.0), prop={"size": 12})
-        leg = ax.get_legend()
-        for handle in leg.legendHandles:
-            handle._sizes = [leg_marker_size]
+            plt.scatter(*self.coord[where].T, s=5, c=cols[i],
+                        label=f"{cluster_id} ({where.shape[0]} seqs)")
+        plt.legend(fontsize=12, markerscale=4)
 
         if out_fname is not None:
             plt.savefig(out_fname)
