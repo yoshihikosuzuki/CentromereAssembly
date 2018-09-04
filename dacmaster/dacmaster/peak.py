@@ -77,9 +77,9 @@ def __take_intra_consensus(args):
     cons_seq = consed.consensus([seq if i == 0
                                  else run_edlib(seqs[0],
                                                 seq,
-                                                "global",   # TODO: change to "extension"?
+                                                "global",
                                                 cyclic=True,
-                                                return_seq=True)["seq"]
+                                                return_seq=True).seq
                                  for i, seq in enumerate(seqs)],
                                 n_iter=2)
 
@@ -219,7 +219,7 @@ class Peak:
                                   rc=True,
                                   return_seq=True,
                                   return_seq_diff_th=similar_threshold)
-                if align["seq"] is not None:
+                if align.seq is not None:
                     #logger.debug(f"Synchronize {i} and {j} (strand = {align['strand']})")
                     self.master_units.loc[j, "sequence"] = align["seq"]
         self.master_units = self.master_units.drop(del_row).reset_index(drop=True)

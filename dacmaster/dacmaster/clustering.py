@@ -217,7 +217,7 @@ class ClusteringSeqs(Clustering):
                                                         "global",
                                                         cyclic=True,
                                                         rc=True,
-                                                        return_seq=True)["seq"]
+                                                        return_seq=True).seq
                                          for i, seq in enumerate(seqs)],
                                         n_iter=3)
             ret[index] = (cluster_id, seqs.shape[0], len(cons_seq), cons_seq)
