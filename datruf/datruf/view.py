@@ -1,6 +1,8 @@
 import os.path
 import matplotlib.pyplot as plt
 import matplotlib.image as img
+import matplotlib.cm as cm
+from matplotlib.colors import rgb2hex
 import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.utils import run_command, make_line
@@ -24,7 +26,7 @@ class Viewer:
         v.show(read_id, path_plot=True, consensus=True)
     """
 
-    def __init__(self, db_file, las_file, out_dir, gepard):
+    def __init__(self, db_file, las_file, out_dir, gepard, encodings=None):
         if not os.path.isdir(out_dir):
             os.mkdir(out_dir)
 
@@ -32,6 +34,7 @@ class Viewer:
         self.las_file = las_file
         self.out_dir = out_dir
         self.gepard = gepard
+        self.encodings = encodings
 
     def _calc_cover_set(self):
         if not hasattr(self, 'tr_intervals'):
@@ -136,7 +139,7 @@ class Viewer:
 
         # Put TR intervals reported by datander on diagonal
         # diagonal
-        shapes = [make_line(0, 0, self.read_len, self.read_len, 'yellow', 3)]
+        shapes = [make_line(0, 0, self.read_len, self.read_len, 'grey', 3)]
         for start, end in self.tr_intervals:
             # TR interval
             shapes.append(make_line(start, start, end, end, 'black', 3))
@@ -192,20 +195,42 @@ class Viewer:
                             y=[x[0] for x in self.tr_intervals],
                             text=list(range(1, len(self.tr_intervals) + 1)),
                             textposition="top right",
-                            textfont=dict(size=10, color="black"),
+                            textfont=dict(size=10, color="grey"),
                             mode="text",
                             name="interval #")
+
+        data = [trace1, trace2, trace3, trace4]
+
+        if (self.encodings is not None
+            and self.read_id in self.encodings
+            and len(self.encodings[self.read_id]) > 0):
+
+            encoding = self.encodings[self.read_id]
+            shapes += [make_line(e[0], e[0], e[1], e[1], rgb2hex(cm.jet(e[4] * 3)), 5) for e in encoding]
+            data += [go.Scatter(x=[e[0] for e in encoding],
+                                y=[e[0] for e in encoding],
+                                text=[f"{e[3]} " for e in encoding],
+                                textposition="bottom left",
+                                textfont=dict(size=10, color="black"),
+                                mode="text",
+                                name="master ID"),
+                     go.Scatter(x=[e[0] for e in encoding],
+                                y=[e[0] for e in encoding],
+                                text=[f"{e[3]}({e[5]}) diff = {e[4]}<br>[{e[0]}, {e[1]}] ({e[2]} bp)"
+                                      for e in encoding],
+                                hoverinfo="text",
+                                showlegend=False)]
 
         layout = go.Layout(width=725, height=725,
                            hovermode='closest',
                            xaxis=dict(showgrid=False,
-                                      range=[0, self.read_len + 100]),
+                                      range=[-self.read_len * 0.05, self.read_len + 100]),
                            yaxis=dict(showgrid=False,
                                       range=[0, self.read_len],
                                       autorange='reversed'),
                            shapes=shapes)
 
-        py.iplot(go.Figure(data=[trace1, trace2, trace3, trace4],
+        py.iplot(go.Figure(data=data,
                            layout=layout))
 
     def path_plot(self, snake=True):
