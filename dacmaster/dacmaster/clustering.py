@@ -12,8 +12,6 @@ from sklearn.manifold import TSNE
 from sklearn.decomposition import NMF
 import matplotlib.pyplot as plt
 from matplotlib.cm import Spectral
-import plotly.offline as py
-import plotly.graph_objs as go
 from BITS.seq import revcomp
 from BITS.run import run_edlib
 from BITS.utils import run_command, print_log, NoDaemonPool

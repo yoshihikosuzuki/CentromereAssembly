@@ -221,7 +221,7 @@ class Peak:
                                   return_seq_diff_th=similar_threshold)
                 if align.seq is not None:
                     #logger.debug(f"Synchronize {i} and {j} (strand = {align['strand']})")
-                    self.master_units.loc[j, "sequence"] = align["seq"]
+                    self.master_units.loc[j, "sequence"] = align.seq
         self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
         logger.info(f"Final mater units:\n{self.master_units}")
 
