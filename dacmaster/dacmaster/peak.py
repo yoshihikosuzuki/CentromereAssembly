@@ -200,7 +200,7 @@ class Peak:
 
         # Remove remaining noisy clusters
         del_row = [index for index, df in self.master_units.iterrows()
-                   if df["cluster_size"] < self.cl_master.N * 0.01    # too small cluster
+                   if df["cluster_size"] < self.cl_master.N * 0.00#1    # too small cluster
                    or len(df["sequence"]) == 0]   # Consed failure
         self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
         logger.debug(f"After removing noisy clusters:\n{self.master_units}")

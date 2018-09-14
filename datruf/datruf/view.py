@@ -23,7 +23,7 @@ class Viewer:
         py.init_notebook_mode(connected=True)
         from datruf import Viewer
         v = Viewer(db_file, las_file, out_dir, gepard_command)
-        v.show(read_id, path_plot=True, consensus=True)
+        v.show(read_id, path_plot=True, show_dag=True)
     """
 
     def __init__(self, db_file, las_file, out_dir, gepard, encodings=None):
@@ -54,7 +54,7 @@ class Viewer:
             # set((ab, ae, bb, be), ...)
             self.min_cover_set = calc_min_cover_set(self.cover_set)
 
-    def _load_paths(self, plot=False, snake=False):
+    def _load_paths(self, plot=False, show_snake=False):
         self._calc_cover_set()   # load_paths needs min_cover_set
 
         if not hasattr(self, 'paths'):
@@ -64,19 +64,20 @@ class Viewer:
         for path in self.paths:
             if plot is True:
                 if not hasattr(path, 'shapes'):
-                    path.split_alignment(plot=True, snake=snake)
+                    path.split_alignment(plot=True, snake=show_snake)
             else:
                 if not hasattr(path, 'unit_alignments'):
                     path.split_alignment()
 
     def show(self,
              read_id,
-             dot_plot=True,
+             dot_plot=False,
              alignment_plot=True,
              show_grid=False,   # for alignment plot
              path_plot=False,
-             snake=True,   # for alignment path plot
-             consensus=False):
+             show_snake=True,   # for alignment path plot
+             save_html=False,   # instead of drawing in the current cell
+             show_dag=False):
         """
         All-in-one drawing function for a single read.
         By default, this method generates only dot plot and alignment plot.
@@ -84,14 +85,15 @@ class Viewer:
         """
 
         self.set_read(read_id)
+
         if dot_plot:
             self.dot_plot()
         if alignment_plot:
-            self.alignment_plot(show_grid=show_grid)
+            self.alignment_plot(show_grid, save_html)
         if path_plot:
-            self.path_plot()
-        if consensus:
-            self.consensus()
+            self.path_plot(show_snake, save_html)
+        if show_dag:
+            self.show_dag()
 
     def set_read(self, read_id):
         # Initialize
@@ -134,7 +136,7 @@ class Viewer:
         tmp = plt.imshow(img.imread(out_dotplot))
         plt.show()
 
-    def alignment_plot(self, show_grid=False):
+    def alignment_plot(self, show_grid=False, save_html=False):
         self._calc_cover_set()
 
         # Put TR intervals reported by datander on diagonal
@@ -230,11 +232,14 @@ class Viewer:
                                       autorange='reversed'),
                            shapes=shapes)
 
-        py.iplot(go.Figure(data=data,
-                           layout=layout))
+        fig = go.Figure(data=data, layout=layout)
+        if not save_html:
+            py.iplot(fig)
+        else:
+            py.plot(fig, filename=f"{self.read_id}.alignment_plot.html")
 
-    def path_plot(self, snake=True):
-        self._load_paths(plot=True, snake=snake)
+    def path_plot(self, show_snake=True, save_html=False):
+        self._load_paths(plot=True, show_snake=show_snake)
 
         # diagonal
         shapes = [make_line(0, 0, self.read_len, self.read_len, 'yellow', 3)]
@@ -262,9 +267,13 @@ class Viewer:
                                       autorange='reversed'),
                            shapes=shapes)
 
-        py.iplot(go.Figure(data=[trace1, trace2], layout=layout))
+        fig = go.Figure(data=[trace1, trace2], layout=layout)
+        if not save_html:
+            py.iplot(fig)
+        else:
+            py.plot(fig, filename=f"{self.read_id}.path_plot.html")
 
-    def consensus(self):
+    def show_dag(self):
         import networkx as nx
         from networkx.drawing.nx_agraph import graphviz_layout
 
