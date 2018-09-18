@@ -124,7 +124,7 @@ class Peak:
     """
 
     info: PeakInfo
-    reads: dict
+    reads: dict   # reads having TRs of this peak
     raw_units: pd.DataFrame
 
     @print_log("intra-TR consensus")
@@ -346,8 +346,10 @@ class Peaks:
                 logger.info(f"Sub-peak merged: {self.x[i]} bp (density = {self.dens[i]:.5f})")
                 peak_infos[-1].add_peak(self.x[i], self.dens[i], intvl)
 
-        self.peaks = [Peak(peak_info,
-                           self.reads,
-                           (self.units[self.units["length"] >= peak_info.min_len]
-                            .pipe(lambda df: df[df["length"] <= peak_info.max_len])))
-                      for peak_info in peak_infos]
+        self.peaks = []
+        for peak_info in peak_infos:
+            raw_units = (self.units[self.units["length"] >= peak_info.min_len]
+                         .pipe(lambda df: df[df["length"] <= peak_info.max_len]))
+            self.peaks.append(Peak(peak_info,
+                                   {k: self.reads[k] for k in set(raw_units["read_id"])},
+                                   raw_units))
