@@ -125,19 +125,16 @@ class Clustering:
         if not hasattr(self, "coord"):
             self.coord = TSNE(n_components=2, metric='precomputed').fit_transform(self.s_dist_mat)
 
-        if not hasattr(self, "assignment"):   # plot before clustering
-            plt.scatter(*self.cood.T, s=5)
-        else:   # plot with coloring of clusters
-            if coloring == "sequential":
-                cmap = plt.get_cmap("gist_ncar")
-                cols = cmap(np.array(range(self.n_clusters)) / self.n_clusters)
-            plt.figure(figsize=figsize)
-            for i, data in enumerate(self.clusters(return_where=True)):
-                cluster_id, where = data
-                plt.scatter(*self.coord[where].T, s=5,
-                            c=cols[i] if coloring == "sequential" else f"#{random.randint(0, 0xFFFFFF):06x}",
-                            label=f"{cluster_id} ({where.shape[0]} seqs)")
-            plt.legend(fontsize=12, markerscale=4, bbox_to_anchor=(1.05, 1))
+        if coloring == "sequential":
+            cmap = plt.get_cmap("gist_ncar")
+            cols = cmap(np.array(range(self.n_clusters)) / self.n_clusters)
+        plt.figure(figsize=figsize)
+        for i, data in enumerate(self.clusters(return_where=True)):
+            cluster_id, where = data
+            plt.scatter(*self.coord[where].T, s=5,
+                        c=cols[i] if coloring == "sequential" else f"#{random.randint(0, 0xFFFFFF):06x}",
+                        label=f"{cluster_id} ({where.shape[0]} seqs)")
+        plt.legend(fontsize=12, markerscale=4, bbox_to_anchor=(1.05, 1))
 
         if out_fname is None:
             plt.show()
@@ -243,42 +240,10 @@ class ClusteringSeqs(Clustering):
                                       columns=("cluster_id", "cluster_size", "length", "sequence"))
 
 
-class ClusteringVarMat(Clustering):
+class ClusteringNumeric(Clustering):
     """
-    Overview:
-          self.vmatrix     ---(any clustering method)--->     self.assignment
-        (variant matrix)    [ward, gmm, split_dis, dpmm]    (clustering result)
-
-    Data format:
-       self.vmatrix.shape = (self.N, self.L)
-       self.N = # of units
-       self.L = # of variant sites
-
-       self.assignment.shape = (self.N)
-       self.assignment[i] = Cluster index to which unit i belongs
+    A child class which additionally has clustering methods only for numerical data.
     """
-
-    def __init__(self, vmatrix_fname):
-        super().__init__(self.load_vmatrix(vmatrix_fname))
-
-    def load_vmatrix(self, in_fname):
-        N = int(run_command(f"awk 'NR == 1 {{print length($1)}}' {in_fname}"))
-        L = int(run_command(f"cat {in_fname} | wc -l"))
-
-        # TODO: why last column of vmatrix is always 0?
-
-        vmatrix = np.zeros((L, N), dtype=int)
-        with open(in_fname, 'r') as f:
-            for i, line in enumerate(f):
-                vmatrix[i, :] = list(map(int, list(line.strip())))
-
-        # Change the matrix form as (UNITS, VARIANTS)
-        return vmatrix.T
-
-    def calc_dist_mat(self):
-        # Used for hierarchical clustering and/or t-SNE plot
-        self.c_dist_mat = pdist(self.vmatrix, metric='hamming')
-        self.s_dist_mat = squareform(self.c_dist_mat)
 
     def do_clustering(self, method, **kwargs):
         """
@@ -292,7 +257,7 @@ class ClusteringVarMat(Clustering):
 
         assert method in ("kmeans", "gmm", "birch", "nmf", "gmm_bic", "dpmm")
 
-        params = sorted(tuple(kwargs.items()))
+        params = tuple(sorted(kwargs.items()))
         if (method, params) in self.precomputed:
             self.assignment = self.precomputed[(method, params)]
         else:
@@ -350,7 +315,43 @@ class ClusteringVarMat(Clustering):
         gmm.fit(self.data)
         return gmm.predict(self.data)
 
-    ## ---------------------------------------------- ##
+
+class ClusteringVarMat(ClusteringNumeric):
+    """
+    Overview:
+          self.vmatrix     ---(any clustering method)--->     self.assignment
+        (variant matrix)    [ward, gmm, split_dis, dpmm]    (clustering result)
+
+    Data format:
+       self.vmatrix.shape = (self.N, self.L)
+       self.N = # of units
+       self.L = # of variant sites
+
+       self.assignment.shape = (self.N)
+       self.assignment[i] = Cluster index to which unit i belongs
+    """
+
+    def __init__(self, vmatrix_fname):
+        super().__init__(self.load_vmatrix(vmatrix_fname))
+
+    def load_vmatrix(self, in_fname):
+        N = int(run_command(f"awk 'NR == 1 {{print length($1)}}' {in_fname}"))
+        L = int(run_command(f"cat {in_fname} | wc -l"))
+
+        # TODO: why last column of vmatrix is always 0?
+
+        vmatrix = np.zeros((L, N), dtype=int)
+        with open(in_fname, 'r') as f:
+            for i, line in enumerate(f):
+                vmatrix[i, :] = list(map(int, list(line.strip())))
+
+        # Change the matrix form as (UNITS, VARIANTS)
+        return vmatrix.T
+
+    def calc_dist_mat(self):
+        # Used for hierarchical clustering and/or t-SNE plot
+        self.c_dist_mat = pdist(self.data, metric='hamming')
+        self.s_dist_mat = squareform(self.c_dist_mat)
 
     def generate_consensus(self, how="representative"):
         """
