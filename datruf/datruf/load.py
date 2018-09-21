@@ -1,6 +1,5 @@
 from io import StringIO
 import re
-import numpy as np
 import pandas as pd
 from logzero import logger
 from BITS.utils import run_command

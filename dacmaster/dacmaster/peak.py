@@ -165,10 +165,15 @@ class Peak:
         # Cluster the intra-TR consensus units
         if not hasattr(self, "cl_master"):
             self.cl_master = ClusteringSeqs(self.cons_units["sequence"])
-        self.cl_master.cluster_hierarchical(n_core=n_core)
+        if not hasattr(self.cl_master, "c_dist_mat"):
+            self.cl_master.calc_dist_mat(n_core)
+        self.cl_master.cluster_hierarchical()
 
     @print_log("master units construction")
-    def generate_master_units(self, redundant_threshold=0.05, similar_threshold=0.3):
+    def generate_master_units(self,
+                              redundant_threshold=0.05,
+                              noisy_threshold=0.01,
+                              similar_threshold=0.3):
         """
         Take consensus for each cluster of consensus units while removing noisy results.
         """
@@ -200,7 +205,7 @@ class Peak:
 
         # Remove remaining noisy clusters
         del_row = [index for index, df in self.master_units.iterrows()
-                   if df["cluster_size"] < self.cl_master.N * 0.00#1    # too small cluster
+                   if df["cluster_size"] < self.cl_master.N * noisy_threshold   # too small cluster
                    or len(df["sequence"]) == 0]   # Consed failure
         self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
         logger.debug(f"After removing noisy clusters:\n{self.master_units}")

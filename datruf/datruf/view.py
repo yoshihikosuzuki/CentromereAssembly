@@ -6,7 +6,7 @@ from matplotlib.colors import rgb2hex
 import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.utils import run_command, make_line
-from .io import load_tr_intervals, load_alignments, load_paths
+from .load import load_tr_intervals, load_alignments, load_paths
 from .core import calc_cover_set, calc_min_cover_set
 
 plt.style.use('ggplot')
