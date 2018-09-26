@@ -1,10 +1,12 @@
 import os.path
 import matplotlib.pyplot as plt
 import matplotlib.image as img
+import matplotlib.cm as cm
+from matplotlib.colors import rgb2hex
 import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.utils import run_command, make_line
-from .io import load_tr_intervals, load_alignments, load_paths
+from .load import load_tr_intervals, load_alignments, load_paths
 from .core import calc_cover_set, calc_min_cover_set
 
 plt.style.use('ggplot')
@@ -21,10 +23,10 @@ class Viewer:
         py.init_notebook_mode(connected=True)
         from datruf import Viewer
         v = Viewer(db_file, las_file, out_dir, gepard_command)
-        v.show(read_id, path_plot=True, consensus=True)
+        v.show(read_id, path_plot=True, show_dag=True)
     """
 
-    def __init__(self, db_file, las_file, out_dir, gepard):
+    def __init__(self, db_file, las_file, out_dir, gepard, encodings=None):
         if not os.path.isdir(out_dir):
             os.mkdir(out_dir)
 
@@ -32,6 +34,7 @@ class Viewer:
         self.las_file = las_file
         self.out_dir = out_dir
         self.gepard = gepard
+        self.encodings = encodings
 
     def _calc_cover_set(self):
         if not hasattr(self, 'tr_intervals'):
@@ -51,7 +54,7 @@ class Viewer:
             # set((ab, ae, bb, be), ...)
             self.min_cover_set = calc_min_cover_set(self.cover_set)
 
-    def _load_paths(self, plot=False, snake=False):
+    def _load_paths(self, plot=False, show_snake=False):
         self._calc_cover_set()   # load_paths needs min_cover_set
 
         if not hasattr(self, 'paths'):
@@ -61,19 +64,20 @@ class Viewer:
         for path in self.paths:
             if plot is True:
                 if not hasattr(path, 'shapes'):
-                    path.split_alignment(plot=True, snake=snake)
+                    path.split_alignment(plot=True, snake=show_snake)
             else:
                 if not hasattr(path, 'unit_alignments'):
                     path.split_alignment()
 
     def show(self,
              read_id,
-             dot_plot=True,
+             dot_plot=False,
              alignment_plot=True,
              show_grid=False,   # for alignment plot
              path_plot=False,
-             snake=True,   # for alignment path plot
-             consensus=False):
+             show_snake=True,   # for alignment path plot
+             save_html=False,   # instead of drawing in the current cell
+             show_dag=False):
         """
         All-in-one drawing function for a single read.
         By default, this method generates only dot plot and alignment plot.
@@ -81,14 +85,15 @@ class Viewer:
         """
 
         self.set_read(read_id)
+
         if dot_plot:
             self.dot_plot()
         if alignment_plot:
-            self.alignment_plot(show_grid=show_grid)
+            self.alignment_plot(show_grid, save_html)
         if path_plot:
-            self.path_plot()
-        if consensus:
-            self.consensus()
+            self.path_plot(show_snake, save_html)
+        if show_dag:
+            self.show_dag()
 
     def set_read(self, read_id):
         # Initialize
@@ -131,12 +136,12 @@ class Viewer:
         tmp = plt.imshow(img.imread(out_dotplot))
         plt.show()
 
-    def alignment_plot(self, show_grid=False):
+    def alignment_plot(self, show_grid=False, save_html=False):
         self._calc_cover_set()
 
         # Put TR intervals reported by datander on diagonal
         # diagonal
-        shapes = [make_line(0, 0, self.read_len, self.read_len, 'yellow', 3)]
+        shapes = [make_line(0, 0, self.read_len, self.read_len, 'grey', 3)]
         for start, end in self.tr_intervals:
             # TR interval
             shapes.append(make_line(start, start, end, end, 'black', 3))
@@ -192,24 +197,49 @@ class Viewer:
                             y=[x[0] for x in self.tr_intervals],
                             text=list(range(1, len(self.tr_intervals) + 1)),
                             textposition="top right",
-                            textfont=dict(size=10, color="black"),
+                            textfont=dict(size=10, color="grey"),
                             mode="text",
                             name="interval #")
+
+        data = [trace1, trace2, trace3, trace4]
+
+        if (self.encodings is not None
+            and self.read_id in self.encodings
+            and len(self.encodings[self.read_id]) > 0):
+
+            encoding = self.encodings[self.read_id]
+            shapes += [make_line(e[0], e[0], e[1], e[1], rgb2hex(cm.jet(e[4] * 3)), 5) for e in encoding]
+            data += [go.Scatter(x=[e[0] for e in encoding],
+                                y=[e[0] for e in encoding],
+                                text=[f"{e[3]} " for e in encoding],
+                                textposition="bottom left",
+                                textfont=dict(size=10, color="black"),
+                                mode="text",
+                                name="master ID"),
+                     go.Scatter(x=[e[0] for e in encoding],
+                                y=[e[0] for e in encoding],
+                                text=[f"{e[3]}({e[5]}) diff = {e[4]}<br>[{e[0]}, {e[1]}] ({e[2]} bp)"
+                                      for e in encoding],
+                                hoverinfo="text",
+                                showlegend=False)]
 
         layout = go.Layout(width=725, height=725,
                            hovermode='closest',
                            xaxis=dict(showgrid=False,
-                                      range=[0, self.read_len + 100]),
+                                      range=[-self.read_len * 0.05, self.read_len + 100]),
                            yaxis=dict(showgrid=False,
                                       range=[0, self.read_len],
                                       autorange='reversed'),
                            shapes=shapes)
 
-        py.iplot(go.Figure(data=[trace1, trace2, trace3, trace4],
-                           layout=layout))
+        fig = go.Figure(data=data, layout=layout)
+        if not save_html:
+            py.iplot(fig)
+        else:
+            py.plot(fig, filename=f"{self.read_id}.alignment_plot.html")
 
-    def path_plot(self, snake=True):
-        self._load_paths(plot=True, snake=snake)
+    def path_plot(self, show_snake=True, save_html=False):
+        self._load_paths(plot=True, show_snake=show_snake)
 
         # diagonal
         shapes = [make_line(0, 0, self.read_len, self.read_len, 'yellow', 3)]
@@ -237,9 +267,13 @@ class Viewer:
                                       autorange='reversed'),
                            shapes=shapes)
 
-        py.iplot(go.Figure(data=[trace1, trace2], layout=layout))
+        fig = go.Figure(data=[trace1, trace2], layout=layout)
+        if not save_html:
+            py.iplot(fig)
+        else:
+            py.plot(fig, filename=f"{self.read_id}.path_plot.html")
 
-    def consensus(self):
+    def show_dag(self):
         import networkx as nx
         from networkx.drawing.nx_agraph import graphviz_layout
 

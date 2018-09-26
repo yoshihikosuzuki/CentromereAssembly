@@ -5,7 +5,7 @@ import logging
 import logzero
 from logzero import logger
 from BITS.utils import run_command
-from .io import load_dbdump, load_ladump, load_tr_intervals, load_alignments, load_paths
+from .load import load_dbdump, load_ladump, load_tr_intervals, load_alignments, load_paths
 from .core import calc_cover_set, calc_min_cover_set
 
 

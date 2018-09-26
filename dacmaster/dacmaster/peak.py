@@ -124,7 +124,7 @@ class Peak:
     """
 
     info: PeakInfo
-    reads: dict
+    reads: dict   # reads having TRs of this peak
     raw_units: pd.DataFrame
 
     @print_log("intra-TR consensus")
@@ -165,10 +165,15 @@ class Peak:
         # Cluster the intra-TR consensus units
         if not hasattr(self, "cl_master"):
             self.cl_master = ClusteringSeqs(self.cons_units["sequence"])
-        self.cl_master.cluster_hierarchical(n_core=n_core)
+        if not hasattr(self.cl_master, "c_dist_mat"):
+            self.cl_master.calc_dist_mat(n_core)
+        self.cl_master.cluster_hierarchical()
 
     @print_log("master units construction")
-    def generate_master_units(self, redundant_threshold=0.05, similar_threshold=0.3):
+    def generate_master_units(self,
+                              redundant_threshold=0.05,
+                              noisy_threshold=0.01,
+                              similar_threshold=0.3):
         """
         Take consensus for each cluster of consensus units while removing noisy results.
         """
@@ -200,7 +205,7 @@ class Peak:
 
         # Remove remaining noisy clusters
         del_row = [index for index, df in self.master_units.iterrows()
-                   if df["cluster_size"] < self.cl_master.N * 0.01    # too small cluster
+                   if df["cluster_size"] < self.cl_master.N * noisy_threshold   # too small cluster
                    or len(df["sequence"]) == 0]   # Consed failure
         self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
         logger.debug(f"After removing noisy clusters:\n{self.master_units}")
@@ -221,7 +226,7 @@ class Peak:
                                   return_seq_diff_th=similar_threshold)
                 if align.seq is not None:
                     #logger.debug(f"Synchronize {i} and {j} (strand = {align['strand']})")
-                    self.master_units.loc[j, "sequence"] = align["seq"]
+                    self.master_units.loc[j, "sequence"] = align.seq
         self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
         logger.info(f"Final mater units:\n{self.master_units}")
 
@@ -346,8 +351,10 @@ class Peaks:
                 logger.info(f"Sub-peak merged: {self.x[i]} bp (density = {self.dens[i]:.5f})")
                 peak_infos[-1].add_peak(self.x[i], self.dens[i], intvl)
 
-        self.peaks = [Peak(peak_info,
-                           self.reads,
-                           (self.units[self.units["length"] >= peak_info.min_len]
-                            .pipe(lambda df: df[df["length"] <= peak_info.max_len])))
-                      for peak_info in peak_infos]
+        self.peaks = []
+        for peak_info in peak_infos:
+            raw_units = (self.units[self.units["length"] >= peak_info.min_len]
+                         .pipe(lambda df: df[df["length"] <= peak_info.max_len]))
+            self.peaks.append(Peak(peak_info,
+                                   {k: self.reads[k] for k in set(raw_units["read_id"])},
+                                   raw_units))
