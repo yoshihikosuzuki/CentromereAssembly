@@ -18,14 +18,6 @@ The typical installation by `setuptools` is available:
 $ python setup.py install
 ```
 
-If you want to construct a separate and independent environment for dacembler, use `virtualenv` before it (Do not forget specify the python version 3):
-
-```bash
-$ virtualenv -p python3 venv
-$ source venv/bin/activate
-$ python setup.py install
-```
-
 ## Command usage
 
 (If you want to understand dacembler's overall workflow before running codes, please read the next section firstly.)
