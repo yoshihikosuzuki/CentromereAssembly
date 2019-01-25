@@ -7,7 +7,8 @@ A bundle of modules for centromere assembly only with PacBio long reads.
 * Python version must be 3
 * [`DAZZ_DB`](https://github.com/thegenemyers/DAZZ_DB) and [`DALIGNER`](https://github.com/thegenemyers/DALIGNER)
 * Git submodule [`DAMASKER`](https://github.com/yoshihikosuzuki/DAMASKER) in this repository
-* (Other python libraries required are automatically installed during the installation described below)
+* Python library [`cython`](https://cython.readthedocs.io/en/latest/src/quickstart/install.html)
+* (Other Python libraries required are automatically installed during the installation described below)
 
 ## Installation
 
