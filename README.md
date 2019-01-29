@@ -12,7 +12,7 @@ A bundle of modules for centromere assembly only with PacBio long reads.
 
 ## Installation
 
-The typical installation by `setuptools` is available:
+After you satisfy all the requirements above, the typical installation by `setuptools` is available:
 
 ```bash
 $ python setup.py install

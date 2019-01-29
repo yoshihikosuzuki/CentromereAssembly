@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.run import run_edlib
-from BITS.seq import load_fasta
 from BITS.utils import print_log, NoDaemonPool
 import consed
 from .clustering import ClusteringSeqs
@@ -66,10 +65,7 @@ class PeakInfo:
         self.lens.append(length)
         self.dens.append(density)
         self.intvl |= intvl
-        assert len(self.intvl) == 1, "Split peak intervals"
-
-    def overlaps_to(self, intvl):
-        return True if self.intvl & intvl != interval() else False
+        assert len(self.intvl) == 1, "Peak unit length intervals do not overlap"
 
 
 def __take_intra_consensus(args):
@@ -99,8 +95,8 @@ def _take_intra_consensus(args_list):
 class Peak:
     """
     Instance variables:
-      @ reads dict: all reads
-          {read_id: sequence}
+      @ reads <pd.df>: all TR-reads
+          [dbid, header, length, sequence]
 
       @ raw_units <pd.df>: unsynchronized raw units
           [read_id, path_id, start, end, length, sequence]
@@ -124,7 +120,7 @@ class Peak:
     """
 
     info: PeakInfo
-    reads: dict   # reads having TRs of this peak
+    reads: pd.DataFrame
     raw_units: pd.DataFrame
 
     @print_log("intra-TR consensus")
@@ -237,55 +233,43 @@ class Peaks:
     Class for identifying peaks in raw unit length distribution using kernel density estimation.
     """
 
-    reads_fname: InitVar[str] = "reads.fasta"
-    units_fname: InitVar[str] = "datruf_units"
-    dbid_header_fname: InitVar[str] = "dbid_header"
+    reads_fname: str   # DataFrame generated in run.py
+    units_fname: str   # DataFrame, output of datruf
     min_len: int = 50   # only peaks longer than <min_len> and shorter than <max_len> will be found
     max_len: int = 1000
-    band_width: int = 5   # param. for KDE
+    cov_th: float = 0.8   # only reads whose <cov_th> * 100 percent is covered by TR are handled
+    band_width: int = 5   # param. for KDE, critical for the number of peaks detected
     min_density: float = 0.001   # threshold for peaks
     deviation: float = 0.1   # <peak_len> * (1 +- <deviation>) will be the range of each peak
 
-    reads: dict = field(init=False)   # {dbid: sequence}
+    reads: pd.DataFrame = field(init=False)   # {dbid: sequence} of only TR reads
     units: pd.DataFrame = field(init=False)   # whole raw units data
-    ulens: np.ndarray = field(init=False)   # unit lengths within [min_len, max_len]
-    x: np.ndarray = field(init=False)   # [min_len, min_len + 1, ..., max_len]
     dens: np.ndarray = field(init=False)   # estimated density for each unit length
     peaks: List[Peak] = field(init=False)
 
-    def __post_init__(self, reads_fname, units_fname, dbid_header_fname, cov_th=0.8):
+    def __post_init__(self):
         if self.min_len < 50:
-            logger.warn(f"Specified minimum unit length ({self.min_len} bp) is shorter than 50 bp, "
-                        f"which is typical detection limit of datander & datruf!")
+            logger.warn(f"You specified the minimum unit length shorter than 50 bp ({self.min_len} bp), "
+                        f"which is detection limit of datander.")
 
-        # Load Reads covered by TRs and units inside them
-        self.reads = {}   # TODO: change to df and split for each peak like raw_units
-        self.units = pd.read_table(units_fname, index_col=0)
-        all_reads = load_fasta(reads_fname)
-        n_all_reads = len(all_reads)
-        n_all_units = self.units.shape[0]
-        dbid_header = {}
-        with open(dbid_header_fname, 'r') as f:
-            for line in f:
-                dbid, header = line.strip().split('\t')
-                dbid_header[int(dbid)] = header
-        del_row = set()
+        # Extract TR-reads and units inside them
+        self.reads = pd.read_table(self.reads_fname, index_col=0)
+        self.units = pd.read_table(self.units_fname, index_col=0)
+        tr_reads = set()   # read dbids to be extracted
+        del_row = set()   # row indices of <self.units> to be removed
         for read_id, df in self.units.groupby("read_id"):
-            header = dbid_header[read_id]
-            if sum(df["length"]) >= len(all_reads[header]) * cov_th:
-                self.reads[read_id] = all_reads[header]
+            if df["length"].sum() >= self.reads[self.reads["dbid"] == read_id]["length"] * self.cov_th:
+                tr_reads.add(read_id)
             else:
                 del_row.update(df.index)
-        del all_reads
-        del dbid_header
+
+        n_all_reads, n_all_units = self.reads.shape[0], self.units.shape[0]
+        self.reads = self.reads[self.reads["dbid"].isin(tr_reads)]
         self.units = self.units.drop(del_row).reset_index(drop=True)
-        logger.debug(f"{len(self.reads)} out of {n_all_reads} reads and {self.units.shape[0]} out of {n_all_units} units were loaded")
+        logger.info(f"{self.reads.shape[0]} out of {n_all_reads} all reads and "
+                    f"{self.units.shape[0]} out of {n_all_units} all units were loaded")
 
-        self.ulens = np.array(self.units["length"]
-                              .pipe(lambda s: s[self.min_len < s])
-                              .pipe(lambda s: s[s < self.max_len]))
-        self.x = np.arange(self.min_len, self.max_len + 1)
-
+        # Smooth the unit length distribution by KDE
         self.smooth_dist()
 
     def save(self, pkl_fname="peaks.pkl"):
@@ -300,28 +284,32 @@ class Peaks:
 
         self.dens = np.exp(KernelDensity(kernel='gaussian',
                                          bandwidth=self.band_width)
-                           .fit(self.ulens.reshape(-1, 1))
-                           .score_samples(self.x.reshape(-1, 1)))
+                           .fit(np.array(self.units["length"]
+                                         .pipe(lambda s: s[self.min_len < s])
+                                         .pipe(lambda s: s[s < self.max_len]))
+                                .reshape(-1, 1))
+                           .score_samples(np.arange(self.min_len, self.max_len + 1)
+                                          .reshape(-1, 1)))
+        assert self.dens.shape[0] == (self.max_len - self.min_len + 1), "Inconsistent data range"
 
     def plot_dist(self, entire=False):
         """
         Show both original unit length distribution and smoothed distribution.
         """
 
-        # Original distribution
-        start, end = ((self.min_len, self.max_len) if not entire
-                      else (np.min(self.ulens), np.max(self.ulens)))
-        data = [go.Histogram(x=self.ulens,
-                             xbins=dict(start=start, end=end, size=1))]
-        layout = go.Layout(xaxis=dict(title="Unit length"),
-                           yaxis=dict(title="Frequency"))
-        py.iplot(go.Figure(data=data, layout=layout))
-
-        # Smoothed distribution
-        data = [go.Scatter(x=self.x, y=self.dens)]
-        layout = go.Layout(xaxis=dict(title="Unit length"),
-                           yaxis=dict(title="Density"))
-        py.iplot(go.Figure(data=data, layout=layout))
+        original = go.Histogram(x=(self.units["length"]
+                                   .pipe(lambda s: s[self.min_len < s])
+                                   .pipe(lambda s: s[s < self.max_len])),
+                                xbins=dict(start=0 if entire else self.min_len,
+                                           end=self.units["length"].max() if entire else self.max_len,
+                                           size=1))
+        smoothed = go.Scatter(x=np.arange(self.min_len, self.max_len + 1),
+                              y=self.dens,
+                              yaxis='y2')
+        layout = go.Layout(xaxis=dict(title='Unit length'),
+                           yaxis=dict(title='Frequency'),
+                           yaxis2=dict(title='Density', side='right'))
+        py.iplot(go.Figure(data=[original, smoothed], layout=layout))
 
     @print_log("peak detection")
     def detect_peaks(self):
@@ -330,31 +318,31 @@ class Peaks:
         Adjascent peaks close to each other are merged into single peak.
         """
 
-        assert self.x.shape[0] == self.dens.shape[0], "Inconsistent variable lengths"
-
-        # NOTE: not unit length but index on self.x and self.dens
-        peak_index = [i for i in range(1, self.dens.shape[0] - 1)
-                      if ((self.dens[i] > self.dens[i - 1]) and
-                          (self.dens[i] > self.dens[i + 1]) and
-                          (self.dens[i] >= self.min_density))]
-
-        # Merge close peaks and prepare metadata for each peak
+        # Naive sweep
         peak_infos = []
-        for i in peak_index:
-            intvl = interval[-(- self.x[i] * (1. - self.deviation) // 1),
-                             int(self.x[i] * (1. + self.deviation))]
+        for i in range(1, self.max_len - self.min_len):
+            if not ((self.dens[i] > self.dens[i - 1]) and
+                    (self.dens[i] > self.dens[i + 1]) and
+                    (self.dens[i] >= self.min_density)):
+                continue
 
-            if len(peak_infos) == 0 or not peak_infos[-1].overlaps_to(intvl):
-                logger.info(f"New peak detected: {self.x[i]} bp (density = {self.dens[i]:.5f})")
-                peak_infos.append(PeakInfo(self.x[i], self.dens[i], intvl))
+            l, d = self.min_len + i, self.dens[i]   # peak unit length and its density
+            intvl = interval[-(- l * (1. - self.deviation) // 1),
+                             int(l * (1. + self.deviation))]
+
+            # Add a peak
+            if len(peak_infos) == 0 or peak_infos[-1].intvl & intvl == interval():
+                logger.info(f"New peak detected: {l} bp (density = {d:.5f})")
+                peak_infos.append(PeakInfo(l, d, intvl))
             else:
-                logger.info(f"Sub-peak merged: {self.x[i]} bp (density = {self.dens[i]:.5f})")
-                peak_infos[-1].add_peak(self.x[i], self.dens[i], intvl)
+                # Merge close peaks
+                logger.info(f"Sub-peak merged: {l} bp (density = {d:.5f})")
+                peak_infos[-1].add_peak(l, d, intvl)
 
         self.peaks = []
         for peak_info in peak_infos:
+            # Extract units and reads belonging to the peak
             raw_units = (self.units[self.units["length"] >= peak_info.min_len]
                          .pipe(lambda df: df[df["length"] <= peak_info.max_len]))
-            self.peaks.append(Peak(peak_info,
-                                   {k: self.reads[k] for k in set(raw_units["read_id"])},
-                                   raw_units))
+            reads = self.reads[self.reads["dbid"].isin(set(raw_units["read_id"]))]
+            self.peaks.append(Peak(peak_info, reads, raw_units))

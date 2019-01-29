@@ -3,36 +3,37 @@ import logging
 import logzero
 from logzero import logger
 import pandas as pd
-from .peak import load_peaks
+from .peak import Peaks, load_peaks
 from BITS.utils import run_command
-
-
-def _check_input(db_file, force=False):
-    if force or not os.path.isfile("reads.fasta"):
-        logger.info(f"Generating reads.fasta")
-        run_command(f"DBshow -w10000000 {db_file} > reads.fasta")
-    if force or not os.path.isfile("dbid_header"):
-        logger.info(f"Generating dbid_header")
-        run_command(f"DBshow -n {db_file} | awk -F'>' 'BEGIN {{count = 1}} {{print count \"\t\" $2; count++}}' > dbid_header")
 
 
 def main():
     args = load_args()
-    pkl_fname = "peaks.pkl"
-    _check_input(args.db_file, args.from_scratch)
 
-    if not args.from_scratch and os.path.isfile(pkl_fname):
-        logger.info(f"Loading data from existing {pkl_fname}")
-        peaks = load_peaks(pkl_fname)
+    # Generate reads DataFrame if needed
+    if args.from_scratch or not os.path.isfile("reads"):
+        logger.info(f"Generating reads DataFrame")
+        run_command(f"DBshow -w10000000 {args.db_file} | "
+                    f"awk -F'>' 'BEGIN {{print \"\tdbid\theader\tlength\tsequence\"; count = 1}} "
+                    f"count % 2 == 1 {{header = $2}} "
+                    f"count % 2 == 0 {{print (count / 2 - 1) \"\t\" (count / 2) \"\t\" "
+                    f"header \"\t\" length($1) \"\t\" $1}} "
+                    f"{{count++}}' > reads")
+    assert os.path.getsize("reads") != 0, "The file 'reads' is empty!"
+
+    # Detect peak unit lenghs
+    if not args.from_scratch and os.path.isfile(args.out_pkl_fname):
+        logger.info(f"Loading data from existing {args.out_pkl_fname}")
+        peaks = load_peaks(args.out_pkl_fname)
     else:
-        logger.info(f"Data will be stored to {pkl_fname} and re-used next time")
+        logger.info(f"Data will be stored to {args.out_pkl_fname} and re-used next time")
 
         # Detect peaks in the unit length distribution
-        from .peak import Peaks
-        peaks = Peaks()
+        peaks = Peaks("reads", args.units_fname)
         peaks.detect_peaks()
-        peaks.save(pkl_fname)
+        peaks.save(args.out_pkl_fname)
 
+    # For each peak, calculate representative units
     for i, peak in enumerate(peaks.peaks):
         if i != len(peaks.peaks) - 1:   # only the last peak   # NOTE: for debug
             continue
@@ -40,15 +41,15 @@ def main():
         # Generate intra-TR consensus units
         if not hasattr(peak, "cons_units"):
             peak.take_intra_consensus(args.min_n_units, args.n_core)
-            peaks.save(pkl_fname)
+            peaks.save(args.out_pkl_fname)
 
         # Cluster the intra-TR consensus units
         peak.cluster_cons_units(args.n_core)
-        peaks.save(pkl_fname)
+        peaks.save(args.out_pkl_fname)
 
         # Generate master units
         peak.generate_master_units()
-        peaks.save(pkl_fname)
+        peaks.save(args.out_pkl_fname)
 
         #peak.construct_repr_units(n_core=args.n_core)
 
@@ -68,6 +69,13 @@ def load_args():
         type=str,
         default="datruf_units",
         help=("Input file of the unit sequences reported by datruf. [datruf_units]"))
+
+    parser.add_argument(
+        "-o",
+        "--out_pkl_fname",
+        type=str,
+        default="peaks.pkl",
+        help=("Output pickle file. [peaks.pkl]"))
 
     parser.add_argument(
         "-m",
