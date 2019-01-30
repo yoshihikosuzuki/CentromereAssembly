@@ -14,10 +14,9 @@ def main():
     if args.from_scratch or not os.path.isfile("reads"):
         logger.info(f"Generating reads DataFrame")
         run_command(f"DBshow -w10000000 {args.db_file} | "
-                    f"awk -F'>' 'BEGIN {{print \"\tdbid\theader\tlength\tsequence\"; count = 1}} "
+                    f"awk -F'>' 'BEGIN {{print \"dbid\theader\tlength\tsequence\"; count = 1}} "
                     f"count % 2 == 1 {{header = $2}} "
-                    f"count % 2 == 0 {{print (count / 2 - 1) \"\t\" (count / 2) \"\t\" "
-                    f"header \"\t\" length($1) \"\t\" $1}} "
+                    f"count % 2 == 0 {{print (count / 2) \"\t\" header \"\t\" length($1) \"\t\" $1}} "
                     f"{{count++}}' > reads")
     assert os.path.getsize("reads") != 0, "The file 'reads' is empty!"
 

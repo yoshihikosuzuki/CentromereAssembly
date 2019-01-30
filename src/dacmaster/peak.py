@@ -96,7 +96,8 @@ class Peak:
     """
     Instance variables:
       @ reads <pd.df>: all TR-reads
-          [dbid, header, length, sequence]
+          Index: dbid
+          [header, length, sequence]
 
       @ raw_units <pd.df>: unsynchronized raw units
           [read_id, path_id, start, end, length, sequence]
@@ -253,18 +254,18 @@ class Peaks:
                         f"which is detection limit of datander.")
 
         # Extract TR-reads and units inside them
-        self.reads = pd.read_table(self.reads_fname, index_col=0)
-        self.units = pd.read_table(self.units_fname, index_col=0)
+        self.reads = pd.read_csv(self.reads_fname, sep='\t', index_col=0)
+        self.units = pd.read_csv(self.units_fname, sep='\t', index_col=0)
         tr_reads = set()   # read dbids to be extracted
         del_row = set()   # row indices of <self.units> to be removed
         for read_id, df in self.units.groupby("read_id"):
-            if df["length"].sum() >= self.reads[self.reads["dbid"] == read_id]["length"] * self.cov_th:
+            if df["length"].sum() >= self.reads.loc[read_id]["length"] * self.cov_th:
                 tr_reads.add(read_id)
             else:
                 del_row.update(df.index)
 
         n_all_reads, n_all_units = self.reads.shape[0], self.units.shape[0]
-        self.reads = self.reads[self.reads["dbid"].isin(tr_reads)]
+        self.reads = self.reads.loc[tr_reads]
         self.units = self.units.drop(del_row).reset_index(drop=True)
         logger.info(f"{self.reads.shape[0]} out of {n_all_reads} all reads and "
                     f"{self.units.shape[0]} out of {n_all_units} all units were loaded")
@@ -344,5 +345,5 @@ class Peaks:
             # Extract units and reads belonging to the peak
             raw_units = (self.units[self.units["length"] >= peak_info.min_len]
                          .pipe(lambda df: df[df["length"] <= peak_info.max_len]))
-            reads = self.reads[self.reads["dbid"].isin(set(raw_units["read_id"]))]
+            reads = self.reads.loc[set(raw_units["read_id"])]
             self.peaks.append(Peak(peak_info, reads, raw_units))
