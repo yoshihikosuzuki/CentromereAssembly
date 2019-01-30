@@ -19,7 +19,7 @@ from .dpmm import DPMM, DPMMCluster
 
 class Clustering:
     """
-    Super class of clusterings of
+    Root class of clusterings of
       1. DNA sequences (regardless of cyclic alignment and/or revcomp)
       2. variant matrix (by Consed)
 

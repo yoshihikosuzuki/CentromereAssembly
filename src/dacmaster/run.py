@@ -3,16 +3,17 @@ import logging
 import logzero
 from logzero import logger
 import pandas as pd
-from .peak import Peaks, load_peaks
-from BITS.utils import run_command
+from .peak import Peaks
+from BITS.utils import run_command, load_pickle, save_pickle
 
 
 def main():
     args = load_args()
 
     # Generate reads DataFrame if needed
+    # TODO: move to somewhere else before dacmaster?
     if args.from_scratch or not os.path.isfile("reads"):
-        logger.info(f"Generating reads DataFrame")
+        logger.info(f"Generate a DataFrame of reads")
         run_command(f"DBshow -w10000000 {args.db_file} | "
                     f"awk -F'>' 'BEGIN {{print \"dbid\theader\tlength\tsequence\"; count = 1}} "
                     f"count % 2 == 1 {{header = $2}} "
@@ -22,15 +23,15 @@ def main():
 
     # Detect peak unit lenghs
     if not args.from_scratch and os.path.isfile(args.out_pkl_fname):
-        logger.info(f"Loading data from existing {args.out_pkl_fname}")
-        peaks = load_peaks(args.out_pkl_fname)
+        logger.info(f"Load data from {args.out_pkl_fname}")
+        peaks = load_pickle(args.out_pkl_fname)
     else:
         logger.info(f"Data will be stored to {args.out_pkl_fname} and re-used next time")
 
         # Detect peaks in the unit length distribution
         peaks = Peaks("reads", args.units_fname)
         peaks.detect_peaks()
-        peaks.save(args.out_pkl_fname)
+        save_pickle(peaks, args.out_pkl_fname)
 
     # For each peak, calculate representative units
     for i, peak in enumerate(peaks.peaks):
@@ -40,27 +41,25 @@ def main():
         # Generate intra-TR consensus units
         if not hasattr(peak, "cons_units"):
             peak.take_intra_consensus(args.min_n_units, args.n_core)
-            peaks.save(args.out_pkl_fname)
+            save_pickle(peaks, args.out_pkl_fname)
 
         # Cluster the intra-TR consensus units
         peak.cluster_cons_units(args.n_core)
-        peaks.save(args.out_pkl_fname)
+        save_pickle(peaks, args.out_pkl_fname)
 
         # Generate master units
         peak.generate_master_units()
-        peaks.save(args.out_pkl_fname)
-
-        #peak.construct_repr_units(n_core=args.n_core)
+        save_pickle(peaks, args.out_pkl_fname)
 
 
 def load_args():
     import argparse
     parser = argparse.ArgumentParser(
-        description=("Construct master units and representative units."))
+        description=("Determine representative units based on global sequence similarity."))
 
     parser.add_argument(
         "db_file",
-        help=("DAZZ_DB file. Used for generating reads fasta and dbid_header."))
+        help=("DAZZ_DB file. Used for generating reads DataFrame."))
 
     parser.add_argument(
         "-u",

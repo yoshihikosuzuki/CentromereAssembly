@@ -1,4 +1,3 @@
-import pickle
 from typing import List
 from dataclasses import dataclass, field, InitVar
 from logzero import logger
@@ -17,11 +16,6 @@ from .clustering import ClusteringSeqs
 plt.style.use('ggplot')
 
 
-def load_peaks(pkl_fname="peaks.pkl"):
-    with open(pkl_fname, 'rb') as f:
-        return pickle.load(f)
-
-
 @dataclass(repr=False, eq=False)
 class PeakInfo:
     """
@@ -30,42 +24,31 @@ class PeakInfo:
 
     length: InitVar[int]
     density: InitVar[float]
-    intvl: interval()   # units whose lengths are within this interval belong to this peak
+    intvl: interval()   # of unit length of this peak
 
-    lens: List[int] = field(init=False)   # unit lengths of sub-peaks
-    dens: List[float] = field(init=False)   # density of sub-peaks
+    n_sub_peaks: int = field(init=False)   # number of sub-peaks
+    lens: List[int] = field(init=False)   # (sub-)peak unit lengths
+    dens: List[float] = field(init=False)   # (sub-)peak densities
 
     def __post_init__(self, length, density):
+        self.n_sub_peaks = 1
         self.lens = [length]
         self.dens = [density]
 
     @property
-    def N(self):
-        """
-        Get the number of sub-peaks inside of this peak.
-        """
-        assert len(self.lens) == len(self.dens), "Inconsistent unit length range"
-        return len(self.lens)
-
-    @property
     def min_len(self):
-        """
-        Get the minimum unit length in this peak.
-        """
         return self.intvl[0][0]
 
     @property
     def max_len(self):
-        """
-        Get the maximum unit length in this peak.
-        """
         return self.intvl[0][1]
 
     def add_peak(self, length, density, intvl):
+        self.n_sub_peaks += 1
         self.lens.append(length)
         self.dens.append(density)
         self.intvl |= intvl
-        assert len(self.intvl) == 1, "Peak unit length intervals do not overlap"
+        assert len(self.intvl) == 1, "Sub-peak unit length intervals must overlap"
 
 
 def __take_intra_consensus(args):
@@ -272,11 +255,6 @@ class Peaks:
 
         # Smooth the unit length distribution by KDE
         self.smooth_dist()
-
-    def save(self, pkl_fname="peaks.pkl"):
-        with open(pkl_fname, 'wb') as f:
-            pickle.dump(self, f)
-        logger.info("Peaks saved")
 
     def smooth_dist(self):
         """
