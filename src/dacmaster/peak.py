@@ -88,24 +88,24 @@ class Peak:
       @ cons_units <pd.df>: unsynchronized intra-TR consensus units
           [read_id, path_id, length, sequence]
 
-      @ master_units <pd.df>: synchronized, global-level representative units
-          [master_id, cluster_id, cluster_size, n_bad_align, length, sequence]
-
-      @ repr_units <pd.df>: synchronized, local-level representative units
+      @ repr_units <pd.df>: synchronized, global-level representative units
           [repr_id, cluster_id, cluster_size, length, sequence]
 
-      @ encodings <pd.df>: by synchronized raw units
-
       @ cl_master <ClusteringSeqs>: perform clustering of <raw_units> to construct master units
-
-      @ cl_repr <ClusteringSeqs>: 
-
-      @ cl_unit <ClusteringVarMat>:
     """
 
     info: PeakInfo
     reads: pd.DataFrame
     raw_units: pd.DataFrame
+
+    def calc_repr_units(self, min_n_units, n_core):
+        """
+        Main rountine.
+        """
+
+        self.take_intra_consensus(min_n_units, n_core)
+        self.cluster_cons_units(n_core)
+        self.generate_master_units()
 
     @print_log("intra-TR consensus")
     def take_intra_consensus(self, min_n_units, n_core):
@@ -142,11 +142,12 @@ class Peak:
 
     @print_log("hierarchical clustering of consensus units")
     def cluster_cons_units(self, n_core):
-        # Cluster the intra-TR consensus units
-        if not hasattr(self, "cl_master"):
-            self.cl_master = ClusteringSeqs(self.cons_units["sequence"])
-        if not hasattr(self.cl_master, "c_dist_mat"):
-            self.cl_master.calc_dist_mat(n_core)
+        """
+        Cluster the intra-TR consensus units
+        """
+
+        self.cl_master = ClusteringSeqs(self.cons_units["sequence"])
+        self.cl_master.calc_dist_mat(n_core)
         self.cl_master.cluster_hierarchical()
 
     @print_log("master units construction")
@@ -212,7 +213,7 @@ class Peak:
 
 
 @dataclass(repr=False, eq=False)
-class Peaks:
+class PeaksFinder:
     """
     Class for identifying peaks in raw unit length distribution using kernel density estimation.
     """
@@ -291,7 +292,7 @@ class Peaks:
         py.iplot(go.Figure(data=[original, smoothed], layout=layout))
 
     @print_log("peak detection")
-    def detect_peaks(self):
+    def run(self):
         """
         Detect peaks in the unit length distribution.
         Adjascent peaks close to each other are merged into single peak.
