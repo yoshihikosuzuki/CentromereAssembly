@@ -10,6 +10,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.manifold import TSNE
 from sklearn.decomposition import NMF
 import matplotlib.pyplot as plt
+import seaborn as sns
 from BITS.run import run_edlib
 from BITS.utils import run_command, print_log, NoDaemonPool
 import consed
@@ -112,6 +113,18 @@ class Clustering:
 
         plt.hist(list(cluster_size.values()), bins=bins)
         plt.show()
+
+    def plot_heatmap(self, cmap="Blues_r", figsize=(12, 12), out_fname=None):
+        """
+        Draw a heatmap of the (squared) distance matrix.
+        """
+
+        plt.figure(figsize=figsize)
+        sns.heatmap(self.s_dist_mat, square=True, vmin=0, vmax=1, cmap=cmap)
+        if out_fname is None:
+            plt.show()
+        else:
+            plt.savefig(out_fname)
 
     def plot_tsne(self, coloring="sequential", figsize=(12, 12), out_fname=None):
         """
