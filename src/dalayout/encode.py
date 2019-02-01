@@ -4,6 +4,7 @@ from logzero import logger
 from interval import interval
 import numpy as np
 import pandas as pd
+from multiprocessing import Pool
 from BITS.run import run_edlib, run_consed, consed_to_varmat
 from BITS.utils import print_log, NoDaemonPool, run_command
 from BITS.seq import revcomp
@@ -11,7 +12,21 @@ import consed
 from dacmaster.clustering import ClusteringVarMat
 
 
-def encode_reads(reads, repr_units, peaks):   # TODO: parallelize
+def encode_reads_parallel(reads, repr_units, peaks, n_core):
+    unit_n_read = -(-reads.shape[0] // n_core)
+    with Pool(n_core) as pool:
+        rets = [ret for ret in pool.starmap(encode_reads,
+                                            [(reads[i * unit_n_read:(i + 1) * unit_n_read],
+                                              repr_units,
+                                              peaks)
+                                             for i in range(n_core)])]
+
+    return pd.concat(rets).sort_values(by="start") \
+                          .sort_values(by="read_id", kind="mergesort") \
+                          .reset_index(drop=True)
+
+
+def encode_reads(reads, repr_units, peaks):
     """
     Map the <repr_units> onto <reads> and greedily select the best-mapped unit, iteratively
     until no more good mappings are obtained.
@@ -68,8 +83,9 @@ def encode_reads(reads, repr_units, peaks):   # TODO: parallelize
             # Update best mapping for each representative unit whose map region is overlapping to
             # the best mapping region at this round just above
             mapping = repr_units.apply(lambda df: mapping.loc[df.name]
-                                       if (interval([mapping.loc[df.name].start, mapping.loc[df.name].end])
-                                           & interval([best_mapping.start, best_mapping.end]) == interval())
+                                       if (mapping.loc[df.name].diff >= 0.4
+                                           or (interval([mapping.loc[df.name].start, mapping.loc[df.name].end])
+                                               & interval([best_mapping.start, best_mapping.end]) == interval()))
                                        else run_edlib(df["sequence"],
                                                       read_seq,
                                                       "glocal",
@@ -125,8 +141,12 @@ def _detect_variants(peak_id, repr_id, df, repr_unit, reads):
 
     # Load variant vectors
     with open(f"{out_fname}.consed.V", 'r') as f:
-        # Use index same as <encodings> so that the results can be placed at proper locations in its
-        return pd.Series(list(zip(*[list(map(int, list(line.strip()[1:-1]))) for line in f])), index=df.index)
+        # Use index same as <encodings> so that the results can be placed at proper locations in it
+        return pd.Series(list(zip(*[list(map(int,
+                                             list(line.strip()[1:-1])))
+                                    for line in f])),
+                         index=df.index) \
+                 .apply(lambda s: np.array(s))
         # TODO: XXX: CHECK IF [1:-1] IS TRULY CORRESPOING SEQUENTIALL TO THE UNITS
 
 

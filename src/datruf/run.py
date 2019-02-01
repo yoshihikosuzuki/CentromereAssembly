@@ -1,6 +1,7 @@
 import os.path
 import numpy as np
 import pandas as pd
+from multiprocessing import Pool
 import logging
 import logzero
 from logzero import logger
@@ -148,9 +149,9 @@ def run_runner(r):
 
 
 def main():
-    from multiprocessing import Pool
-
     args = load_args()
+
+    # TODO: change Runnder's initialization and use dataclass, and remove the three lines below
     n_core, out_main_fname, out_units_fname = args.n_core, args.out_main_fname, args.out_units_fname
     del args.n_core
     del args.out_main_fname
