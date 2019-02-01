@@ -53,7 +53,7 @@ def encode_reads(reads, repr_units, peaks):   # TODO: parallelize
                                 round(best_mapping.diff, 3),
                                 best_mapping.strand,
                                 "boundary" if (best_mapping.start < 50
-                                               and read["length"] - best_mapping.end < 50)   # TODO: calculate from unit length
+                                               or read["length"] - best_mapping.end < 50)   # TODO: calculate from unit length
                                 else "noisy" if best_mapping.diff >= 0.23
                                 else "deviating" if (best_mapping.end - best_mapping.start < peaks[best_unit["peak_id"]].info.min_len
                                                      or best_mapping.end - best_mapping.start > peaks[best_unit["peak_id"]].info.max_len)   # TODO: check if this category exists instead of "noisy"
@@ -97,34 +97,48 @@ def encode_reads(reads, repr_units, peaks):   # TODO: parallelize
     return encodings
 
 
-def detect_variants(encodings, repr_units, reads, peaks, plot_tsne=False):
+def cut_unit_from_read(reads, encoding):
     """
-    From <encodings>, collect all raw unit sequences and throw into Consed
-    for each pair of (peak_id, repr_id).
+    Cut the unit sequence from a read, considering the strand.
     """
 
-    for index, df in encodings[encodings["type"] == "complete"].groupby(["peak_id", "repr_id"]):
-        peak_id, repr_id = index
-        fname_prefix = f"peak_{peak_id}_repr_{repr_id}.raw_units"
-        with open(f"{fname_prefix}.fasta", 'w') as f:
-            f.write(f">repr   length={len(repr_units.loc[repr_id])}\n")
-            f.write(f"{repr_units.loc[repr_id, 'sequence']}\n")
-            for i, e in df.iterrows():
-                f.write(f">{i}/{e['strand']}/{e['start']}_{e['end']}   length={e['length']}   diff={e['diff']}\n")
-                s = reads.loc[e['read_id']]["sequence"][e["start"]:e["end"]]
-                f.write(f"{s if e['strand'] == 0 else revcomp(s)}\n")
+    # NOTE: <encoding> must be a single line in <encodings>
+    s = reads.loc[encoding["read_id"]]["sequence"][encoding["start"]:encoding["end"]]
+    return s if encoding["strand"] == 0 else revcomp(s)
 
-        run_command(f"grep -v '>' {fname_prefix}.fasta > {fname_prefix}.seqs")
-        run_consed(f"{fname_prefix}.seqs",
-                   out_prefix=fname_prefix,
-                   variant_vector=True,
-                   variant_graph=True,
-                   variant_fraction=0.0)   # TODO: parameterize
-        consed_to_varmat(f"{fname_prefix}.consed")   # TODO: extract positions information and so on
 
-        if plot_tsne:
-            cl = ClusteringVarMat(f"{fname_prefix}.consed.V")
-            cl.data = cl.data[:10000]   # subsampling because t-SNE is slow
-            cl.N = min([cl.N, 10000])
-            cl.calc_dist_mat()
-            cl.plot_tsne(out_fname="{fname_prefix}.consed.V.tsne.png")
+def _detect_variants(peak_id, repr_id, df, repr_unit, reads):
+    units = df.apply(lambda d: cut_unit_from_read(reads, d), axis=1)
+
+    # Create a file for Consed input
+    out_fname = f"peak_{peak_id}_repr_{repr_id}.raw_units"
+    with open(out_fname, 'w') as f:
+        f.write(repr_unit + '\n' + '\n'.join(units) + '\n')
+
+    # Run Consed
+    run_consed(out_fname,
+               out_prefix=out_fname,
+               variant_vector=True,
+               variant_graph=True,
+               variant_fraction=0.0)   # TODO: parameterize
+    consed_to_varmat(f"{out_fname}.consed")   # TODO: internally recieve the matrix (implement in consed_python)
+
+    # Load variant vectors
+    with open(f"{out_fname}.consed.V", 'r') as f:
+        # Use index same as <encodings> so that the results can be placed at proper locations in its
+        return pd.Series(list(zip(*[list(map(int, list(line.strip()[1:-1]))) for line in f])), index=df.index)
+        # TODO: XXX: CHECK IF [1:-1] IS TRULY CORRESPOING SEQUENTIALL TO THE UNITS
+
+
+def detect_variants(encodings, repr_units, reads, peaks):
+    # TODO: move "peak_id" and "repr_id" in <repr_units> to index of it
+    encodings["var_vec"] = pd.concat(
+        [_detect_variants(peak_id,
+                          repr_id,
+                          df,
+                          repr_units.pipe(lambda df: df[df["peak_id"] == peak_id]) \
+                          .pipe(lambda df: df[df["repr_id"] == repr_id])["sequence"] \
+                          .iloc[0],   # TODO: change the index of <repr_units>
+                          reads)
+         for (peak_id, repr_id), df
+         in encodings[encodings["type"] == "complete"].groupby(["peak_id", "repr_id"])])

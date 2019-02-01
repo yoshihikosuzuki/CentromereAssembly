@@ -8,31 +8,9 @@ from BITS.utils import print_log, NoDaemonPool
 import consed
 
 
-def axa_read_matrix(encodings):
+def encoding_to_read_matrix(read_id, encodings, repr_units):
+    fname_prefix = f"peak_{peak_id}_repr_{repr_id}.raw_units"
 
-units = []
-
-with open("raw_units/master_2.units.fasta") as f:
-    for line in f:
-        line = line.strip()
-        if line[0] == ">":
-            data = line[1:].split(' ')[0]
-            if data == "master":
-                continue
-            read_id, strand, intvl = data.split('/')
-            read_id = int(read_id)
-            start, end = map(int, intvl.split('_'))
-            units.append([read_id, start, end, strand, []])
-
-
-with open("raw_units/master_2.units.consed.V") as f:
-    for line in f:
-        line = line.strip()
-        for i, j in enumerate(range(1, len(line) - 1)):
-            units[i][-1].append(int(line[j]))
-
-for i in range(len(units)):
-    units[i][-1] = np.array(units[i][-1])
 
 
 read_matrix = pd.DataFrame(units).groupby(0)[4].apply(lambda s: np.array(list(s.as_matrix())))
