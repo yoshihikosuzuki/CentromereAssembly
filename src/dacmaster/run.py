@@ -69,8 +69,8 @@ def load_args():
         "-p",
         "--out_pkl_fname",
         type=str,
-        default="peaks.pkl",
-        help=("Output pickle file having peaks information. [peaks.pkl]"))
+        default="peaks_finder.pkl",
+        help=("Output pickle file of PeaksFinder object. [peaks_finder.pkl]"))
 
     parser.add_argument(
         "-m",

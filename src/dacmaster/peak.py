@@ -37,11 +37,11 @@ class PeakInfo:
 
     @property
     def min_len(self):
-        return self.intvl[0][0]
+        return int(self.intvl[0][0])
 
     @property
     def max_len(self):
-        return self.intvl[0][1]
+        return int(self.intvl[0][1])
 
     def add_peak(self, length, density, intvl):
         self.n_sub_peaks += 1
@@ -249,7 +249,7 @@ class PeaksFinder:
                 del_row.update(df.index)
 
         n_all_reads, n_all_units = self.reads.shape[0], self.units.shape[0]
-        self.reads = self.reads.loc[tr_reads]
+        self.reads = self.reads.loc[sorted(tr_reads)]
         self.units = self.units.drop(del_row).reset_index(drop=True)
         logger.info(f"{self.reads.shape[0]} out of {n_all_reads} all reads and "
                     f"{self.units.shape[0]} out of {n_all_units} all units were loaded")

@@ -10,6 +10,13 @@ import consed
 
 
 def encode_reads(reads, repr_units, peaks):   # TODO: parallelize
+    """
+    Map the <repr_units> onto <reads> and greedily select the best-mapped unit, iteratively
+    until no more good mappings are obtained.
+    <reads> (pd.DataFrame) should be TR reads to reduce the computation time.
+    <peaks> must be List[Peak], not PeaksFinder.
+    """
+
     encodings = {}
     index = 0
     for read_id, read in reads.iterrows():
@@ -33,7 +40,7 @@ def encode_reads(reads, repr_units, peaks):   # TODO: parallelize
 
             # Choose a representative unit which has the best identity to some region of the read
             best_idx = mapping_diff.idxmin()
-            best_unit, best_mapping = repr_units[best_idx], mapping[best_idx]
+            best_unit, best_mapping = repr_units.loc[best_idx], mapping.loc[best_idx]
             encodings[index] = (read_id,
                                 best_mapping.start,
                                 best_mapping.end,
@@ -41,7 +48,7 @@ def encode_reads(reads, repr_units, peaks):   # TODO: parallelize
                                 best_unit["peak_id"],
                                 best_unit["repr_id"],
                                 0,   # or "global"
-                                round(best_mapping.diff, 4),
+                                round(best_mapping.diff, 3),
                                 best_mapping.strand,
                                 "boundary" if (best_mapping.start < 50
                                                and read["length"] - best_mapping.end < 50)   # TODO: calculate from unit length
@@ -58,29 +65,31 @@ def encode_reads(reads, repr_units, peaks):   # TODO: parallelize
 
             # Update best mapping for each representative unit whose map region is overlapping to
             # the best mapping region at this round just above
-            mapping = repr_units.apply(lambda df: mapping[df.name]
-                                       if (interval([mapping[df.name].start, mapping[df.name].end])
+            mapping = repr_units.apply(lambda df: mapping.loc[df.name]
+                                       if (interval([mapping.loc[df.name].start, mapping.loc[df.name].end])
                                            & interval([best_mapping.start, best_mapping.end]) == interval())
                                        else run_edlib(df["sequence"],
                                                       read_seq,
                                                       "glocal",
                                                       rc=True,
                                                       rc_pruning_diff_th=0.0,
-                                                      strand_prior=best_mapping.strand))
+                                                      strand_prior=best_mapping.strand),
+                                       axis=1)
 
-    encodings = pd.from_dict(encodings,
-                             orient="index",
-                             columns=("read_id",
-                                      "start",
-                                      "end",
-                                      "length",
-                                      "peak_id",
-                                      "repr_id",
-                                      "varset_id",
-                                      "diff",
-                                      "strand",
-                                      "type")) \
-                  .sort_values(by="start") \
-                  .sort_values(by="read_id", kind="mergesort")
+    encodings = pd.DataFrame.from_dict(encodings,
+                                       orient="index",
+                                       columns=("read_id",
+                                                "start",
+                                                "end",
+                                                "length",
+                                                "peak_id",
+                                                "repr_id",
+                                                "varset_id",
+                                                "diff",
+                                                "strand",
+                                                "type")) \
+                            .sort_values(by="start") \
+                            .sort_values(by="read_id", kind="mergesort") \
+                            .reset_index(drop=True)
 
     return encodings
