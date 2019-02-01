@@ -4,9 +4,11 @@ from logzero import logger
 from interval import interval
 import numpy as np
 import pandas as pd
-from BITS.run import run_edlib
-from BITS.utils import print_log, NoDaemonPool
+from BITS.run import run_edlib, run_consed, consed_to_varmat
+from BITS.utils import print_log, NoDaemonPool, run_command
+from BITS.seq import revcomp
 import consed
+from dacmaster.clustering import ClusteringVarMat
 
 
 def encode_reads(reads, repr_units, peaks):   # TODO: parallelize
@@ -93,3 +95,36 @@ def encode_reads(reads, repr_units, peaks):   # TODO: parallelize
                             .reset_index(drop=True)
 
     return encodings
+
+
+def detect_variants(encodings, repr_units, reads, peaks, plot_tsne=False):
+    """
+    From <encodings>, collect all raw unit sequences and throw into Consed
+    for each pair of (peak_id, repr_id).
+    """
+
+    for index, df in encodings[encodings["type"] == "complete"].groupby(["peak_id", "repr_id"]):
+        peak_id, repr_id = index
+        fname_prefix = f"peak_{peak_id}_repr_{repr_id}.raw_units"
+        with open(f"{fname_prefix}.fasta", 'w') as f:
+            f.write(f">repr   length={len(repr_units.loc[repr_id])}\n")
+            f.write(f"{repr_units.loc[repr_id, 'sequence']}\n")
+            for i, e in df.iterrows():
+                f.write(f">{i}/{e['strand']}/{e['start']}_{e['end']}   length={e['length']}   diff={e['diff']}\n")
+                s = reads.loc[e['read_id']]["sequence"][e["start"]:e["end"]]
+                f.write(f"{s if e['strand'] == 0 else revcomp(s)}\n")
+
+        run_command(f"grep -v '>' {fname_prefix}.fasta > {fname_prefix}.seqs")
+        run_consed(f"{fname_prefix}.seqs",
+                   out_prefix=fname_prefix,
+                   variant_vector=True,
+                   variant_graph=True,
+                   variant_fraction=0.0)   # TODO: parameterize
+        consed_to_varmat(f"{fname_prefix}.consed")   # TODO: extract positions information and so on
+
+        if plot_tsne:
+            cl = ClusteringVarMat(f"{fname_prefix}.consed.V")
+            cl.data = cl.data[:10000]   # subsampling because t-SNE is slow
+            cl.N = min([cl.N, 10000])
+            cl.calc_dist_mat()
+            cl.plot_tsne(out_fname="{fname_prefix}.consed.V.tsne.png")
