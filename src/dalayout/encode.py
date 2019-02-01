@@ -9,7 +9,7 @@ from BITS.utils import print_log, NoDaemonPool
 import consed
 
 
-def encode_reads(reads, repr_units):   # TODO: parallelize
+def encode_reads(reads, repr_units, peaks):   # TODO: parallelize
     encodings = {}
     index = 0
     for read_id, read in reads.iterrows():
@@ -40,16 +40,22 @@ def encode_reads(reads, repr_units):   # TODO: parallelize
                                 best_mapping.end - best_mapping.start,
                                 best_unit["peak_id"],
                                 best_unit["repr_id"],
-                                np.nan,
+                                0,   # or "global"
                                 round(best_mapping.diff, 4),
-                                best_mapping.strand)
+                                best_mapping.strand,
+                                "boundary" if (best_mapping.start < 50
+                                               and read["length"] - best_mapping.end < 50)   # TODO: calculate from unit length
+                                else "noisy" if best_mapping.diff >= 0.23
+                                else "deviating" if (best_mapping.end - best_mapping.start < peaks[best_unit["peak_id"]].info.min_len
+                                                     or best_mapping.end - best_mapping.start > peaks[best_unit["peak_id"]].info.max_len)   # TODO: check if this category exists instead of "noisy"
+                                else "complete")
             index += 1
 
             # Mask the best mapped region from the read
             read_seq = read_seq[:best_mapping.start] \
                        + "N" * (best_mapping.end - best_mapping.start) \
                        + read_seq[best_mapping.end:]
-            
+
             # Update best mapping for each representative unit whose map region is overlapping to
             # the best mapping region at this round just above
             mapping = repr_units.apply(lambda df: mapping[df.name]
@@ -71,8 +77,9 @@ def encode_reads(reads, repr_units):   # TODO: parallelize
                                       "peak_id",
                                       "repr_id",
                                       "varset_id",
-                                      "identity",
-                                      "strand")) \
+                                      "diff",
+                                      "strand",
+                                      "type")) \
                   .sort_values(by="start") \
                   .sort_values(by="read_id", kind="mergesort")
 
