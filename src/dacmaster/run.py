@@ -16,8 +16,8 @@ def main():
     # For each peak, calculate representative units
     repr_units = pd.DataFrame()
     for i, peak in enumerate(pf.peaks):
-        if i != len(pf.peaks) - 1:   # only the last peak   # NOTE: for debug
-            continue
+        #if i != len(pf.peaks) - 1:   # only the last peak   # NOTE: for debug
+        #    continue
 
         logger.info(f"Start peak {i}")
         peak.calc_repr_units(args.min_n_units, args.n_core)
@@ -37,6 +37,7 @@ def main():
                                 "sequence")) \
               .to_csv(args.out_repr_fname, sep='\t')
     save_pickle(pf, args.out_pkl_fname)
+    pf.reads.to_csv("tr_reads", sep='\t')
 
 
 def load_args():
@@ -48,7 +49,7 @@ def load_args():
         "-r",
         "--reads_fname",
         type=str,
-        default="reads",
+        default="reads.fasta",
         help=("A file of the raw reads. [reads.fasta]"))
 
     parser.add_argument(

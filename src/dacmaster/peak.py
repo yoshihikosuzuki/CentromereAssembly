@@ -124,14 +124,12 @@ class Peak:
         self.cons_units = {}
         index = 0
         logger.debug(f"Scattering tasks with {n_core} cores")
-        exe_pool = NoDaemonPool(n_core)
-        for ret in exe_pool.map(_take_intra_consensus, tasks_sub):
-            for r in ret:
-                if r[2] != "":
-                    self.cons_units[index] = r
-                    index += 1
-        exe_pool.close()
-        exe_pool.join()
+        with NoDaemonPool(n_core) as pool:
+            for ret in pool.map(_take_intra_consensus, tasks_sub):
+                for r in ret:
+                    if r[2] > 0:   # not empty sequence
+                        self.cons_units[index] = r
+                        index += 1
         logger.info(f"{len(self.cons_units)} out of {n_tasks} succeeded")
 
         self.cons_units = pd.DataFrame.from_dict(self.cons_units,
@@ -140,6 +138,7 @@ class Peak:
                                                           "path_id",
                                                           "length",
                                                           "sequence"))
+        self.cons_units.to_csv("cons_units", sep='\t')
 
     @print_log("hierarchical clustering of consensus units")
     def cluster_cons_units(self, n_core):
