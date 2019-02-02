@@ -30,6 +30,10 @@ N_CORE_DATRUF=4
 MIN_N_UNITS=10
 N_CORE_DACMASTER=8
 
+## DALAYOUT
+
+N_CORE_DALAYOUT=8
+
 ################################################################################
 ################################################################################
 
@@ -93,4 +97,20 @@ if ${USE_JOB_SCHEDULER}; then
 	${SUBMIT_JOB} run_dacmaster.sh.${JOB_SCHEDULER}
 else
 	bash run_dacmaster.sh > dacmaster.log 2>&1
+fi
+
+
+## Run dalayout
+
+echo "dalayout_run.py -n ${N_CORE_DACMASTER} -D" > run_dalayout.sh
+
+if ${USE_JOB_SCHEDULER}; then
+    python -m BITS.${JOB_SCHEDULER}_nize \
+           run_dalayout.sh \
+           job_name="run_dalayout" \
+           n_core=${N_CORE_DALAYOUT} \
+           wait=False
+    ${SUBMIT_JOB} run_dalayout.sh.${JOB_SCHEDULER}
+else
+    bash run_dalayout.sh > dalayout.log 2>&1
 fi

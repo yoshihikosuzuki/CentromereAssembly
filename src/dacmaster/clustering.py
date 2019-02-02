@@ -219,12 +219,11 @@ class ClusteringSeqs(Clustering):
         if total > 0:
             tasks.append((s, self.N - 1, self.data))
 
-        exe_pool = NoDaemonPool(n_core)
-        for ret in exe_pool.map(_calc_dist_array, tasks):
-            for r in ret:
-                i, dist_array = r
-                self.s_dist_mat[i, i + 1:] = self.s_dist_mat[i + 1:, i] = dist_array
-        exe_pool.close()
+        with NoDaemonPool(n_core) as pool:
+            for ret in pool.map(_calc_dist_array, tasks):
+                for r in ret:
+                    i, dist_array = r
+                    self.s_dist_mat[i, i + 1:] = self.s_dist_mat[i + 1:, i] = dist_array
 
         # Generate a condensed matrix
         self.c_dist_mat = squareform(self.s_dist_mat)

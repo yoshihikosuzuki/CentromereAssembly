@@ -1,39 +1,15 @@
-from typing import List
-from dataclasses import dataclass, field, InitVar
 from logzero import logger
 from interval import interval
 import numpy as np
 import pandas as pd
 from multiprocessing import Pool
 from BITS.run import run_edlib, run_consed, consed_to_varmat
-from BITS.utils import print_log, NoDaemonPool, run_command
+from BITS.utils import print_log
 from BITS.seq import revcomp
 import consed
-from dacmaster.clustering import ClusteringVarMat
 
 
-def encode_reads_parallel(reads, repr_units, peaks, n_core):
-    unit_n_read = -(-reads.shape[0] // n_core)
-    with Pool(n_core) as pool:
-        rets = [ret for ret in pool.starmap(encode_reads,
-                                            [(reads[i * unit_n_read:(i + 1) * unit_n_read],
-                                              repr_units,
-                                              peaks)
-                                             for i in range(n_core)])]
-
-    return pd.concat(rets).sort_values(by="start") \
-                          .sort_values(by="read_id", kind="mergesort") \
-                          .reset_index(drop=True)
-
-
-def encode_reads(reads, repr_units, peaks):
-    """
-    Map the <repr_units> onto <reads> and greedily select the best-mapped unit, iteratively
-    until no more good mappings are obtained.
-    <reads> (pd.DataFrame) should be TR reads to reduce the computation time.
-    <peaks> must be List[Peak], not PeaksFinder.
-    """
-
+def _encode_reads(reads, repr_units, peaks):
     encodings = {}
     index = 0
     for read_id, read in reads.iterrows():
@@ -71,7 +47,7 @@ def encode_reads(reads, repr_units, peaks):
                                                or read["length"] - best_mapping.end < 50)   # TODO: calculate from unit length
                                 else "noisy" if best_mapping.diff >= 0.23
                                 else "deviating" if (best_mapping.end - best_mapping.start < peaks[best_unit["peak_id"]].info.min_len
-                                                     or best_mapping.end - best_mapping.start > peaks[best_unit["peak_id"]].info.max_len)   # TODO: check if this category exists instead of "noisy"
+                                                     or best_mapping.end - best_mapping.start > peaks[best_unit["peak_id"]].info.max_len)
                                 else "complete")
             index += 1
 
@@ -113,6 +89,28 @@ def encode_reads(reads, repr_units, peaks):
     return encodings
 
 
+@print_log("read encoding")
+def encode_reads(reads, repr_units, peaks, n_core):
+    """
+    Map the <repr_units> onto <reads> and greedily select the best-mapped unit, iteratively
+    until no more good mappings are obtained.
+    <reads> (pd.DataFrame) should be TR reads to reduce the computation time.
+    <peaks> must be List[Peak], not PeaksFinder.
+    """
+
+    unit_n_read = -(-reads.shape[0] // n_core)
+    with Pool(n_core) as pool:
+        rets = [ret for ret in pool.starmap(_encode_reads,
+                                            [(reads[i * unit_n_read:(i + 1) * unit_n_read],
+                                              repr_units,
+                                              peaks)
+                                             for i in range(n_core)])]
+
+    return pd.concat(rets).sort_values(by="start") \
+                          .sort_values(by="read_id", kind="mergesort") \
+                          .reset_index(drop=True)
+
+
 def cut_unit_from_read(reads, encoding):
     """
     Cut the unit sequence from a read, considering the strand.
@@ -150,6 +148,7 @@ def _detect_variants(peak_id, repr_id, df, repr_unit, reads):
         # TODO: XXX: CHECK IF [1:-1] IS TRULY CORRESPOING SEQUENTIALL TO THE UNITS
 
 
+@print_log("variant detection")
 def detect_variants(encodings, repr_units, reads, peaks):
     # TODO: move "peak_id" and "repr_id" in <repr_units> to index of it
     encodings["var_vec"] = pd.concat(
