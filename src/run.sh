@@ -4,8 +4,8 @@
 
 ## JOB SCHEDULER (COMMENT-IN SINGLE LINE FOR EACH VARIABLE)
 
-#USE_JOB_SCHEDULER=true
-USE_JOB_SCHEDULER=false
+USE_JOB_SCHEDULER=true
+#USE_JOB_SCHEDULER=false
 JOB_SCHEDULER=sge
 #JOB_SCHEDULER=slurm
 SUBMIT_JOB=qsub
@@ -75,12 +75,14 @@ fi
 
 ## Run dacmaster
 
-DBshow -w10000000 ${DB_PREFIX}.db \
-	| awk -F'>' 'BEGIN {print "dbid\theader\tlength\tsequence"; count = 1}
-                 count % 2 == 1 {header = $2}
-                 count % 2 == 0 {print (count / 2) "\t" header "\t" length($1) "\t" $1} {count++}' > reads
+DBshow -w10000000 ${DB_PREFIX}.db > reads.fasta
 
-echo "dacmaster_run.py -m ${MIN_N_UNITS} -n ${N_CORE_DACMASTER} -D -F ${DB_PREFIX}.db" > run_dacmaster.sh
+#DBshow -w10000000 ${DB_PREFIX}.db \
+#	| awk -F'>' 'BEGIN {print "dbid\theader\tlength\tsequence"; count = 1}
+#                 count % 2 == 1 {header = $2}
+#                 count % 2 == 0 {print (count / 2) "\t" header "\t" length($1) "\t" $1} {count++}' > reads
+
+echo "dacmaster_run.py -m ${MIN_N_UNITS} -n ${N_CORE_DACMASTER} -D ${DB_PREFIX}.db" > run_dacmaster.sh
 
 if ${USE_JOB_SCHEDULER}; then
 	python -m BITS.${JOB_SCHEDULER}_nize \

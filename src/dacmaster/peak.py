@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.run import run_edlib
+from BITS.seq import load_fasta
 from BITS.utils import print_log, NoDaemonPool
 import consed
 from .clustering import ClusteringSeqs
@@ -221,11 +222,11 @@ class PeaksFinder:
     reads_fname: str   # DataFrame generated in run.py
     units_fname: str   # DataFrame, output of datruf
     min_len: int = 50   # only peaks longer than <min_len> and shorter than <max_len> will be found
-    max_len: int = 1000
+    max_len: int = 500
     cov_th: float = 0.8   # only reads whose <cov_th> * 100 percent is covered by TR are handled
     band_width: int = 5   # param. for KDE, critical for the number of peaks detected
-    min_density: float = 0.001   # threshold for peaks
-    deviation: float = 0.1   # <peak_len> * (1 +- <deviation>) will be the range of each peak
+    min_density: float = 0.005   # threshold for peaks
+    deviation: float = 0.08   # <peak_len> * (1 +- <deviation>) will be the range of each peak
 
     reads: pd.DataFrame = field(init=False)   # {dbid: sequence} of only TR reads
     units: pd.DataFrame = field(init=False)   # whole raw units data
@@ -237,9 +238,19 @@ class PeaksFinder:
             logger.warn(f"You specified the minimum unit length shorter than 50 bp ({self.min_len} bp), "
                         f"which is detection limit of datander.")
 
-        # Extract TR-reads and units inside them
-        self.reads = pd.read_csv(self.reads_fname, sep='\t', index_col=0)
+        # Load all reads and all raw units
+        self.reads = load_fasta(self.reads_fname)
+        self.reads = {i + 1: [header, len(seq), seq]
+                      for i, (header, seq) in enumerate(self.reads.items())}
+        self.reads = pd.DataFrame.from_dict(self.reads,
+                                            orient="index",
+                                            columns=("header",
+                                                     "length",
+                                                     "sequence"))
+        self.reads.index.names = ["dbid"]
         self.units = pd.read_csv(self.units_fname, sep='\t', index_col=0)
+
+        # Extract TR-reads and units inside those reads
         tr_reads = set()   # read dbids to be extracted
         del_row = set()   # row indices of <self.units> to be removed
         for read_id, df in self.units.groupby("read_id"):
@@ -277,12 +288,34 @@ class PeaksFinder:
         Show both original unit length distribution and smoothed distribution.
         """
 
-        original = go.Histogram(x=(self.units["length"]
-                                   .pipe(lambda s: s[self.min_len < s])
-                                   .pipe(lambda s: s[s < self.max_len])),
+        original = go.Histogram(x=(self.units["length"] if entire
+                                   else (self.units["length"]
+                                         .pipe(lambda s: s[self.min_len < s])
+                                         .pipe(lambda s: s[s < self.max_len]))),
                                 xbins=dict(start=0 if entire else self.min_len,
                                            end=self.units["length"].max() if entire else self.max_len,
                                            size=1))
+        layout = go.Layout(xaxis=dict(title='Unit length'),
+                           yaxis=dict(title='Frequency'))
+        py.iplot(go.Figure(data=[original], layout=layout))
+        smoothed = go.Scatter(x=np.arange(self.min_len, self.max_len + 1),
+                              y=self.dens)
+        layout = go.Layout(xaxis=dict(title='Unit length'),
+                           yaxis=dict(title='Density'))
+        py.iplot(go.Figure(data=[smoothed], layout=layout))
+
+        """ TODO: fix bug in this multi-plot code and replace to it
+        original = go.Histogram(x=(self.units["length"] if entire
+                                   else (self.units["length"]
+                                         .pipe(lambda s: s[self.min_len < s])
+                                         .pipe(lambda s: s[s < self.max_len]))),
+                                xbins=dict(start=0 if entire else self.min_len,
+                                           end=self.units["length"].max() if entire else self.max_len,
+                                           size=1))
+        layout = go.Layout(xaxis=dict(title='Unit length'),
+                           yaxis=dict(title='Frequency'),
+                           yaxis2=dict(title='Density', side='right'))
+        py.iplot(go.Figure(data=[original, smoothed], layout=layout))
         smoothed = go.Scatter(x=np.arange(self.min_len, self.max_len + 1),
                               y=self.dens,
                               yaxis='y2')
@@ -290,6 +323,7 @@ class PeaksFinder:
                            yaxis=dict(title='Frequency'),
                            yaxis2=dict(title='Density', side='right'))
         py.iplot(go.Figure(data=[original, smoothed], layout=layout))
+        """
 
     @print_log("peak detection")
     def run(self):

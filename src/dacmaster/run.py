@@ -49,7 +49,7 @@ def load_args():
         "--reads_fname",
         type=str,
         default="reads",
-        help=("A file of the raw reads. [reads]"))
+        help=("A file of the raw reads. [reads.fasta]"))
 
     parser.add_argument(
         "-u",
