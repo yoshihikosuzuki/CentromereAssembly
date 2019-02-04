@@ -8,16 +8,18 @@ from .encode import encode_reads, detect_variants
 
 def main():
     args = load_args()
+
+    # Load data
+    repr_units = pd.read_csv(args.repr_units_fname, sep='\t', index_col=[0, 1])
     tr_reads = pd.read_csv(args.tr_reads_fname, sep='\t', index_col=0)
-    repr_units = pd.read_csv(args.repr_units_fname, sep='\t', index_col=0)
     pf = load_pickle(args.peaks_finder_fname)
 
     # Encode reads by mapping the representative units
-    encodings = encode_reads(tr_reads, repr_units, pf.peaks, args.n_core)   # TODO: exclude peaks in the future
+    encodings = encode_reads(repr_units, tr_reads, pf.peaks, args.n_core)
     save_pickle(encodings, args.out_pkl_fname)
 
     # Detect global variants for each representative unit class
-    detect_variants(encodings, repr_units, tr_reads, pf.peaks)
+    detect_variants(repr_units, tr_reads, encodings, args.variant_fraction)
     save_pickle(encodings, args.out_pkl_fname)
 
     # Calculate all-vs-all read alignments
@@ -52,6 +54,13 @@ def load_args():
         type=str,
         default="peaks_finder.pkl",
         help=("PeaksFinder pickle file which is dacmaster's output. [peaks_finder.pkl]"))
+
+    parser.add_argument(
+        "-t",
+        "--variant_fraction",
+        type=int,
+        default=0.0,
+        help=("Value of Consed's -t option. 0.0 means all variant sites will be used. [0.0]"))
 
     parser.add_argument(
         "-o",

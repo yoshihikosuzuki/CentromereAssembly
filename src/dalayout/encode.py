@@ -9,7 +9,7 @@ from BITS.seq import revcomp
 import consed
 
 
-def _encode_reads(reads, repr_units, peaks):
+def _encode_reads(repr_units, reads, peaks):
     encodings = {}
     index = 0
     for read_id, read in reads.iterrows():
@@ -33,28 +33,30 @@ def _encode_reads(reads, repr_units, peaks):
 
             # Choose a representative unit which has the best identity to some region of the read
             best_idx = mapping_diff.idxmin()
-            best_unit, best_mapping = repr_units.loc[best_idx], mapping.loc[best_idx]
-            th_len_from_boundary = peaks[best_unit["peak_id"]].info.lens[-1] * 0.15
+            best_peak_id, best_repr_id = best_idx
+            best_mapping = mapping.loc[best_idx]
+            best_mapping_len = best_mapping.end - best_mapping.start
+            th_len_from_boundary = peaks[best_peak_id].info.lens[-1] * 0.15   # TODO: search for optimal
             encodings[index] = (read_id,
                                 best_mapping.start,
                                 best_mapping.end,
-                                best_mapping.end - best_mapping.start,
-                                best_unit["peak_id"],
-                                best_unit["repr_id"],
+                                best_mapping_len,
+                                best_peak_id,
+                                best_repr_id,
                                 0,   # or "global"
                                 round(best_mapping.diff, 3),
                                 best_mapping.strand,
                                 "boundary" if (best_mapping.start < th_len_from_boundary
-                                               or read["length"] - best_mapping.end < th_len_from_boundary)   # TODO: check if this works
+                                               or read["length"] - best_mapping.end < th_len_from_boundary)
                                 else "noisy" if best_mapping.diff >= 0.23
-                                else "deviating" if (best_mapping.end - best_mapping.start < peaks[best_unit["peak_id"]].info.min_len
-                                                     or best_mapping.end - best_mapping.start > peaks[best_unit["peak_id"]].info.max_len)
+                                else "deviating" if (best_mapping_len < peaks[best_peak_id].info.min_len
+                                                     or best_mapping_len > peaks[best_peak_id].info.max_len)
                                 else "complete")
             index += 1
 
             # Mask the best mapped region from the read
             read_seq = read_seq[:best_mapping.start] \
-                       + "N" * (best_mapping.end - best_mapping.start) \
+                       + "N" * (best_mapping_len) \
                        + read_seq[best_mapping.end:]
 
             # Update best mapping for each representative unit whose map region is overlapping to
@@ -90,8 +92,8 @@ def _encode_reads(reads, repr_units, peaks):
     return encodings
 
 
-@print_log("read encoding")
-def encode_reads(reads, repr_units, peaks, n_core):
+@print_log("read encoding", show_args=False)
+def encode_reads(repr_units, reads, peaks, n_core):
     """
     Map the <repr_units> onto <reads> and greedily select the best-mapped unit, iteratively
     until no more good mappings are obtained.
@@ -102,8 +104,8 @@ def encode_reads(reads, repr_units, peaks, n_core):
     unit_n_read = -(-reads.shape[0] // n_core)
     with Pool(n_core) as pool:
         rets = [ret for ret in pool.starmap(_encode_reads,
-                                            [(reads[i * unit_n_read:(i + 1) * unit_n_read],
-                                              repr_units,
+                                            [(repr_units,
+                                              reads[i * unit_n_read:(i + 1) * unit_n_read],
                                               peaks)
                                              for i in range(n_core)])]
 
@@ -115,22 +117,20 @@ def encode_reads(reads, repr_units, peaks, n_core):
 def cut_unit_from_read(reads, encoding):
     """
     Cut the unit sequence from a read, considering the strand.
+    <encoding> must be a single line in <encodings>.
     """
 
-    # NOTE: <encoding> must be a single line in <encodings>
     s = reads.loc[encoding["read_id"]]["sequence"][encoding["start"]:encoding["end"]]
     return s if encoding["strand"] == 0 else revcomp(s)
 
 
-def _detect_variants(peak_id, repr_id, df, repr_unit, reads, variant_fraction):
-    units = df.apply(lambda d: cut_unit_from_read(reads, d), axis=1)
-
-    # Output file names
+def _detect_variants(peak_id, repr_id, repr_unit, reads, encoding_df, variant_fraction):
     units_fname = f"peak_{peak_id}_repr_{repr_id}.raw_units"
     consed_fname = f"{units_fname}.t{variant_fraction}.consed"
     varmat_fname = f"{consed_fname}.V"
 
-    # Create a file for Consed input
+    # Write the representative unit and raw units aligned to it for a Consed input
+    units = encoding_df.apply(lambda d: cut_unit_from_read(reads, d), axis=1)
     with open(units_fname, 'w') as f:
         f.write(repr_unit + '\n' + '\n'.join(units) + '\n')
 
@@ -149,22 +149,27 @@ def _detect_variants(peak_id, repr_id, df, repr_unit, reads, variant_fraction):
         return pd.Series(list(zip(*[list(map(int,
                                              list(line.strip()[1:-1])))
                                     for line in f])),
-                         index=df.index) \
+                         index=encoding_df.index) \
                  .apply(lambda s: np.array(s))
-        # TODO: XXX: CHECK IF [1:-1] IS TRULY CORRESPOING SEQUENTIALL TO THE UNITS BY LOOKING CONSED'S CODES
+        # TODO: XXX: CHECK IF [1:-1] IS TRULY CORRESPOING SEQUENTIALLY TO THE UNITS BY LOOKING CONSED'S CODES
 
 
-@print_log("variant detection")
-def detect_variants(encodings, repr_units, reads, peaks, variant_fraction=0.0):
-    # TODO: move "peak_id" and "repr_id" in <repr_units> to index of it
-    encodings["var_vec"] = pd.concat(
-        [_detect_variants(peak_id,
-                          repr_id,
-                          df,
-                          repr_units.pipe(lambda df: df[df["peak_id"] == peak_id]) \
-                          .pipe(lambda df: df[df["repr_id"] == repr_id])["sequence"] \
-                          .iloc[0],   # TODO: change the index of <repr_units>
-                          reads,
-                          variant_fraction)
-         for (peak_id, repr_id), df
-         in encodings[encodings["type"] == "complete"].groupby(["peak_id", "repr_id"])])
+@print_log("variant detection", show_args=False)
+def detect_variants(repr_units, reads, encodings, variant_fraction):
+    """
+    Add a column of "unit variant vector" in <encodings>.
+    The column is calculated for each grouped part of <encodings>, and in the end merged.
+    """
+
+    var_vecs = [_detect_variants(peak_id,
+                                 repr_id,
+                                 repr_units.loc[(peak_id, repr_id), "sequence"],
+                                 reads,
+                                 encoding_df,
+                                 variant_fraction)
+                for (peak_id, repr_id), encoding_df
+                in encodings[encodings["type"] == "complete"].groupby(["peak_id", "repr_id"])]
+
+    # NOTE: each layer on variant calling has a distinct column
+    col_name = f"var_vec_global{variant_fraction}"
+    encodings[col_name] = pd.concat(var_vecs)

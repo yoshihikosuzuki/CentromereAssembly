@@ -35,6 +35,7 @@ def main():
                                 "cluster_size",
                                 "length",
                                 "sequence")) \
+              .set_index(["peak_id", "repr_id"]) \
               .to_csv(args.out_repr_fname, sep='\t')
     save_pickle(pf, args.out_pkl_fname)
     pf.reads.to_csv("tr_reads", sep='\t')
