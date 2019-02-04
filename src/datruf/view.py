@@ -211,7 +211,7 @@ class Viewer:
             shapes += [make_line(e[0], e[0], e[1], e[1], rgb2hex(cm.jet(e[4] * 3)), 5) for e in encoding]
             data += [go.Scatter(x=[e[0] for e in encoding],
                                 y=[e[0] for e in encoding],
-                                text=[f"{e[3]} " for e in encoding],
+                                text=[f"{e[3]}{'+' if e[5] == 0 else '-'} " for e in encoding],
                                 textposition="bottom left",
                                 textfont=dict(size=10, color="black"),
                                 mode="text",

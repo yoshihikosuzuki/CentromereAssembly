@@ -11,6 +11,8 @@ from sklearn.manifold import TSNE
 from sklearn.decomposition import NMF
 import matplotlib.pyplot as plt
 import seaborn as sns
+import plotly.offline as py
+import plotly.graph_objs as go
 from BITS.run import run_edlib
 from BITS.utils import run_command, print_log, NoDaemonPool
 import consed
@@ -135,6 +137,20 @@ class Clustering:
         assert hasattr(self, "s_dist_mat"), "No square distance matrix"
         assert coloring in ("sequential", "random"), "<color> must be 'sequential' or 'random'"
 
+        trace = go.Scatter(x=self.coord[:, 0].T,
+                           y=self.coord[:, 1].T,
+                           text=self.assignment,
+                           mode="markers",
+                           marker=dict(size=3,
+                                       color=self.assignment,
+                                       colorscale="Rainbow",
+                                       showscale=False))
+        layout = go.Layout(width=700,
+                           height=700,
+                           hovermode='closest')
+        py.iplot(go.Figure(data=[trace], layout=layout))
+
+        """
         if not hasattr(self, "coord"):
             self.coord = TSNE(n_components=2, metric='precomputed').fit_transform(self.s_dist_mat)
 
@@ -153,6 +169,7 @@ class Clustering:
             plt.show()
         else:
             plt.savefig(out_fname)
+        """
 
 
 def __calc_dist_array(i, data):

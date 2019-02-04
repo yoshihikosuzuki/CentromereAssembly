@@ -160,7 +160,11 @@ The input file `db_file` of `dacmaster_run.py` is the same as that of `datruf_ru
 
 Every module offers some visualization functions (examples will be shown here).
 
-## datander & datruf
+## datander
+
+Datander has been developed by Gene Myers as a program in his module named [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER).
+
+## datruf
 
 detects tandem repeat regions (with datander by Gene Myers) and tandem repeat units
 
@@ -174,15 +178,13 @@ Datruf consists of three parts:
 
 * **Plotter** requires results of datruf and/or other software for tandem repeat analysis (TRF, mTR, etc.) and draws figures useful for comparison of these results.
 
-See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/datruf/docs/Usage.ipynb) for how to use.
+See [Jupyter notebook]() for how to use.
 
 ## dacmaster
 
-infers centromeric satellite repeat units (monomers) from all the tandem repeat units
-
-performs clustering of the monomers at multiple, stage-specific resolusions
-
-assigns each monomer in the reads to a representative (consensus) of the clusters
+* infers centromeric satellite repeat units (monomers) from all the tandem repeat units
+* performs clustering of the monomers at multiple, stage-specific resolusions
+* assigns each monomer in the reads to a representative (consensus) of the clusters
 
 Dacmaster recieves the fasta file of the units reported by datruf, and determine a set of representative centromeric monomers from it. This task is done by
 
@@ -191,23 +193,8 @@ Dacmaster recieves the fasta file of the units reported by datruf, and determine
 3. Clustering units which are the first units of the first tandem repeats not starting from the end point of each read
 4. Adjusting start positions of all monomers by the most similar representative monomer
 
-See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/dacmaster/docs/Usage.ipynb).
+See [Jupyter notebook]().
 
-Dacenter recieves a set of tandem repeat unit sequences as input from datruf, and performs clustering of them with several resolutions required in each stage of the assembly.
-
-Dacenter performs following steps:
-
-* Align start positions of the units
-* Peak unit lengths detection
-* Detect representative unit sequences
-
-In addition, dacenter provides following visualizations:
-
-* Unit length histogram
-* Clustering details
-
-See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/dacenter/docs/Usage.ipynb) (maybe a little bit slow to load due to its large file size ~40MB).
-
-## dacembler
+## dalayout
 
 layouts the reads encoded with the representative monomers
