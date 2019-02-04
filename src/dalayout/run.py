@@ -1,3 +1,4 @@
+import os.path
 import logging
 import logzero
 from logzero import logger
@@ -15,8 +16,12 @@ def main():
     pf = load_pickle(args.peaks_finder_fname)
 
     # Encode reads by mapping the representative units
-    encodings = encode_reads(repr_units, tr_reads, pf.peaks, args.n_core)
-    save_pickle(encodings, args.out_pkl_fname)
+    if not os.path.isfile(args.out_pkl_fname):
+        encodings = encode_reads(repr_units, tr_reads, pf.peaks, args.n_core)
+        save_pickle(encodings, args.out_pkl_fname)
+    else:
+        logger.info(f"Load {args.out_pkl_fname}")
+        encodings = load_pickle(args.out_pkl_fname)
 
     # Detect global variants for each representative unit class
     detect_variants(repr_units, tr_reads, encodings, args.variant_fraction)
