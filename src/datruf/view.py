@@ -203,23 +203,28 @@ class Viewer:
 
         data = [trace1, trace2, trace3, trace4]
 
-        if (self.encodings is not None
-            and self.read_id in self.encodings
-            and len(self.encodings[self.read_id]) > 0):
+        if self.encodings is not None and self.read_id in set(self.encodings["read_id"]):
+            encodings = self.encodings[self.encodings["read_id"] == self.read_id]
 
-            encoding = self.encodings[self.read_id]
-            shapes += [make_line(e[0], e[0], e[1], e[1], rgb2hex(cm.jet(e[4] * 3)), 5) for e in encoding]
-            data += [go.Scatter(x=[e[0] for e in encoding],
-                                y=[e[0] for e in encoding],
-                                text=[f"{e[3]}{'+' if e[5] == 0 else '-'} " for e in encoding],
+            shapes += list(encodings.apply(lambda df: make_line(df["start"],
+                                                                df["start"],
+                                                                df["end"],
+                                                                df["end"],
+                                                                rgb2hex(cm.jet(df["diff"] * 3)),
+                                                                5),
+                                           axis=1))
+            data += [go.Scatter(x=encodings["start"],
+                                y=encodings["start"],
+                                text=encodings.apply(lambda df: f"{df['peak_id']}:{df['repr_id']}{'+' if df['strand'] == 0 else '-'} ",
+                                                     axis=1),
                                 textposition="bottom left",
                                 textfont=dict(size=10, color="black"),
                                 mode="text",
-                                name="master ID"),
-                     go.Scatter(x=[e[0] for e in encoding],
-                                y=[e[0] for e in encoding],
-                                text=[f"{e[3]}({e[5]}) diff = {e[4]}<br>[{e[0]}, {e[1]}] ({e[2]} bp)"
-                                      for e in encoding],
+                                name="representative ID"),
+                     go.Scatter(x=encodings["start"],
+                                y=encodings["start"],
+                                text=encodings.apply(lambda df: f"{df['peak_id']}:{df['repr_id']}{'+' if df['strand'] == 0 else '-'}<br>[{df['start']}, {df['end']}] ({df['length']} bp)<br>diff = {df['diff']}",
+                                                     axis=1),
                                 hoverinfo="text",
                                 showlegend=False)]
 
