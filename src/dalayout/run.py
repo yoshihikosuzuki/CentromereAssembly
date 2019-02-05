@@ -63,7 +63,7 @@ def load_args():
     parser.add_argument(
         "-t",
         "--variant_fraction",
-        type=int,
+        type=float,
         default=0.0,
         help=("Value of Consed's -t option. 0.0 means all variant sites will be used. [0.0]"))
 

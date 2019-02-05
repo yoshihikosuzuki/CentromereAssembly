@@ -1,19 +1,11 @@
-from typing import List
-from dataclasses import dataclass, field, InitVar
 from logzero import logger
 import numpy as np
 import pandas as pd
 import networkx as nx
-from interval import interval
-from scipy.spatial.distance import pdist, squareform
-from sklearn.manifold import TSNE
+from collections import Counter
 import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
-from BITS.seq import revcomp
-from BITS.utils import run_command
-from BITS.run import run_edlib
-import consed
 
 plt.style.use('ggplot')
 
@@ -22,6 +14,7 @@ def _svs_read_alignment(varmat_i, varmat_j, plot=False):
     n_units_i, n_units_j = varmat_i.shape[0], varmat_j.shape[0]
 
     def calc_dist_mat(varmat_i, varmat_j):   # TODO: replace to a more efficient code
+        # TODO: XXX: CONSIDER STRAND MATCH!!!
         dist_mat = np.zeros((n_units_i, n_units_j))
         assert varmat_i.shape[1] == varmat_j.shape[1]
         n_vars = varmat_i.shape[1]
@@ -79,7 +72,7 @@ def _svs_read_alignment(varmat_i, varmat_j, plot=False):
     overlap = [start_i, end_i, n_units_i, start_j, end_j, n_units_j]
         
     score = dp[end_i][end_j]   # TODO: change the score
-    if plot and score >= 0.5:
+    if plot:
         fig = plt.figure(figsize=(18, 10))
         ax1 = fig.add_subplot(131)
         #ax1.set_title(f"{f_id} vs {g_id}({g_s}): dist mat")
@@ -100,28 +93,61 @@ def _svs_read_alignment(varmat_i, varmat_j, plot=False):
             "overlap": overlap}
 
 
-def svs_read_alignment(read_df_i, read_df_j, read_len_i, read_len_j, plot_dp=False):
+def svs_read_alignment(read_df_i,
+                       read_df_j,
+                       varvec_colname,
+                       th_n_shared_units,
+                       strand,
+                       plot=False):
+
+    def df_to_composition(df, s):
+        return Counter(df.apply(lambda df: (df["peak_id"],
+                                            df["repr_id"],
+                                            df["strand"] if s == 'f' else 1 - df["strand"],
+                                            df["type"]),
+                                axis=1))
+
     def df_to_varmat(df):
-        return np.array(list(df["var_vec"].values))
+        return np.array(list(df[varvec_colname].values))
 
-    # TODO: XXX: before converting to a variant matrix, check the strand of the units!!!
-    # or, keep the strand information (and repr_id information) in addition to variant vector
-    read_id_i, read_id_j = read_df_i.iloc[0]["read_id"], read_df_j.iloc[0]["read_id"]
-    varmat_i, varmat_j = df_to_varmat(read_df_i), df_to_varmat(read_df_j)
-    ret_f = _svs_read_alignment(varmat_i, varmat_j)
-    ret_rc = _svs_read_alignment(varmat_i,  varmat_j[::-1])
-    ret, strand = (ret_f, "f") if ret_f["score"] >= ret_rc["score"] else (ret_rc, "r")
-    if strand == "r":
-        ret.overlap[6], ret.overlap[7] = ret.overlap[8] - ret.overlap[7], ret.overlap[8] - ret.overlap[6]
-    return [read_id_i, read_id_j, strand] + ret["overlap"]
+    comp_i = df_to_composition(read_df_i, 'f')
+    comp_j = df_to_composition(read_df_j, strand)
+    if sum((comp_i & comp_j).values()) < th_n_shared_units:
+        return None
+    varmat_i = df_to_varmat(read_df_i)
+    varmat_j = df_to_varmat(read_df_j if strand == 'f' else read_df_j[::-1])
+    ret = _svs_read_alignment(varmat_i, varmat_j, plot=plot)
+    if strand == 'r':
+        ret["overlap"][3], ret["overlap"][4] = ret["overlap"][5] - ret["overlap"][4], ret["overlap"][5] - ret["overlap"][3]
+    return ret
 
 
-def ava_read_alignment(encodings, reads):
-    return pd.concat([svs_read_alignment(i,
-                                         j,
-                                         reads.loc[read_i, "length"],
-                                         reads.loc[read_j, "length"])
-                      for i, j in pairs])
+def ava_read_alignment(encodings,
+                       reads,
+                       varvec_colname="var_vec_global0.0",
+                       th_n_shared_units=5,
+                       th_align_score=0.5):
+
+    def call_svs(strand):
+        ret = svs_read_alignment(read_df_i,
+                                 read_df_j,
+                                 varvec_colname,
+                                 th_n_shared_units,
+                                 strand)
+        if ret is not None and ret["score"] >= th_align_score:
+            overlaps.append([read_i, read_j, strand] + ret["overlap"])
+        
+    read_ids = sorted(set(encodings["read_id"]))
+    overlaps = []
+    for i, read_i in enumerate(read_ids):
+        for read_j in read_ids[i + 1:]:
+            read_df_i = encodings[encodings["read_id"] == read_i].pipe(lambda df: df[df["type"] == "complete"])
+            read_df_j = encodings[encodings["read_id"] == read_j].pipe(lambda df: df[df["type"] == "complete"])
+            if read_df_i.shape[0] == 0 or read_df_j.shape[0] == 0:
+                continue
+            call_svs('f')
+            call_svs('r')
+    return overlaps
 
 
 def plot_read_as_varmat(varmat, figsize=(10, 10)):
