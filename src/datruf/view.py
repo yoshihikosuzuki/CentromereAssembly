@@ -1,10 +1,13 @@
 import os.path
+import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as img
 import matplotlib.cm as cm
 from matplotlib.colors import rgb2hex
+import seaborn as sns
 import plotly.offline as py
 import plotly.graph_objs as go
+from logzero import logger
 from BITS.utils import run_command, make_line
 from .load import load_tr_intervals, load_alignments, load_paths
 from .core import calc_cover_set, calc_min_cover_set
@@ -72,6 +75,7 @@ class Viewer:
     def show(self,
              read_id,
              dot_plot=False,
+             varmat_plot=False,
              alignment_plot=True,
              show_grid=False,   # for alignment plot
              path_plot=False,
@@ -88,6 +92,8 @@ class Viewer:
 
         if dot_plot:
             self.dot_plot()
+        if varmat_plot:
+            self.varmat_plot()
         if alignment_plot:
             self.alignment_plot(show_grid, save_html)
         if path_plot:
@@ -134,6 +140,20 @@ class Viewer:
         ax.tick_params(labelleft=False, left=False)
         # this assignment and plt.show() are necessary to show only one figure
         tmp = plt.imshow(img.imread(out_dotplot))
+        plt.show()
+
+    def varmat_plot(self, colname="var_vec_global0.0"):   # TODO: change to integrated var. vec. viewer
+        if self.encodings is None:
+            logger.info("Encodings are not specified. Exit.")
+            return
+        read_df = self.encodings.pipe(lambda df: df[df["read_id"] == self.read_id]) \
+                                .pipe(lambda df: df[df["type"] == "complete"])
+        if read_df.shape[0] == 0:
+            logger.info("The read does not have any complete variant vector unit. Exit.")
+            return
+        varmat = np.array(list(read_df[colname].values))
+        plt.figure(figsize=(11, 11))
+        sns.heatmap(varmat, square=True, vmin=0, vmax=1)
         plt.show()
 
     def alignment_plot(self, show_grid=False, save_html=False):

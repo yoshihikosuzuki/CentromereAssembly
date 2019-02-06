@@ -4,8 +4,6 @@ import pandas as pd
 import networkx as nx
 from collections import Counter
 import matplotlib.pyplot as plt
-import plotly.offline as py
-import plotly.graph_objs as go
 
 plt.style.use('ggplot')
 
@@ -14,13 +12,16 @@ def _svs_read_alignment(varmat_i, varmat_j, plot=False):
     n_units_i, n_units_j = varmat_i.shape[0], varmat_j.shape[0]
 
     def calc_dist_mat(varmat_i, varmat_j):   # TODO: replace to a more efficient code
-        # TODO: XXX: CONSIDER STRAND MATCH!!!
         dist_mat = np.zeros((n_units_i, n_units_j))
-        assert varmat_i.shape[1] == varmat_j.shape[1]
-        n_vars = varmat_i.shape[1]
         for i in range(n_units_i):
             for j in range(n_units_j):
-                dist_mat[i][j] = 1. - float(np.count_nonzero(varmat_i[i] != varmat_j[j])) / n_vars   # similarity
+                if varmat_i.iloc[i][0] != varmat_j.iloc[j][0]:   # peak, repr, and/or strand is different
+                    sim = 0   # i.e. mismatch score for different types of the units = -0.75
+                else:
+                    assert varmat_i.iloc[i][1].shape[0] == varmat_j.iloc[j][1].shape[0]
+                    n_vars = varmat_i.iloc[i][1].shape[0]
+                    sim = 1. - float(np.count_nonzero(varmat_i.iloc[i][1] != varmat_j.iloc[j][1])) / n_vars
+                dist_mat[i][j] = sim   # similarity
         return dist_mat
 
     dist_mat = calc_dist_mat(varmat_i, varmat_j)
@@ -98,24 +99,38 @@ def svs_read_alignment(read_df_i,
                        varvec_colname,
                        th_n_shared_units,
                        strand,
-                       plot=False):
+                       plot=False,
+                       debug=False):
 
     def df_to_composition(df, s):
         return Counter(df.apply(lambda df: (df["peak_id"],
                                             df["repr_id"],
-                                            df["strand"] if s == 'f' else 1 - df["strand"],
-                                            df["type"]),
+                                            df["strand"] if s == 'f' else 1 - df["strand"]),
                                 axis=1))
 
-    def df_to_varmat(df):
-        return np.array(list(df[varvec_colname].values))
+    def df_to_varmat(df, s):
+       return (df if s == 'f'
+               else df[::-1]).apply(lambda df: ((df["peak_id"],
+                                                 df["repr_id"],
+                                                 df["strand"] if s == 'f' else 1 - df["strand"]),
+                                                df[varvec_colname]),
+                                    axis=1) \
+                                    .reset_index(drop=True)
 
+    assert strand in set(['f', 'r']), "Invalid strand value"
+
+    # Check if overlap between the two reads exists at the resolution of representative units
     comp_i = df_to_composition(read_df_i, 'f')
     comp_j = df_to_composition(read_df_j, strand)
+    # At least <th_n_shared_units> units must be shared between the two reads
     if sum((comp_i & comp_j).values()) < th_n_shared_units:
+        if debug:
+            logger.info(f"Composition does not overlap: {comp_i} vs {comp_j}")
         return None
-    varmat_i = df_to_varmat(read_df_i)
-    varmat_j = df_to_varmat(read_df_j if strand == 'f' else read_df_j[::-1])
+
+    # Take alignment at the resolution of variant vectors
+    varmat_i = df_to_varmat(read_df_i, 'f')   # pd.Series([((peak_id, repr_id, strand), var_vec), ...])
+    varmat_j = df_to_varmat(read_df_j, strand)
     ret = _svs_read_alignment(varmat_i, varmat_j, plot=plot)
     if strand == 'r':
         ret["overlap"][3], ret["overlap"][4] = ret["overlap"][5] - ret["overlap"][4], ret["overlap"][5] - ret["overlap"][3]
@@ -126,7 +141,8 @@ def ava_read_alignment(encodings,
                        reads,
                        varvec_colname="var_vec_global0.0",
                        th_n_shared_units=5,
-                       th_align_score=0.5):
+                       th_align_score=0.5,
+                       plot=False):   # TODO: change to a class Overlap?
 
     def call_svs(strand):
         ret = svs_read_alignment(read_df_i,
@@ -141,19 +157,16 @@ def ava_read_alignment(encodings,
     overlaps = []
     for i, read_i in enumerate(read_ids):
         for read_j in read_ids[i + 1:]:
-            read_df_i = encodings[encodings["read_id"] == read_i].pipe(lambda df: df[df["type"] == "complete"])
-            read_df_j = encodings[encodings["read_id"] == read_j].pipe(lambda df: df[df["type"] == "complete"])
+            # TODO: using only complete units is OK?
+            read_df_i = encodings.pipe(lambda df: df[df["read_id"] == read_i]) \
+                                 .pipe(lambda df: df[df["type"] == "complete"])
+            read_df_j = encodings.pipe(lambda df: df[df["read_id"] == read_j]) \
+                                 .pipe(lambda df: df[df["type"] == "complete"])
             if read_df_i.shape[0] == 0 or read_df_j.shape[0] == 0:
                 continue
             call_svs('f')
             call_svs('r')
     return overlaps
-
-
-def plot_read_as_varmat(varmat, figsize=(10, 10)):
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.imshow(varmat)
-    fig.show()
 
 
 def construct_string_graph(overlaps):
