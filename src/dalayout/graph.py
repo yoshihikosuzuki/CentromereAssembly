@@ -1,13 +1,106 @@
 from typing import List
 from dataclasses import dataclass, field, InitVar
+from multiprocessing import Pool
 from logzero import logger
 import numpy as np
 import pandas as pd
 import networkx as nx
 from collections import Counter
 import matplotlib.pyplot as plt
+from BITS.utils import run_command, sge_nize, save_pickle
 
 plt.style.use('ggplot')
+
+
+def _svs_read_alignment(read_i, read_j, strand, varmats, plot=False):
+    def calc_dist_mat():
+        return np.array([[0 if varmat_i.iloc[i][0] != varmat_j.iloc[j][0]   # different unit type
+                          else 1. - float(np.count_nonzero(varmat_i.iloc[i][1] != varmat_j.iloc[j][1])) / varmat_i.iloc[i][1].shape[0]   # similarity
+                          for j in range(varmat_j.shape[0])]
+                         for i in range(varmat_i.shape[0])])
+
+    def calc_alignment():
+        # Smith-Waterman local alignment
+        dp = np.zeros((dist_mat.shape[0] + 1, dist_mat.shape[1] + 1))
+        for i in range(1, dp.shape[0]):
+            for j in range(1, dp.shape[1]):
+                dp[i][j] = max([dp[i - 1][j - 1] + dist_mat[i - 1][j - 1] - 0.75,
+                                dp[i - 1][j] - 0.2,
+                                dp[i][j - 1] - 0.2])   # TODO: reconsider the scoring system
+
+        # Find the starting point of traceback
+        if np.max(dp[-1][1:]) >= np.max(dp.T[-1][1:]):   # maximum is on the end row
+            argmax = np.array([dp.shape[0] - 1, np.argmax(dp[-1][1:]) + 1])
+        else:   # on the end column
+            argmax = np.array([np.argmax(dp.T[-1][1:]) + 1, dp.shape[1] - 1])
+
+        # Traceback
+        alignment = [argmax]   # [(pos_i, pos_j), ...] from the traceback starting point
+        while True:
+            if argmax[0] == 1 or argmax[1] == 1:   # reached the start row or colum
+                break
+            diag = dp[argmax[0] - 1][argmax[1] - 1] + dist_mat[argmax[0] - 1][argmax[1] - 1] - 0.75
+            horizontal = dp[argmax[0]][argmax[1] - 1] - 0.2
+            vertical = dp[argmax[0] - 1][argmax[1]] - 0.2
+            maximum = np.argmax([diag, horizontal, vertical])   # pointer to the next cell
+            if maximum == 0:   # diagonal
+                argmax = argmax - 1
+            elif maximum == 1:   # horizonal
+                argmax = argmax - [0, 1]   # copy object
+            else:   # vertical
+                argmax = argmax - [1, 0]
+            alignment = [argmax] + alignment   # add the next cell at the FRONT of the list
+    
+        # DP matrix only on the optimal alignment path
+        dp_optimal_path = np.zeros_like(dp)
+        for a in alignment:
+            dp_optimal_path[a[0]][a[1]] = dp[a[0]][a[1]]
+
+        return (dp, dp_optimal_path, alignment)
+
+    varmat_i, varmat_j = varmats[(read_i, 'f')], varmats[(read_j, strand)]
+    dist_mat = calc_dist_mat()
+    dp, dp_optimal_path, alignment = calc_alignment()
+    start_i, start_j = alignment[0]
+    end_i, end_j = alignment[-1]
+    score = dp[end_i][end_j]
+
+    if plot:
+        fig = plt.figure(figsize=(18, 10))
+        ax1 = fig.add_subplot(131)
+        im1 = ax1.imshow(dist_mat, cmap="GnBu", vmin=0.5, vmax=1)
+        fig.colorbar(im1)
+        ax2 = fig.add_subplot(132)
+        im2 = ax2.imshow(dp, cmap="GnBu", vmin=0, vmax=1)
+        fig.colorbar(im2)
+        ax3 = fig.add_subplot(133)
+        im3 = ax3.imshow(dp_optimal_path, cmap="GnBu", vmin=0, vmax=1)
+        fig.colorbar(im3)
+        fig.show()
+
+    return [start_i, end_i, varmat_i.shape[0], start_j, end_j, varmat_j.shape[0], score, alignment]
+
+
+def svs_read_alignment(read_i, read_j, strand, comps, varmats, th_n_shared_units, th_align_score):
+    if sum((comps[(read_i, 'f')] & comps[(read_j, strand)]).values()) >= th_n_shared_units:
+        overlap = _svs_read_alignment(read_i, read_j, strand, varmats)
+        if overlap is not None and overlap[6] >= th_align_score:
+            if strand == 'r':
+                # NOTE: do not expand these assignments
+                overlap[3], overlap[4] = overlap[5] - overlap[4], overlap[5] - overlap[3]
+            return [read_i, read_j, strand] + overlap
+    return None
+
+
+def svs_read_alignment_mult(list_pairs, comps, varmats, th_n_shared_units, th_align_score):
+    return [svs_read_alignment(read_i,
+                               read_j,
+                               strand,
+                               comps,
+                               varmats,
+                               th_n_shared_units,
+                               th_align_score)
+            for read_i, read_j, strand in list_pairs]
 
 
 @dataclass(repr=False, eq=False)
@@ -16,7 +109,6 @@ class Overlap:
     varvec_colname: str = "var_vec_global0.0"
     th_n_shared_units: int = 5
     th_align_score: float = 0.5
-    debug: bool = False
 
     read_ids: List[int] = field(init=False)
     read_dfs: dict = field(init=False)
@@ -29,11 +121,11 @@ class Overlap:
                          in self.encodings[self.encodings["type"] == "complete"].groupby("read_id")}
         self.read_ids = sorted(self.read_dfs.keys())
         self.comps = {(read_id, strand): self.df_to_composition(self.read_dfs[read_id], strand)
-                      for strand in ['f', 'r']
-                      for read_id in self.read_ids}
+                      for read_id in self.read_ids
+                      for strand in ['f', 'r']}
         self.varmats = {(read_id, strand): self.df_to_varmat(self.read_dfs[read_id], strand)
-                        for strand in ['f', 'r']
-                        for read_id in self.read_ids}
+                        for read_id in self.read_ids
+                        for strand in ['f', 'r']}
 
     def df_to_composition(self, df, strand):
         return Counter(df.apply(lambda df: (df["peak_id"],
@@ -42,23 +134,75 @@ class Overlap:
                                 axis=1))
 
     def df_to_varmat(self, df, strand):
-       return (df if strand == 'f'
-               else df[::-1]).apply(lambda df: ((df["peak_id"],
-                                                 df["repr_id"],
-                                                 df["strand"] if strand == 'f' else 1 - df["strand"]),
-                                                df[self.varvec_colname]),
-                                    axis=1) \
-                                    .reset_index(drop=True)
+        return (df if strand == 'f'
+                else df[::-1]).apply(lambda df: ((df["peak_id"],
+                                                  df["repr_id"],
+                                                  df["strand"] if strand == 'f' else 1 - df["strand"]),
+                                                 df[self.varvec_colname]),
+                                     axis=1).reset_index(drop=True)
 
-    def ava_read_alignment(self, plot=False):
-        self.overlaps = {}
-        self.index = 0
-        for i, read_i in enumerate(self.read_ids):
-            for read_j in self.read_ids[i + 1:]:
-                self.svs_read_alignment(read_i, read_j, 'f')
-                self.svs_read_alignment(read_i, read_j, 'r')
+    def ava_read_alignment(self, n_core=1):
+        """
+        Non-distributed version of all-vs-all read overlap calculation.
+        """
 
-        self.overlaps = pd.DataFrame.from_dict(self.overlaps,
+        # Pairs of reads to be aligned
+        list_pairs = [(read_i, read_j, strand)
+                      for i, read_i in enumerate(self.read_ids)
+                      for read_j in self.read_ids[i + 1:]
+                      for strand in ['f', 'r']]
+        self._ava_read_alignment(list_pairs, n_core)
+
+    def ava_read_alignment_distribute(self, n_distribute, n_core):
+        list_pairs = [(read_i, read_j, strand)
+                      for i, read_i in enumerate(self.read_ids)
+                      for read_j in self.read_ids[i + 1:]
+                      for strand in ['f', 'r']]
+        n_pairs = len(list_pairs)
+        n_sub = -(-n_pairs // n_distribute)
+        list_pairs_sub = [list_pairs[i * n_sub:(i + 1) * n_sub - 1]
+                          for i in range(n_distribute)]
+        save_pickle(self, "overlap_obj.pkl")
+        n_digit = int(np.log10(n_distribute) + 1)
+        for i, lp in enumerate(list_pairs_sub):
+            index = str(i + 1).zfill(n_digit)
+            save_pickle(lp, f"list_pairs.{index}.pkl")
+            script_fname = f"ava_pair.sge.{index}"
+            with open(script_fname, 'w') as f:
+                script = ' '.join([f"run_ava_sub.py",
+                                   f"-n {n_core}",
+                                   f"overlap_obj.pkl",
+                                   f"list_pairs.{index}.pkl",
+                                   f"overlaps.{index}.pkl"])
+                script = sge_nize(script,
+                                  job_name="run_ava_sub",
+                                  n_core=n_core,
+                                  wait=False)
+                f.write(script)
+            run_command(f"qsub {script_fname}")
+        # Finalize
+        
+
+    def _ava_read_alignment(self, list_pairs, n_core):
+        n_pairs = len(list_pairs)
+        n_sub = -(-n_pairs // n_core)
+        list_pairs_sub = [(list_pairs[i * n_sub:(i + 1) * n_sub - 1],
+                           self.comps,
+                           self.varmats,
+                           self.th_n_shared_units,
+                           self.th_align_score)
+                          for i in range(n_core)]
+
+        overlaps = {}
+        index = 0
+        with Pool(n_core) as pool:
+            for ret in pool.starmap(svs_read_alignment_mult, list_pairs_sub):
+                for r in ret:
+                    if r is not None:
+                        overlaps[index] = r
+                        index += 1
+
+        self.overlaps = pd.DataFrame.from_dict(overlaps,
                                                orient="index",
                                                columns=("read_i",
                                                         "read_j",
@@ -75,87 +219,6 @@ class Overlap:
                                     .sort_values(by="read_j", kind="mergesort") \
                                     .sort_values(by="read_i", kind="mergesort") \
                                     .reset_index(drop=True)
-
-    def svs_read_alignment(self, read_i, read_j, strand):
-        if sum((self.comps[(read_i, 'f')] & self.comps[(read_j, strand)]).values()) >= self.th_n_shared_units:
-            overlap = self._svs_read_alignment(read_i, read_j, strand)
-            if overlap is not None and overlap[6] >= self.th_align_score:
-                if strand == 'r':
-                    # NOTE: do not expand these assignments
-                    overlap[3], overlap[4] = overlap[5] - overlap[4], overlap[5] - overlap[3]
-                self.overlaps[self.index] = [read_i, read_j, strand] + overlap
-                self.index += 1
-        else:
-            if self.debug:
-                logger.info(f"Composition mismatch: [{read_i}] {self.comps[(read_i, 'f')]} vs [{read_j}({strand})] {self.comps[(read_j, 'r')]}")
-
-    def _svs_read_alignment(self, read_i, read_j, strand, plot=False):
-        def calc_dist_mat():
-            return np.array([[0 if varmat_i.iloc[i][0] != varmat_j.iloc[j][0]   # different unit type
-                              else 1. - float(np.count_nonzero(varmat_i.iloc[i][1] != varmat_j.iloc[j][1])) / varmat_i.iloc[i][1].shape[0]   # similarity
-                              for j in range(varmat_j.shape[0])]
-                             for i in range(varmat_i.shape[0])])
-
-        def calc_alignment():
-            # Smith-Waterman local alignment
-            dp = np.zeros((dist_mat.shape[0] + 1, dist_mat.shape[1] + 1))
-            for i in range(1, dp.shape[0]):
-                for j in range(1, dp.shape[1]):
-                    dp[i][j] = max([dp[i - 1][j - 1] + dist_mat[i - 1][j - 1] - 0.75,
-                                    dp[i - 1][j] - 0.2,
-                                    dp[i][j - 1] - 0.2])   # TODO: reconsider the scoring system
-
-            # Find the starting point of traceback
-            if np.max(dp[-1][1:]) >= np.max(dp.T[-1][1:]):   # maximum is on the end row
-                argmax = np.array([dp.shape[0] - 1, np.argmax(dp[-1][1:]) + 1])
-            else:   # on the end column
-                argmax = np.array([np.argmax(dp.T[-1][1:]) + 1, dp.shape[1] - 1])
-
-            # Traceback
-            alignment = [argmax]   # [(pos_i, pos_j), ...] from the traceback starting point
-            while True:
-                if argmax[0] == 1 or argmax[1] == 1:   # reached the start row or colum
-                    break
-                diag = dp[argmax[0] - 1][argmax[1] - 1] + dist_mat[argmax[0] - 1][argmax[1] - 1] - 0.75
-                horizontal = dp[argmax[0]][argmax[1] - 1] - 0.2
-                vertical = dp[argmax[0] - 1][argmax[1]] - 0.2
-                maximum = np.argmax([diag, horizontal, vertical])   # pointer to the next cell
-                if maximum == 0:   # diagonal
-                    argmax = argmax - 1
-                elif maximum == 1:   # horizonal
-                    argmax = argmax - [0, 1]   # copy object
-                else:   # vertical
-                    argmax = argmax - [1, 0]
-                alignment = [argmax] + alignment   # add the next cell at the FRONT of the list
-        
-            # DP matrix only on the optimal alignment path
-            dp_optimal_path = np.zeros_like(dp)
-            for a in alignment:
-                dp_optimal_path[a[0]][a[1]] = dp[a[0]][a[1]]
-    
-            return (dp, dp_optimal_path, alignment)
-
-        varmat_i, varmat_j = self.varmats[(read_i, 'f')], self.varmats[(read_j, strand)]
-        dist_mat = calc_dist_mat()
-        dp, dp_optimal_path, alignment = calc_alignment()
-        start_i, start_j = alignment[0]
-        end_i, end_j = alignment[-1]
-        score = dp[end_i][end_j]
-
-        if plot:
-            fig = plt.figure(figsize=(18, 10))
-            ax1 = fig.add_subplot(131)
-            im1 = ax1.imshow(dist_mat, cmap="GnBu", vmin=0.5, vmax=1)
-            fig.colorbar(im1)
-            ax2 = fig.add_subplot(132)
-            im2 = ax2.imshow(dp, cmap="GnBu", vmin=0, vmax=1)
-            fig.colorbar(im2)
-            ax3 = fig.add_subplot(133)
-            im3 = ax3.imshow(dp_optimal_path, cmap="GnBu", vmin=0, vmax=1)
-            fig.colorbar(im3)
-            fig.show()
-
-        return [start_i, end_i, varmat_i.shape[0], start_j, end_j, varmat_j.shape[0], score, alignment]
 
 
 def construct_string_graph(overlaps):

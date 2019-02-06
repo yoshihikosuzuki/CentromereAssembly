@@ -32,7 +32,8 @@ N_CORE_DACMASTER=8
 
 ## DALAYOUT
 
-N_CORE_DALAYOUT=8
+N_DISTRIBUTE_DALAYOUT=12
+N_CORE_DALAYOUT=6
 
 ################################################################################
 ################################################################################
@@ -114,3 +115,8 @@ if ${USE_JOB_SCHEDULER}; then
 else
     bash run_dalayout.sh > dalayout.log 2>&1
 fi
+
+# For now only sge
+dalayout_run_graph.py -p ${N_DISTRIBUTE_DALAYOUT} -n ${N_CORE_DALAYOUT}
+# After finishing all jobs
+#dalayout_gather_ava_sub.py
