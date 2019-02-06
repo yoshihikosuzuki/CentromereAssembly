@@ -90,40 +90,27 @@ class Overlap:
                 logger.info(f"Composition mismatch: [{read_i}] {self.comps[(read_i, 'f')]} vs [{read_j}({strand})] {self.comps[(read_j, 'r')]}")
 
     def _svs_read_alignment(self, read_i, read_j, strand, plot=False):
-        varmat_i, varmat_j = self.varmats[(read_i, 'f')], self.varmats[(read_j, strand)]
-        n_units_i, n_units_j = varmat_i.shape[0], varmat_j.shape[0]
-    
-        def calc_dist_mat(varmat_i, varmat_j):   # TODO: replace to a more efficient code
-            dist_mat = np.zeros((n_units_i, n_units_j))
-            for i in range(n_units_i):
-                for j in range(n_units_j):
-                    if varmat_i.iloc[i][0] != varmat_j.iloc[j][0]:   # peak, repr, and/or strand is different
-                        sim = 0   # i.e. mismatch score for different types of the units = -0.75
-                    else:
-                        assert varmat_i.iloc[i][1].shape[0] == varmat_j.iloc[j][1].shape[0]
-                        n_vars = varmat_i.iloc[i][1].shape[0]
-                        sim = 1. - float(np.count_nonzero(varmat_i.iloc[i][1] != varmat_j.iloc[j][1])) / n_vars
-                    dist_mat[i][j] = sim   # similarity
-            return dist_mat
-    
-        dist_mat = calc_dist_mat(varmat_i, varmat_j)
-    
-        def calc_alignment(dist_mat):
-            dp = np.zeros((dist_mat.shape[0] + 1, dist_mat.shape[1] + 1))
-    
+        def calc_dist_mat():
+            return np.array([[0 if varmat_i.iloc[i][0] != varmat_j.iloc[j][0]   # different unit type
+                              else 1. - float(np.count_nonzero(varmat_i.iloc[i][1] != varmat_j.iloc[j][1])) / varmat_i.iloc[i][1].shape[0]   # similarity
+                              for j in range(varmat_j.shape[0])]
+                             for i in range(varmat_i.shape[0])])
+
+        def calc_alignment():
             # Smith-Waterman local alignment
+            dp = np.zeros((dist_mat.shape[0] + 1, dist_mat.shape[1] + 1))
             for i in range(1, dp.shape[0]):
                 for j in range(1, dp.shape[1]):
                     dp[i][j] = max([dp[i - 1][j - 1] + dist_mat[i - 1][j - 1] - 0.75,
                                     dp[i - 1][j] - 0.2,
-                                    dp[i][j - 1] - 0.2])   # TODO: make the scores more sophisticated
-            
+                                    dp[i][j - 1] - 0.2])   # TODO: reconsider the scoring system
+
             # Find the starting point of traceback
             if np.max(dp[-1][1:]) >= np.max(dp.T[-1][1:]):   # maximum is on the end row
                 argmax = np.array([dp.shape[0] - 1, np.argmax(dp[-1][1:]) + 1])
             else:   # on the end column
                 argmax = np.array([np.argmax(dp.T[-1][1:]) + 1, dp.shape[1] - 1])
-    
+
             # Traceback
             alignment = [argmax]   # [(pos_i, pos_j), ...] from the traceback starting point
             while True:
@@ -147,8 +134,10 @@ class Overlap:
                 dp_optimal_path[a[0]][a[1]] = dp[a[0]][a[1]]
     
             return (dp, dp_optimal_path, alignment)
-    
-        dp, dp_optimal_path, alignment = calc_alignment(dist_mat)
+
+        varmat_i, varmat_j = self.varmats[(read_i, 'f')], self.varmats[(read_j, strand)]
+        dist_mat = calc_dist_mat()
+        dp, dp_optimal_path, alignment = calc_alignment()
         start_i, start_j = alignment[0]
         end_i, end_j = alignment[-1]
         score = dp[end_i][end_j]
@@ -166,7 +155,7 @@ class Overlap:
             fig.colorbar(im3)
             fig.show()
 
-        return [start_i, end_i, n_units_i, start_j, end_j, n_units_j, score, alignment]
+        return [start_i, end_i, varmat_i.shape[0], start_j, end_j, varmat_j.shape[0], score, alignment]
 
 
 def construct_string_graph(overlaps):
