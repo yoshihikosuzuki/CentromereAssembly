@@ -248,7 +248,7 @@ class Viewer:
                                 hoverinfo="text",
                                 showlegend=False)]
 
-        layout = go.Layout(width=725, height=725,
+        layout = go.Layout(width=1000, height=1000,
                            hovermode='closest',
                            xaxis=dict(showgrid=False,
                                       range=[-self.read_len * 0.05, self.read_len + 100]),

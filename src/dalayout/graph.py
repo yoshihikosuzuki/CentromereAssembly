@@ -221,11 +221,12 @@ class Overlap:
                                     .reset_index(drop=True)
 
 
-def construct_string_graph(overlaps):
+def construct_string_graph(overlaps, th_score=0.5):
     sg = nx.DiGraph()
-    for overlap in overlaps:
-        f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l = overlap
-        print(f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l )
+    for i, overlap in overlaps.iterrows():
+        f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, score, alignment = overlap
+        if score < th_score:
+            continue
 
         if strand == "r":  # reversed alignment, swapping the begin and end coordinates
             g_b, g_e = g_e, g_b
@@ -240,7 +241,7 @@ def construct_string_graph(overlaps):
                             g.B           g.E
                 """
                 if f_b < 3 or g_l - g_e < 3:
-                    print("contained 1")
+                    #print("contained 1")
                     continue
                 sg.add_edge("%s:B" % g_id, "%s:B" % f_id, label=(f_id, f_b, 0),
                             length=abs(f_b - 0))
@@ -254,7 +255,7 @@ def construct_string_graph(overlaps):
                             g.E           g.B
                 """
                 if f_b < 3 or g_e < 3:
-                    print("contained 2")
+                    #print("contained 2")
                     continue
                 sg.add_edge("%s:E" % g_id, "%s:B" % f_id, label=(f_id, f_b, 0),
                             length=abs(f_b - 0))
@@ -269,7 +270,7 @@ def construct_string_graph(overlaps):
                             g.B           g.E
                 """
                 if g_b < 3 or f_l - f_e < 3:
-                    print("contained 3")
+                    #print("contained 3")
                     continue
                 sg.add_edge("%s:B" % f_id, "%s:B" % g_id, label=(g_id, g_b, 0),
                             length=abs(g_b - 0))
@@ -283,24 +284,22 @@ def construct_string_graph(overlaps):
                             g.E           g.B
                 """
                 if g_l - g_e < 3 or f_l - f_e < 3:
-                    print("contained 4")
+                    #print("contained 4")
                     continue
                 sg.add_edge("%s:B" % f_id, "%s:E" % g_id, label=(g_id, g_b, g_l),
                             length=abs(g_b - g_l))
                 sg.add_edge("%s:B" % g_id, "%s:E" % f_id, label=(f_id, f_e, f_l),
                             length=abs(f_e - f_l),)
-    
 
-    # drawing 1
-    plt.figure(figsize=(12, 12))
+    return sg
+
+
+def draw_graph(sg, node_size=50, figsize=(20, 20)):
+    plt.figure(figsize=figsize)
     pos = nx.spring_layout(sg)
-    nx.draw(sg, pos, node_size=500)
+    nx.draw(sg, pos, node_size=node_size)
     nx.draw_networkx_labels(sg, pos)
     plt.show()
-
-    # drawing 2
-    nx.draw_networkx(sg)
-    # TODO: another drawing?
 
 
 def construct_unit_graph(overlaps):
