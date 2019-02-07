@@ -50,32 +50,42 @@ def _svs_read_alignment(read_i, read_j, strand, varmats, plot=False):
             else:   # vertical
                 argmax = argmax - [1, 0]
             alignment = [argmax] + alignment   # add the next cell at the FRONT of the list
-    
-        # DP matrix only on the optimal alignment path
-        dp_optimal_path = np.zeros_like(dp)
-        for a in alignment:
-            dp_optimal_path[a[0]][a[1]] = dp[a[0]][a[1]]
 
-        return (dp, dp_optimal_path, alignment)
+        if plot:
+            # DP matrix only on the optimal alignment path
+            dp_opt_path = np.zeros_like(dp)
+            dm_opt_path = np.zeros_like(dp)
+            for a in alignment:
+                dp_opt_path[a[0]][a[1]] = dp[a[0]][a[1]]
+                dm_opt_path[a[0]][a[1]] = dist_mat[a[0] - 1][a[1] - 1]
+            return (dp, alignment, dp_opt_path, dm_opt_path)
+        else:
+            return (dp, alignment)
 
     varmat_i, varmat_j = varmats[(read_i, 'f')], varmats[(read_j, strand)]
     dist_mat = calc_dist_mat()
-    dp, dp_optimal_path, alignment = calc_alignment()
+    if plot:
+        dp, alignment, dp_opt_path, dm_opt_path = calc_alignment()
+    else:
+        dp, alignment = calc_alignment()
     start_i, start_j = alignment[0]
     end_i, end_j = alignment[-1]
     score = dp[end_i][end_j]
 
     if plot:
-        fig = plt.figure(figsize=(18, 10))
-        ax1 = fig.add_subplot(131)
+        fig = plt.figure(figsize=(25, 10))
+        ax1 = fig.add_subplot(141)
         im1 = ax1.imshow(dist_mat, cmap="GnBu", vmin=0.5, vmax=1)
         fig.colorbar(im1)
-        ax2 = fig.add_subplot(132)
+        ax2 = fig.add_subplot(142)
         im2 = ax2.imshow(dp, cmap="GnBu", vmin=0, vmax=1)
         fig.colorbar(im2)
-        ax3 = fig.add_subplot(133)
-        im3 = ax3.imshow(dp_optimal_path, cmap="GnBu", vmin=0, vmax=1)
+        ax3 = fig.add_subplot(143)
+        im3 = ax3.imshow(dp_opt_path, cmap="GnBu", vmin=0, vmax=1)
         fig.colorbar(im3)
+        ax4 = fig.add_subplot(144)
+        im4 = ax4.imshow(dm_opt_path, cmap="GnBu", vmin=0.5, vmax=1)
+        fig.colorbar(im4)
         fig.show()
 
     return [start_i, end_i, varmat_i.shape[0], start_j, end_j, varmat_j.shape[0], score, alignment]
