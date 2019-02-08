@@ -12,7 +12,14 @@ from BITS.utils import run_command, sge_nize, save_pickle
 plt.style.use('ggplot')
 
 
-def _svs_read_alignment(read_i, read_j, strand, varmats, plot=False):
+def _svs_read_alignment(read_i,
+                        read_j,
+                        strand,
+                        varmats,
+                        match_th=0.8,
+                        indel_penalty=0.3,
+                        plot=False):
+
     def calc_dist_mat():
         return np.array([[0 if varmat_i.iloc[i][0] != varmat_j.iloc[j][0]   # different unit type
                           else 1. - float(np.count_nonzero(varmat_i.iloc[i][1] != varmat_j.iloc[j][1])) / varmat_i.iloc[i][1].shape[0]   # similarity
@@ -24,9 +31,9 @@ def _svs_read_alignment(read_i, read_j, strand, varmats, plot=False):
         dp = np.zeros((dist_mat.shape[0] + 1, dist_mat.shape[1] + 1))
         for i in range(1, dp.shape[0]):
             for j in range(1, dp.shape[1]):
-                dp[i][j] = max([dp[i - 1][j - 1] + dist_mat[i - 1][j - 1] - 0.75,
-                                dp[i - 1][j] - 0.2,
-                                dp[i][j - 1] - 0.2])   # TODO: reconsider the scoring system
+                dp[i][j] = max([dp[i - 1][j - 1] + dist_mat[i - 1][j - 1] - match_th,
+                                dp[i - 1][j] - indel_penalty,
+                                dp[i][j - 1] - indel_penalty])   # TODO: reconsider the scoring system
 
         # Find the starting point of traceback
         if np.max(dp[-1][1:]) >= np.max(dp.T[-1][1:]):   # maximum is on the end row
@@ -39,9 +46,9 @@ def _svs_read_alignment(read_i, read_j, strand, varmats, plot=False):
         while True:
             if argmax[0] == 1 or argmax[1] == 1:   # reached the start row or colum
                 break
-            diag = dp[argmax[0] - 1][argmax[1] - 1] + dist_mat[argmax[0] - 1][argmax[1] - 1] - 0.75
-            horizontal = dp[argmax[0]][argmax[1] - 1] - 0.2
-            vertical = dp[argmax[0] - 1][argmax[1]] - 0.2
+            diag = dp[argmax[0] - 1][argmax[1] - 1] + dist_mat[argmax[0] - 1][argmax[1] - 1] - match_th
+            horizontal = dp[argmax[0]][argmax[1] - 1] - indel_penalty
+            vertical = dp[argmax[0] - 1][argmax[1]] - indel_penalty
             maximum = np.argmax([diag, horizontal, vertical])   # pointer to the next cell
             if maximum == 0:   # diagonal
                 argmax = argmax - 1

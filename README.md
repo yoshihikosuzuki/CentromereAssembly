@@ -154,9 +154,9 @@ optional arguments:
 The input file `db_file` of `dacmaster_run.py` is the same as that of `datruf_run.py`.
 
 ```
-usage: dalayout_run.py [-h] [-r TR_READS_FNAME] [-u REPR_UNITS_FNAME]
-                       [-p PEAKS_FINDER_FNAME] [-t VARIANT_FRACTION]
-                       [-o OUT_PKL_FNAME] [-n N_CORE] [-D]
+usage: dalayout_run_encode.py [-h] [-r TR_READS_FNAME] [-u REPR_UNITS_FNAME]
+                              [-p PEAKS_FINDER_FNAME] [-t VARIANT_FRACTION]
+                              [-o OUT_PKL_FNAME] [-n N_CORE] [-D]
 
 Perform layout of reads based on the representative units given.
 
@@ -180,6 +180,23 @@ optional arguments:
   -D, --debug_mode      Run in debug mode. [False]
 ```
 
+```
+usage: dalayout_run_graph.py [-h] [-e ENCODINGS_FNAME] [-v VARVEC_COLNAME]
+                             [-p N_DISTRIBUTE] [-n N_CORE] [-D]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -e ENCODINGS_FNAME, --encodings_fname ENCODINGS_FNAME
+                        Encodings with variant vector units. [encodings.pkl]
+  -v VARVEC_COLNAME, --varvec_colname VARVEC_COLNAME
+                        Column name to be used for alignemt.
+                        [var_vec_global0.0]
+  -p N_DISTRIBUTE, --n_distribute N_DISTRIBUTE
+                        Degree of job distribution. [1]
+  -n N_CORE, --n_core N_CORE
+                        Degree of parallelization. [1]
+  -D, --debug_mode      Run in debug mode. [False]
+```
 
 ## Overview of the modules
 
