@@ -78,6 +78,7 @@ def _svs_read_alignment(read_i,
     start_i, start_j = alignment[0]
     end_i, end_j = alignment[-1]
     score = dp[end_i][end_j]
+    mean_score = float(score) / len(alignment)
 
     if plot:
         fig = plt.figure(figsize=(25, 10))
@@ -95,13 +96,13 @@ def _svs_read_alignment(read_i,
         fig.colorbar(im4)
         fig.show()
 
-    return [start_i, end_i, varmat_i.shape[0], start_j, end_j, varmat_j.shape[0], score, alignment]
+    return [start_i, end_i, varmat_i.shape[0], start_j, end_j, varmat_j.shape[0], score, mean_score, alignment]
 
 
-def svs_read_alignment(read_i, read_j, strand, comps, varmats, th_n_shared_units, th_align_score):
+def svs_read_alignment(read_i, read_j, strand, comps, varmats, th_n_shared_units, th_mean_score):
     if sum((comps[(read_i, 'f')] & comps[(read_j, strand)]).values()) >= th_n_shared_units:
         overlap = _svs_read_alignment(read_i, read_j, strand, varmats)
-        if overlap is not None and overlap[6] >= th_align_score:
+        if overlap is not None and overlap[7] >= th_mean_score:
             if strand == 'r':
                 # NOTE: do not expand these assignments
                 overlap[3], overlap[4] = overlap[5] - overlap[4], overlap[5] - overlap[3]
@@ -109,14 +110,14 @@ def svs_read_alignment(read_i, read_j, strand, comps, varmats, th_n_shared_units
     return None
 
 
-def svs_read_alignment_mult(list_pairs, comps, varmats, th_n_shared_units, th_align_score):
+def svs_read_alignment_mult(list_pairs, comps, varmats, th_n_shared_units, th_mean_score):
     return [svs_read_alignment(read_i,
                                read_j,
                                strand,
                                comps,
                                varmats,
                                th_n_shared_units,
-                               th_align_score)
+                               th_mean_score)
             for read_i, read_j, strand in list_pairs]
 
 
@@ -124,8 +125,8 @@ def svs_read_alignment_mult(list_pairs, comps, varmats, th_n_shared_units, th_al
 class Overlap:
     encodings: pd.DataFrame
     varvec_colname: str = "var_vec_global0.0"
-    th_n_shared_units: int = 5
-    th_align_score: float = 0.5
+    th_n_shared_units: int = 10   # TODO: XXX: increase the value as 30 or so to save the computation time !!!
+    th_mean_score: float = 0.0
 
     read_ids: List[int] = field(init=False)
     read_dfs: dict = field(init=False)
@@ -207,7 +208,7 @@ class Overlap:
                            self.comps,
                            self.varmats,
                            self.th_n_shared_units,
-                           self.th_align_score)
+                           self.th_mean_score)
                           for i in range(n_core)]
 
         overlaps = {}
@@ -231,6 +232,7 @@ class Overlap:
                                                         "j_end",
                                                         "j_len",
                                                         "score",
+                                                        "mean_score",
                                                         "alignment")) \
                                     .sort_values(by="strand") \
                                     .sort_values(by="read_j", kind="mergesort") \
@@ -238,11 +240,11 @@ class Overlap:
                                     .reset_index(drop=True)
 
 
-def construct_string_graph(overlaps, th_score=0.5):
+def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
     sg = nx.DiGraph()
     for i, overlap in overlaps.iterrows():
-        f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, score, alignment = overlap
-        if score < th_score:
+        f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, score, mean_score, alignment = overlap
+        if mean_score < th_mean_score or len(alignment) < th_overlap_len:
             continue
 
         if strand == "r":  # reversed alignment, swapping the begin and end coordinates
