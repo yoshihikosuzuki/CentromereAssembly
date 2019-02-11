@@ -4,10 +4,12 @@ from multiprocessing import Pool
 from logzero import logger
 import numpy as np
 import pandas as pd
-import networkx as nx
+import igraph as ig
 from collections import Counter
 import matplotlib.pyplot as plt
-from BITS.utils import run_command, sge_nize, save_pickle
+import plotly.offline as py
+import plotly.graph_objs as go
+from BITS.utils import run_command, sge_nize, save_pickle, make_line
 
 plt.style.use('ggplot')
 
@@ -16,8 +18,8 @@ def _svs_read_alignment(read_i,
                         read_j,
                         strand,
                         varmats,
-                        match_th=0.8,
-                        indel_penalty=0.3,
+                        match_th=0.75,
+                        indel_penalty=0.2,
                         plot=False):
 
     def calc_dist_mat():
@@ -58,43 +60,93 @@ def _svs_read_alignment(read_i,
                 argmax = argmax - [1, 0]
             alignment = [argmax] + alignment   # add the next cell at the FRONT of the list
 
-        if plot:
-            # DP matrix only on the optimal alignment path
-            dp_opt_path = np.zeros_like(dp)
-            dm_opt_path = np.zeros_like(dp)
-            for a in alignment:
-                dp_opt_path[a[0]][a[1]] = dp[a[0]][a[1]]
-                dm_opt_path[a[0]][a[1]] = dist_mat[a[0] - 1][a[1] - 1]
-            return (dp, alignment, dp_opt_path, dm_opt_path)
-        else:
-            return (dp, alignment)
+        return (dp, alignment)
+
+    def plot_alignment_mat():
+        # NOTE: default heatmap is [x (on y-axis) * y (on x-axis)] for a distance matrix [x * y],
+        #       so transpose the matrix.
+        
+        # Distance matrix
+        trace1 = go.Heatmap(z=dist_mat.T,
+                           text=np.array([[f"{varmat_i.iloc[ri][0]} vs {varmat_j.iloc[ci][0]}<br>%sim={c:.2}"
+                                           for ci, c in enumerate(r)]
+                                          for ri, r in enumerate(dist_mat)]).T,
+                           hoverinfo="text",
+                           colorscale='YlGnBu',
+                           #colorscale='Greys',
+                           zmin=0.6,
+                           zmax=1,
+                           reversescale=True,
+                           showscale=False)
+    
+        trace2 = go.Scatter(x=[x[0] - 1 for x in alignment],
+                            y=[x[1] - 1 for x in alignment],
+                            text=[f"{varmat_i.iloc[x[0] - 1][0]} vs {varmat_j.iloc[x[1] - 1][0]}<br>%sim={dist_mat[x[0] - 1][x[1] - 1]:.2}"
+                                  for x in alignment],
+                            hoverinfo="text",
+                            name="optimal path")
+    
+        layout = go.Layout(width=800,
+                           height=800,
+                           xaxis=dict(
+                               showgrid=False,
+                               zeroline=False
+                           ),
+                           yaxis=dict(
+                               autorange="reversed",
+                               scaleanchor="x",
+                               showgrid=False,
+                               zeroline=False
+                           ),
+                           showlegend=True)
+    
+        py.iplot(go.Figure(data=[trace1, trace2], layout=layout))
+        
+        # DP matrix
+        trace3 = go.Heatmap(z=dp.T,
+                           text=np.array([[f"{varmat_i.iloc[ri - 1][0]} vs {varmat_j.iloc[ci - 1][0]}<br>%sim={c:.2}"
+                                           if ri * ci != 0 else "0"
+                                           for ci, c in enumerate(r)]
+                                          for ri, r in enumerate(dp)]).T,
+                           hoverinfo="text",
+                           colorscale='YlGnBu',
+                           #colorscale='Greys',
+                           reversescale=True,
+                           showscale=False)
+    
+        trace4 = go.Scatter(x=[x[0] for x in alignment],
+                            y=[x[1] for x in alignment],
+                            text=[f"{varmat_i.iloc[x[0] - 1][0]} vs {varmat_j.iloc[x[1] - 1][0]}<br>%sim={dp[x[0]][x[1]]:.2}"
+                                  for x in alignment],
+                            hoverinfo="text",
+                            name="optimal path")
+    
+        layout2 = go.Layout(width=800,
+                           height=800,
+                           xaxis=dict(
+                               showgrid=False,
+                               zeroline=False
+                           ),
+                           yaxis=dict(
+                               autorange="reversed",
+                               scaleanchor="x",
+                               showgrid=False,
+                               zeroline=False
+                           ),
+                           showlegend=True)
+    
+        py.iplot(go.Figure(data=[trace3, trace4], layout=layout2))
 
     varmat_i, varmat_j = varmats[(read_i, 'f')], varmats[(read_j, strand)]
     dist_mat = calc_dist_mat()
-    if plot:
-        dp, alignment, dp_opt_path, dm_opt_path = calc_alignment()
-    else:
-        dp, alignment = calc_alignment()
+    dp, alignment = calc_alignment()
     start_i, start_j = alignment[0]
     end_i, end_j = alignment[-1]
     score = dp[end_i][end_j]
     mean_score = float(score) / len(alignment)
 
     if plot:
-        fig = plt.figure(figsize=(25, 10))
-        ax1 = fig.add_subplot(141)
-        im1 = ax1.imshow(dist_mat, cmap="GnBu", vmin=0.5, vmax=1)
-        fig.colorbar(im1)
-        ax2 = fig.add_subplot(142)
-        im2 = ax2.imshow(dp, cmap="GnBu", vmin=0, vmax=1)
-        fig.colorbar(im2)
-        ax3 = fig.add_subplot(143)
-        im3 = ax3.imshow(dp_opt_path, cmap="GnBu", vmin=0, vmax=1)
-        fig.colorbar(im3)
-        ax4 = fig.add_subplot(144)
-        im4 = ax4.imshow(dm_opt_path, cmap="GnBu", vmin=0.5, vmax=1)
-        fig.colorbar(im4)
-        fig.show()
+        plot_alignment_mat()
 
     return [start_i, end_i, varmat_i.shape[0], start_j, end_j, varmat_j.shape[0], score, mean_score, alignment]
 
@@ -241,7 +293,7 @@ class Overlap:
 
 
 def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
-    sg = nx.DiGraph()
+    sg = ig.Graph(directed=True)
     for i, overlap in overlaps.iterrows():
         f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, score, mean_score, alignment = overlap
         if mean_score < th_mean_score or len(alignment) < th_overlap_len:
@@ -262,6 +314,7 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
                 if f_b < 3 or g_l - g_e < 3:
                     #print("contained 1")
                     continue
+                sg.add_vertices(["%s:B" % g_id, "%s:B" % f_id, "%s:E" % f_id, "%s:E" % g_id])
                 sg.add_edge("%s:B" % g_id, "%s:B" % f_id, label=(f_id, f_b, 0),
                             length=abs(f_b - 0))
                 sg.add_edge("%s:E" % f_id, "%s:E" % g_id, label=(g_id, g_e, g_l),
@@ -276,6 +329,7 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
                 if f_b < 3 or g_e < 3:
                     #print("contained 2")
                     continue
+                sg.add_vertices(["%s:E" % g_id, "%s:B" % f_id, "%s:E" % f_id, "%s:B" % g_id])
                 sg.add_edge("%s:E" % g_id, "%s:B" % f_id, label=(f_id, f_b, 0),
                             length=abs(f_b - 0))
                 sg.add_edge("%s:E" % f_id, "%s:B" % g_id, label=(g_id, g_e, 0),
@@ -291,6 +345,7 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
                 if g_b < 3 or f_l - f_e < 3:
                     #print("contained 3")
                     continue
+                sg.add_vertices(["%s:B" % f_id, "%s:B" % g_id, "%s:E" % g_id, "%s:E" % f_id])
                 sg.add_edge("%s:B" % f_id, "%s:B" % g_id, label=(g_id, g_b, 0),
                             length=abs(g_b - 0))
                 sg.add_edge("%s:E" % g_id, "%s:E" % f_id, label=(f_id, f_e, f_l),
@@ -305,6 +360,7 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
                 if g_l - g_e < 3 or f_l - f_e < 3:
                     #print("contained 4")
                     continue
+                sg.add_vertices(["%s:B" % f_id, "%s:E" % g_id, "%s:B" % g_id, "%s:E" % f_id])
                 sg.add_edge("%s:B" % f_id, "%s:E" % g_id, label=(g_id, g_b, g_l),
                             length=abs(g_b - g_l))
                 sg.add_edge("%s:B" % g_id, "%s:E" % f_id, label=(f_id, f_e, f_l),
@@ -313,12 +369,51 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
     return sg
 
 
-def draw_graph(sg, node_size=50, figsize=(20, 20)):
-    plt.figure(figsize=figsize)
-    pos = nx.spring_layout(sg)
-    nx.draw(sg, pos, node_size=node_size)
-    nx.draw_networkx_labels(sg, pos)
-    plt.show()
+def transitive_reduction(sg):
+    pass
+
+
+def draw_graph(sg):
+    E = [e.tuple for e in sg.es]
+    N = sg.vcount()
+    pos = sg.layout('kk')
+    
+    edge_trace = go.Scatter(x=[i for l in [(pos[s][0], pos[t][0], None) for s, t in E] for i in l],
+                            y=[i for l in [(pos[s][1], pos[t][1], None) for s, t in E] for i in l],
+                            line=dict(width=0.5, color='black'),
+                            mode='lines')
+    
+    shapes = [make_line(pos[s][0] + (pos[t][0] - pos[s][0]) * 0.7,
+                        pos[s][1] + (pos[t][1] - pos[s][1]) * 0.7,
+                        pos[t][0],
+                        pos[t][1],
+                        "black",
+                        4,
+                        "below")
+              for s, t in E]
+    
+    node_trace = go.Scatter(x=[pos[node][0] for node in range(N)],
+                            y=[pos[node][1] for node in range(N)],
+                            text=[f"{node['name']}<br>{node.outdegree()} out-nodes" for node in sg.vs],
+                            mode='markers',
+                            hoverinfo='text',
+                            marker=dict(
+                                showscale=False,
+                                colorscale='YlGnBu',
+                                reversescale=True,
+                                color=[node.outdegree() for node in sg.vs],
+                                size=10,
+                                line=dict(width=2)))
+    
+    layout = go.Layout(width=1000, height=1000,
+                       xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                       yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                       shapes=shapes,
+                       hovermode='closest',
+                       margin=go.layout.Margin(l=0, r=0, b=0, t=0),
+                       showlegend=False)
+    fig = go.Figure(data=[edge_trace, node_trace], layout=layout)
+    py.iplot(fig)
 
 
 def construct_unit_graph(overlaps):
