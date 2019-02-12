@@ -44,7 +44,9 @@ def _svs_read_alignment(read_i,
             argmax = np.array([np.argmax(dp.T[-1][1:]) + 1, dp.shape[1] - 1])
 
         # Traceback
-        alignment = [argmax]   # [(pos_i, pos_j), ...] from the traceback starting point
+        alignment = [(argmax,
+                      varmat_i.iloc[argmax[0] - 1][0],
+                      varmat_j.iloc[argmax[1] - 1][0])]   # [((pos_i, pos_j), unit_i, unit_j), ...] from the traceback starting point
         while True:
             if argmax[0] == 1 or argmax[1] == 1:   # reached the start row or colum
                 break
@@ -58,7 +60,9 @@ def _svs_read_alignment(read_i,
                 argmax = argmax - [0, 1]   # copy object
             else:   # vertical
                 argmax = argmax - [1, 0]
-            alignment = [argmax] + alignment   # add the next cell at the FRONT of the list
+            alignment = [(argmax,
+                          varmat_i.iloc[argmax[0] - 1][0],
+                          varmat_j.iloc[argmax[1] - 1][0])] + alignment   # add the next cell at the FRONT of the list
 
         return (dp, alignment)
 
@@ -79,10 +83,10 @@ def _svs_read_alignment(read_i,
                            reversescale=True,
                            showscale=False)
     
-        trace2 = go.Scatter(x=[x[0] - 1 for x in alignment],
-                            y=[x[1] - 1 for x in alignment],
+        trace2 = go.Scatter(x=[x[0] - 1 for x, y, z in alignment],
+                            y=[x[1] - 1 for x, y, z in alignment],
                             text=[f"{varmat_i.iloc[x[0] - 1][0]} vs {varmat_j.iloc[x[1] - 1][0]}<br>%sim={dist_mat[x[0] - 1][x[1] - 1]:.2}"
-                                  for x in alignment],
+                                  for x, y, z in alignment],
                             hoverinfo="text",
                             name="optimal path")
     
@@ -114,10 +118,10 @@ def _svs_read_alignment(read_i,
                            reversescale=True,
                            showscale=False)
     
-        trace4 = go.Scatter(x=[x[0] for x in alignment],
-                            y=[x[1] for x in alignment],
+        trace4 = go.Scatter(x=[x[0] for x, y, z in alignment],
+                            y=[x[1] for x, y, z in alignment],
                             text=[f"{varmat_i.iloc[x[0] - 1][0]} vs {varmat_j.iloc[x[1] - 1][0]}<br>%sim={dp[x[0]][x[1]]:.2}"
-                                  for x in alignment],
+                                  for x, y, z in alignment],
                             hoverinfo="text",
                             name="optimal path")
     
@@ -140,10 +144,11 @@ def _svs_read_alignment(read_i,
     varmat_i, varmat_j = varmats[(read_i, 'f')], varmats[(read_j, strand)]
     dist_mat = calc_dist_mat()
     dp, alignment = calc_alignment()
-    start_i, start_j = alignment[0]
-    end_i, end_j = alignment[-1]
+    start_i, start_j = alignment[0][0]
+    end_i, end_j = alignment[-1][0]
+    alignment_len = len(alignment)   # TODO: add to the alignment object
     score = dp[end_i][end_j]
-    mean_score = float(score) / len(alignment)
+    mean_score = float(score) / alignment_len
 
     if plot:
         plot_alignment_mat()
@@ -292,12 +297,15 @@ class Overlap:
                                     .reset_index(drop=True)
 
 
-def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
+def construct_string_graph(overlaps, repr_units, o, th_mean_score=0.0, th_overlap_len=3000):
+    def alignment_to_length(a):
+        return sum([repr_units.loc[(y[0], y[1])]["length"] for x, y, z in a])
+
     # NOTE: Because igraph prefers static graph construction, first list the vertices and edges up.
     nodes, edges = set(), set()
     for i, overlap in overlaps.iterrows():
         f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, score, mean_score, alignment = overlap
-        if mean_score < th_mean_score or len(alignment) < th_overlap_len:
+        if mean_score < th_mean_score or alignment_to_length(alignment) < th_overlap_len:
             continue
 
         if strand == "r":  # reversed alignment, swapping the begin and end coordinates
