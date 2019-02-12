@@ -121,12 +121,27 @@ class Clustering:
         Draw a heatmap of the (squared) distance matrix.
         """
 
+        trace = go.Heatmap(z=self.s_dist_mat,
+                           colorscale="YlGnBu",
+                           zmin=0,
+                           zmax=1,
+                           showscale=False)
+
+        layout = go.Layout(width=500,
+                           height=500,
+                           title="Distance matrix",
+                           yaxis=dict(autorange="reversed"))
+
+        py.iplot(go.Figure(data=[trace], layout=layout))
+
+        """
         plt.figure(figsize=figsize)
         sns.heatmap(self.s_dist_mat, square=True, vmin=0, vmax=1, cmap=cmap)
         if out_fname is None:
             plt.show()
         else:
             plt.savefig(out_fname)
+        """
 
     def plot_tsne(self, coloring="sequential", figsize=(12, 12), out_fname=None):
         """
@@ -135,7 +150,9 @@ class Clustering:
         """
 
         assert hasattr(self, "s_dist_mat"), "No square distance matrix"
-        assert coloring in ("sequential", "random"), "<color> must be 'sequential' or 'random'"
+
+        if not hasattr(self, "coord"):
+            self.coord = TSNE(n_components=2, metric='precomputed').fit_transform(self.s_dist_mat)
 
         trace = go.Scatter(x=self.coord[:, 0].T,
                            y=self.coord[:, 1].T,
@@ -151,8 +168,7 @@ class Clustering:
         py.iplot(go.Figure(data=[trace], layout=layout))
 
         """
-        if not hasattr(self, "coord"):
-            self.coord = TSNE(n_components=2, metric='precomputed').fit_transform(self.s_dist_mat)
+        assert coloring in ("sequential", "random"), "<color> must be 'sequential' or 'random'"
 
         if coloring == "sequential":
             cmap = plt.get_cmap("gist_ncar")

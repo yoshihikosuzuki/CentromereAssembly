@@ -229,6 +229,10 @@ class Overlap:
         self._ava_read_alignment(list_pairs, n_core)
 
     def ava_read_alignment_distribute(self, n_distribute, n_core):
+        """
+        Distributed all-vs-all read overlap calculation.
+        """
+
         list_pairs = [(read_i, read_j, strand)
                       for i, read_i in enumerate(self.read_ids)
                       for read_j in self.read_ids[i + 1:]
@@ -255,8 +259,6 @@ class Overlap:
                                   wait=False)
                 f.write(script)
             run_command(f"qsub {script_fname}")
-        # Finalize
-        
 
     def _ava_read_alignment(self, list_pairs, n_core):
         n_pairs = len(list_pairs)
@@ -297,7 +299,7 @@ class Overlap:
                                     .reset_index(drop=True)
 
 
-def construct_string_graph(overlaps, repr_units, o, th_mean_score=0.0, th_overlap_len=3000):
+def construct_string_graph(overlaps, repr_units, th_mean_score=0.0, th_overlap_len=3000):
     def alignment_to_length(a):
         return sum([repr_units.loc[(y[0], y[1])]["length"] for x, y, z in a])
 
