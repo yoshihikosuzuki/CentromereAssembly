@@ -293,7 +293,8 @@ class Overlap:
 
 
 def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
-    sg = ig.Graph(directed=True)
+    # NOTE: Because igraph prefers static graph construction, first list the vertices and edges up.
+    nodes, edges = set(), set()
     for i, overlap in overlaps.iterrows():
         f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, score, mean_score, alignment = overlap
         if mean_score < th_mean_score or len(alignment) < th_overlap_len:
@@ -311,14 +312,14 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
                   g         ------------->
                             g.B           g.E
                 """
-                if f_b < 3 or g_l - g_e < 3:
-                    #print("contained 1")
+                if f_b < 3 or g_l - g_e < 3:   # contained
                     continue
-                sg.add_vertices(["%s:B" % g_id, "%s:B" % f_id, "%s:E" % f_id, "%s:E" % g_id])
-                sg.add_edge("%s:B" % g_id, "%s:B" % f_id, label=(f_id, f_b, 0),
-                            length=abs(f_b - 0))
-                sg.add_edge("%s:E" % f_id, "%s:E" % g_id, label=(g_id, g_e, g_l),
-                            length=abs(g_e - g_l))
+                nodes.update(["%s:B" % g_id,
+                              "%s:B" % f_id,
+                              "%s:E" % f_id,
+                              "%s:E" % g_id])
+                edges.update([("%s:B" % g_id, "%s:B" % f_id),
+                              ("%s:E" % f_id, "%s:E" % g_id)])
             else:
                 """
                      f.B         f.E
@@ -327,13 +328,13 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
                             g.E           g.B
                 """
                 if f_b < 3 or g_e < 3:
-                    #print("contained 2")
                     continue
-                sg.add_vertices(["%s:E" % g_id, "%s:B" % f_id, "%s:E" % f_id, "%s:B" % g_id])
-                sg.add_edge("%s:E" % g_id, "%s:B" % f_id, label=(f_id, f_b, 0),
-                            length=abs(f_b - 0))
-                sg.add_edge("%s:E" % f_id, "%s:B" % g_id, label=(g_id, g_e, 0),
-                            length=abs(g_e - 0))
+                nodes.update(["%s:E" % g_id,
+                              "%s:B" % f_id,
+                              "%s:E" % f_id,
+                              "%s:B" % g_id])
+                edges.update([("%s:E" % g_id, "%s:B" % f_id),
+                              ("%s:E" % f_id, "%s:B" % g_id)])
         else:
             if g_b < g_e:
                 """
@@ -343,13 +344,13 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
                             g.B           g.E
                 """
                 if g_b < 3 or f_l - f_e < 3:
-                    #print("contained 3")
                     continue
-                sg.add_vertices(["%s:B" % f_id, "%s:B" % g_id, "%s:E" % g_id, "%s:E" % f_id])
-                sg.add_edge("%s:B" % f_id, "%s:B" % g_id, label=(g_id, g_b, 0),
-                            length=abs(g_b - 0))
-                sg.add_edge("%s:E" % g_id, "%s:E" % f_id, label=(f_id, f_e, f_l),
-                            length=abs(f_e - f_l))
+                nodes.update(["%s:B" % f_id,
+                              "%s:B" % g_id,
+                              "%s:E" % g_id,
+                              "%s:E" % f_id])
+                edges.update([("%s:B" % f_id, "%s:B" % g_id),
+                              ("%s:E" % g_id, "%s:E" % f_id)])
             else:
                 """
                                     f.B         f.E
@@ -358,15 +359,17 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=10):
                             g.E           g.B
                 """
                 if g_l - g_e < 3 or f_l - f_e < 3:
-                    #print("contained 4")
                     continue
-                sg.add_vertices(["%s:B" % f_id, "%s:E" % g_id, "%s:B" % g_id, "%s:E" % f_id])
-                sg.add_edge("%s:B" % f_id, "%s:E" % g_id, label=(g_id, g_b, g_l),
-                            length=abs(g_b - g_l))
-                sg.add_edge("%s:B" % g_id, "%s:E" % f_id, label=(f_id, f_e, f_l),
-                            length=abs(f_e - f_l),)
+                nodes.update(["%s:B" % f_id,
+                              "%s:E" % g_id,
+                              "%s:B" % g_id,
+                              "%s:E" % f_id])
+                edges.update([("%s:B" % f_id, "%s:E" % g_id),
+                              ("%s:B" % g_id, "%s:E" % f_id)])
 
-    return sg
+    return ig.Graph.DictList(edges=(dict(source=s, target=t) for s, t in edges),
+                             vertices=None,
+                             directed=True)
 
 
 def transitive_reduction(sg):
