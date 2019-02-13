@@ -97,29 +97,22 @@ def plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path):
     py.iplot(go.Figure(data=[trace3, trace4], layout=layout2))
 
 
-def calc_score(si, sj, strand, varvec_colname, match_th):
-    if si["peak_id"] != sj["peak_id"]:   # unit length mismatch
-        return 0
-    elif abs(si["strand"] - sj["strand"]) != strand:   # strand mismatch
-        return 0
-    elif si["type"] == "boundary" or sj["type"] == "boundary":
-        return match_th
-    elif si["type"] == "deviating" or sj["type"] == "deviating":
-        if si["type"] == sj["type"]:   # both units are deviating; this would be a signature rather than error
-            return 1   # TODO: consider more
-        else:
-            return match_th   # no positive nor negative score
-    elif si["repr_id"] != sj["repr_id"]:
-        return 0   # TODO: prepare score matrix based on the global similarity matrix
-    elif si["type"] == "noisy" or sj["type"] == "noisy":
-        return match_th - 0.1   # XXX: consider more   TODO: permit repr_id mismatch for noisy units? (though it is dangerous)
-    else:   # same peak, same repr, same strand, complete unit
-        assert si[varvec_colname].shape[0] == sj[varvec_colname].shape[0], "Variant vector length mismatch"
-        return 1. - float(np.count_nonzero(si[varvec_colname] != sj[varvec_colname])) / si[varvec_colname].shape[0]
-
-
 def calc_score_mat(read_df_i, read_df_j, strand, varvec_colname, match_th):
-    return np.array([[calc_score(read_df_i.iloc[i], read_df_j.iloc[j], strand, varvec_colname, match_th)
+    sig_i = list(read_df_i.apply(lambda df: ((df["peak_id"],
+                                              df["strand"],
+                                              df["repr_id"]),
+                                             0 if df["type"] == "complete" else 1),
+                                 axis=1))
+    sig_j = list(read_df_j.apply(lambda df: ((df["peak_id"],
+                                              df["strand"] if strand == 0 else 1 - df["strand"],
+                                              df["repr_id"]),
+                                             0 if df["type"] == "complete" else 1),
+                                 axis=1))
+    vv_i = list(read_df_i[varvec_colname])
+    vv_j = list(read_df_j[varvec_colname])
+    return np.array([[0 if sig_i[i][0] != sig_j[j][0]
+                      else match_th if sig_i[i][1] > 0 or sig_j[j][1] > 0
+                      else 1. - float(np.count_nonzero(vv_i[i] != vv_j[j])) / vv_i[i].shape[0]
                       for j in range(read_df_j.shape[0])]
                      for i in range(read_df_i.shape[0])])
 
@@ -257,7 +250,7 @@ def svs_read_alignment_mult(list_pairs,
     return [svs_read_alignment(read_i,
                                read_j,
                                strand,
-                               read_dfs[read_i],
+                               read_dfs[read_i],   # TODO: not expand here but in svs_read_alignment?
                                read_dfs[read_j],
                                comps[(read_i, 'f')],
                                comps[(read_j, strand)],
@@ -314,7 +307,7 @@ class Overlap:
         list_pairs = [(read_i, read_j, strand)
                       for i, read_i in enumerate(self.read_ids)
                       for read_j in self.read_ids[i + 1:]
-                      for strand in ['f', 'r']]
+                      for strand in ['f', 'r']]   # TODO: XXX: functionalize this because non-distributed version also uses it, and filter pairs of reads by composition here!
         n_pairs = len(list_pairs)
         n_sub = -(-n_pairs // n_distribute)
         list_pairs_sub = [list_pairs[i * n_sub:(i + 1) * n_sub - 1]
