@@ -234,7 +234,7 @@ def svs_read_alignment(read_i,
 
     if sum((comp_i & comp_j).values()) >= th_n_shared_units:
         overlap = _svs_read_alignment(read_i, read_j, strand, read_df_i, read_df_j, varvec_colname)
-        if overlap[11] >= th_mean_score and overlap[14] >= th_ovlp_len:
+        if overlap[14] >= th_mean_score and overlap[17] >= th_ovlp_len:
             return overlap
     return None
 
