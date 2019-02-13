@@ -167,7 +167,7 @@ def _svs_read_alignment(read_i,
                         read_df_i,
                         read_df_j,
                         varvec_colname,
-                        match_th=0.75,
+                        match_th=0.7,
                         indel_penalty=0.2,
                         plot=False):
 
