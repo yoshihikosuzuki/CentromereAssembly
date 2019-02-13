@@ -14,167 +14,250 @@ from BITS.utils import run_command, sge_nize, save_pickle, make_line
 plt.style.use('ggplot')
 
 
+def to_unit_type(s, strand):
+    ret = tuple(s[["peak_id", "repr_id", "strand", "type"]])
+    if strand == 1:
+        ret[2] = strand - ret[2]
+    return ret
+
+
+def plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path):
+    # NOTE: default heatmap is [x (on y-axis) * y (on x-axis)] for a distance matrix [x * y],
+    #       so transpose the matrix.
+    
+    # Score matrix
+    trace1 = go.Heatmap(z=score_mat.T,
+                       text=np.array([[f"{to_unit_type(read_df_i.iloc[ri], 0)} vs {to_unit_type(read_df_j.iloc[ci], strand)}<br>%sim={c:.2}"
+                                       for ci, c in enumerate(r)]
+                                      for ri, r in enumerate(score_mat)]).T,
+                       hoverinfo="text",
+                       colorscale='YlGnBu',
+                       #colorscale='Greys',
+                       zmin=0.6,
+                       zmax=1,
+                       reversescale=True,
+                       showscale=False)
+
+    trace2 = go.Scatter(x=[x[0] for x in path],
+                        y=[x[1] for x in path],
+                        text=[f"{to_unit_type(read_df_i.iloc[x[0]], 0)} vs {to_unit_type(read_df_j.iloc[x[1]], strand)}<br>%sim={score_mat[x[0]][x[1]]:.2}"
+                              for x in path],
+                        hoverinfo="text",
+                        name="optimal path")
+
+    layout = go.Layout(width=800,
+                       height=800,
+                       xaxis=dict(
+                           showgrid=False,
+                           zeroline=False
+                       ),
+                       yaxis=dict(
+                           autorange="reversed",
+                           scaleanchor="x",
+                           showgrid=False,
+                           zeroline=False
+                       ),
+                       showlegend=True)
+
+    py.iplot(go.Figure(data=[trace1, trace2], layout=layout))
+    
+    # DP matrix
+    trace3 = go.Heatmap(z=dp.T,
+                       text=np.array([[f"{to_unit_type(read_df_i.iloc[ri - 1], 0)} vs {to_unit_type(read_df_j.iloc[ci - 1], strand)}<br>%sim={c:.2}"
+                                       if ri * ci != 0 else "0"
+                                       for ci, c in enumerate(r)]
+                                      for ri, r in enumerate(dp)]).T,
+                       hoverinfo="text",
+                       colorscale='YlGnBu',
+                       #colorscale='Greys',
+                       reversescale=True,
+                       showscale=False)
+
+    trace4 = go.Scatter(x=[x[0] + 1 for x in path],
+                        y=[x[1] + 1 for x in path],
+                        text=[f"{to_unit_type(read_df_i.iloc[x[0]], 0)} vs {to_unit_type(read_df_j.iloc[x[1]], strand)}<br>%sim={dp[x[0] + 1][x[1] + 1]:.2}"
+                              for x in path],
+                        hoverinfo="text",
+                        name="optimal path")
+
+    layout2 = go.Layout(width=800,
+                       height=800,
+                       xaxis=dict(
+                           showgrid=False,
+                           zeroline=False
+                       ),
+                       yaxis=dict(
+                           autorange="reversed",
+                           scaleanchor="x",
+                           showgrid=False,
+                           zeroline=False
+                       ),
+                       showlegend=True)
+
+    py.iplot(go.Figure(data=[trace3, trace4], layout=layout2))
+
+
+def calc_score(si, sj, strand, varvec_colname, match_th):
+    if si["peak_id"] != sj["peak_id"]:   # unit length mismatch
+        return 0
+    elif abs(si["strand"] - sj["strand"]) != strand:   # strand mismatch
+        return 0
+    elif si["type"] == "boundary" or sj["type"] == "boundary":
+        return match_th
+    elif si["type"] == "deviating" or sj["type"] == "deviating":
+        if si["type"] == sj["type"]:   # both units are deviating; this would be a signature rather than error
+            return 1   # TODO: consider more
+        else:
+            return match_th   # no positive nor negative score
+    elif si["repr_id"] != sj["repr_id"]:
+        return 0   # TODO: prepare score matrix based on the global similarity matrix
+    elif si["type"] == "noisy" or sj["type"] == "noisy":
+        return match_th - 0.1   # XXX: consider more   TODO: permit repr_id mismatch for noisy units? (though it is dangerous)
+    else:   # same peak, same repr, same strand, complete unit
+        assert si[varvec_colname].shape[0] == sj[varvec_colname].shape[0], "Variant vector length mismatch"
+        return 1. - float(np.count_nonzero(si[varvec_colname] != sj[varvec_colname])) / si[varvec_colname].shape[0]
+
+
+def calc_score_mat(read_df_i, read_df_j, strand, varvec_colname, match_th):
+    return np.array([[calc_score(read_df_i.iloc[i], read_df_j.iloc[j], strand, varvec_colname, match_th)
+                      for j in range(read_df_j.shape[0])]
+                     for i in range(read_df_i.shape[0])])
+
+
+def calc_alignment(score_mat, match_th, indel_penalty):
+    # Fill DP matrix
+    dp = np.zeros((score_mat.shape[0] + 1, score_mat.shape[1] + 1))
+    for i in range(1, dp.shape[0]):
+        for j in range(1, dp.shape[1]):
+            dp[i][j] = max([dp[i - 1][j - 1] + score_mat[i - 1][j - 1] - match_th,
+                            dp[i - 1][j] - indel_penalty,
+                            dp[i][j - 1] - indel_penalty])   # TODO: reconsider the scoring system
+
+    # Find the starting point of traceback
+    if np.max(dp[-1][1:]) >= np.max(dp.T[-1][1:]):   # maximum is on the end row
+        argmax = np.array([dp.shape[0] - 1, np.argmax(dp[-1][1:]) + 1])
+    else:   # on the end column
+        argmax = np.array([np.argmax(dp.T[-1][1:]) + 1, dp.shape[1] - 1])
+
+    # Traceback
+    path = [argmax - 1]   # [(unit_i, unit_j), ...] from the traceback starting point; -1 for corresponding to the true unit indices
+    while True:
+        if argmax[0] == 1 or argmax[1] == 1:   # reached the start row or colum
+            break
+        diag = dp[argmax[0] - 1][argmax[1] - 1] + score_mat[argmax[0] - 1][argmax[1] - 1] - match_th
+        horizontal = dp[argmax[0]][argmax[1] - 1] - indel_penalty
+        vertical = dp[argmax[0] - 1][argmax[1]] - indel_penalty
+        maximum = np.argmax([diag, horizontal, vertical])   # pointer to the next cell
+        if maximum == 0:   # diagonal
+            argmax = argmax - 1
+        elif maximum == 1:   # horizonal
+            argmax = argmax - [0, 1]   # copy object
+        else:   # vertical
+            argmax = argmax - [1, 0]
+        path = [argmax - 1] + path   # add the next cell at the FRONT of the list
+
+    return (dp, path)
+
+
 def _svs_read_alignment(read_i,
                         read_j,
                         strand,
-                        varmats,
+                        read_df_i,
+                        read_df_j,
+                        varvec_colname,
                         match_th=0.75,
                         indel_penalty=0.2,
                         plot=False):
 
-    def calc_dist_mat():
-        return np.array([[0 if varmat_i.iloc[i][0] != varmat_j.iloc[j][0]   # different unit type
-                          else 1. - float(np.count_nonzero(varmat_i.iloc[i][1] != varmat_j.iloc[j][1])) / varmat_i.iloc[i][1].shape[0]   # similarity
-                          for j in range(varmat_j.shape[0])]
-                         for i in range(varmat_i.shape[0])])
+    strand = 0 if strand == 'f' else 1   # for strand match judgement between two units
 
-    def calc_alignment():
-        # Smith-Waterman local alignment
-        dp = np.zeros((dist_mat.shape[0] + 1, dist_mat.shape[1] + 1))
-        for i in range(1, dp.shape[0]):
-            for j in range(1, dp.shape[1]):
-                dp[i][j] = max([dp[i - 1][j - 1] + dist_mat[i - 1][j - 1] - match_th,
-                                dp[i - 1][j] - indel_penalty,
-                                dp[i][j - 1] - indel_penalty])   # TODO: reconsider the scoring system
+    # Calculate match score for every unit pair between read_i and read_j
+    score_mat = calc_score_mat(read_df_i,
+                               read_df_j if strand == 0 else read_df_j[::-1],
+                               strand,
+                               varvec_colname,
+                               match_th)
 
-        # Find the starting point of traceback
-        if np.max(dp[-1][1:]) >= np.max(dp.T[-1][1:]):   # maximum is on the end row
-            argmax = np.array([dp.shape[0] - 1, np.argmax(dp[-1][1:]) + 1])
-        else:   # on the end column
-            argmax = np.array([np.argmax(dp.T[-1][1:]) + 1, dp.shape[1] - 1])
+    # Take alignment by solving a DP which intermediates between NW and SW
+    dp, path = calc_alignment(score_mat, match_th, indel_penalty)
 
-        # Traceback
-        alignment = [(argmax,
-                      varmat_i.iloc[argmax[0] - 1][0],
-                      varmat_j.iloc[argmax[1] - 1][0])]   # [((pos_i, pos_j), unit_i, unit_j), ...] from the traceback starting point
-        while True:
-            if argmax[0] == 1 or argmax[1] == 1:   # reached the start row or colum
-                break
-            diag = dp[argmax[0] - 1][argmax[1] - 1] + dist_mat[argmax[0] - 1][argmax[1] - 1] - match_th
-            horizontal = dp[argmax[0]][argmax[1] - 1] - indel_penalty
-            vertical = dp[argmax[0] - 1][argmax[1]] - indel_penalty
-            maximum = np.argmax([diag, horizontal, vertical])   # pointer to the next cell
-            if maximum == 0:   # diagonal
-                argmax = argmax - 1
-            elif maximum == 1:   # horizonal
-                argmax = argmax - [0, 1]   # copy object
-            else:   # vertical
-                argmax = argmax - [1, 0]
-            alignment = [(argmax,
-                          varmat_i.iloc[argmax[0] - 1][0],
-                          varmat_j.iloc[argmax[1] - 1][0])] + alignment   # add the next cell at the FRONT of the list
+    n_unit_i, n_unit_j = read_df_i.shape[0], read_df_j.shape[0]
+    start_unit_i, start_unit_j = path[0]
+    end_unit_i, end_unit_j = path[-1] if strand == 0 else n_unit_j - path[-1][::-1]
+    start_bp_i, start_bp_j = read_df_i.iloc[start_unit_i]["start"], read_df_j.iloc[start_unit_j]["start"]
+    end_bp_i, end_bp_j = read_df_i.iloc[end_unit_i]["end"], read_df_j.iloc[end_unit_j]["end"]
 
-        return (dp, alignment)
+    score = dp[end_unit_i + 1][end_unit_j + 1]
+    mean_score = score / len(path)
 
-    def plot_alignment_mat():
-        # NOTE: default heatmap is [x (on y-axis) * y (on x-axis)] for a distance matrix [x * y],
-        #       so transpose the matrix.
-        
-        # Distance matrix
-        trace1 = go.Heatmap(z=dist_mat.T,
-                           text=np.array([[f"{varmat_i.iloc[ri][0]} vs {varmat_j.iloc[ci][0]}<br>%sim={c:.2}"
-                                           for ci, c in enumerate(r)]
-                                          for ri, r in enumerate(dist_mat)]).T,
-                           hoverinfo="text",
-                           colorscale='YlGnBu',
-                           #colorscale='Greys',
-                           zmin=0.6,
-                           zmax=1,
-                           reversescale=True,
-                           showscale=False)
-    
-        trace2 = go.Scatter(x=[x[0] - 1 for x, y, z in alignment],
-                            y=[x[1] - 1 for x, y, z in alignment],
-                            text=[f"{varmat_i.iloc[x[0] - 1][0]} vs {varmat_j.iloc[x[1] - 1][0]}<br>%sim={dist_mat[x[0] - 1][x[1] - 1]:.2}"
-                                  for x, y, z in alignment],
-                            hoverinfo="text",
-                            name="optimal path")
-    
-        layout = go.Layout(width=800,
-                           height=800,
-                           xaxis=dict(
-                               showgrid=False,
-                               zeroline=False
-                           ),
-                           yaxis=dict(
-                               autorange="reversed",
-                               scaleanchor="x",
-                               showgrid=False,
-                               zeroline=False
-                           ),
-                           showlegend=True)
-    
-        py.iplot(go.Figure(data=[trace1, trace2], layout=layout))
-        
-        # DP matrix
-        trace3 = go.Heatmap(z=dp.T,
-                           text=np.array([[f"{varmat_i.iloc[ri - 1][0]} vs {varmat_j.iloc[ci - 1][0]}<br>%sim={c:.2}"
-                                           if ri * ci != 0 else "0"
-                                           for ci, c in enumerate(r)]
-                                          for ri, r in enumerate(dp)]).T,
-                           hoverinfo="text",
-                           colorscale='YlGnBu',
-                           #colorscale='Greys',
-                           reversescale=True,
-                           showscale=False)
-    
-        trace4 = go.Scatter(x=[x[0] for x, y, z in alignment],
-                            y=[x[1] for x, y, z in alignment],
-                            text=[f"{varmat_i.iloc[x[0] - 1][0]} vs {varmat_j.iloc[x[1] - 1][0]}<br>%sim={dp[x[0]][x[1]]:.2}"
-                                  for x, y, z in alignment],
-                            hoverinfo="text",
-                            name="optimal path")
-    
-        layout2 = go.Layout(width=800,
-                           height=800,
-                           xaxis=dict(
-                               showgrid=False,
-                               zeroline=False
-                           ),
-                           yaxis=dict(
-                               autorange="reversed",
-                               scaleanchor="x",
-                               showgrid=False,
-                               zeroline=False
-                           ),
-                           showlegend=True)
-    
-        py.iplot(go.Figure(data=[trace3, trace4], layout=layout2))
-
-    varmat_i, varmat_j = varmats[(read_i, 'f')], varmats[(read_j, strand)]
-    dist_mat = calc_dist_mat()
-    dp, alignment = calc_alignment()
-    start_i, start_j = alignment[0][0]
-    end_i, end_j = alignment[-1][0]
-    alignment_len = len(alignment)   # TODO: add to the alignment object
-    score = dp[end_i][end_j]
-    mean_score = float(score) / alignment_len
+    alignment_bp_i = end_bp_i - start_bp_i
+    alignment_bp_j = end_bp_j - start_bp_j
+    overlap_len = sum([max(read_df_i.iloc[i]["length"], read_df_j.iloc[j]["length"]) for i, j in path])   # XXX: TODO: compute accurate value!!!
 
     if plot:
-        plot_alignment_mat()
+        plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path)
 
-    return [start_i, end_i, varmat_i.shape[0], start_j, end_j, varmat_j.shape[0], score, mean_score, alignment]
+    return [read_i,
+            read_j,
+            strand,
+            start_unit_i,
+            end_unit_i,
+            n_unit_i,
+            start_unit_j,
+            end_unit_j,
+            n_unit_j,
+            start_bp_i,
+            end_bp_i,
+            # TODO: read_len_i
+            start_bp_j,
+            end_bp_j,
+            # TODO: read_len_j
+            score,
+            mean_score,
+            alignment_bp_i,
+            alignment_bp_j,
+            overlap_len,
+            path]
 
 
-def svs_read_alignment(read_i, read_j, strand, comps, varmats, th_n_shared_units, th_mean_score):
-    if sum((comps[(read_i, 'f')] & comps[(read_j, strand)]).values()) >= th_n_shared_units:
-        overlap = _svs_read_alignment(read_i, read_j, strand, varmats)
-        if overlap is not None and overlap[7] >= th_mean_score:
-            if strand == 'r':
-                # NOTE: do not expand these assignments
-                overlap[3], overlap[4] = overlap[5] - overlap[4], overlap[5] - overlap[3]
-            return [read_i, read_j, strand] + overlap
+def svs_read_alignment(read_i,
+                       read_j,
+                       strand,
+                       read_df_i,
+                       read_df_j,
+                       comp_i,
+                       comp_j,
+                       varvec_colname,
+                       th_n_shared_units,
+                       th_mean_score,
+                       th_ovlp_len):
+
+    if sum((comp_i & comp_j).values()) >= th_n_shared_units:
+        overlap = _svs_read_alignment(read_i, read_j, strand, read_df_i, read_df_j, varvec_colname)
+        if overlap[11] >= th_mean_score and overlap[14] >= th_ovlp_len:
+            return overlap
     return None
 
 
-def svs_read_alignment_mult(list_pairs, comps, varmats, th_n_shared_units, th_mean_score):
+def svs_read_alignment_mult(list_pairs,
+                            read_dfs,
+                            comps,
+                            varvec_colname,
+                            th_n_shared_units,
+                            th_mean_score,
+                            th_ovlp_len):
+
     return [svs_read_alignment(read_i,
                                read_j,
                                strand,
-                               comps,
-                               varmats,
+                               read_dfs[read_i],
+                               read_dfs[read_j],
+                               comps[(read_i, 'f')],
+                               comps[(read_j, strand)],
+                               varvec_colname,
                                th_n_shared_units,
-                               th_mean_score)
+                               th_mean_score,
+                               th_ovlp_len)
             for read_i, read_j, strand in list_pairs]
 
 
@@ -182,39 +265,27 @@ def svs_read_alignment_mult(list_pairs, comps, varmats, th_n_shared_units, th_me
 class Overlap:
     encodings: pd.DataFrame
     varvec_colname: str = "var_vec_global0.0"
-    th_n_shared_units: int = 10   # TODO: XXX: increase the value as 30 or so to save the computation time !!!
-    th_mean_score: float = 0.0
+    th_n_shared_units: int = 10   # for preliminary filtering   # TODO: change to bp
+    th_mean_score: float = 0.01
+    th_ovlp_len: int = 1000   # in bp
 
     read_ids: List[int] = field(init=False)
     read_dfs: dict = field(init=False)
     comps: dict = field(init=False)
-    varmats: dict = field(init=False)
 
     def __post_init__(self):
-        self.read_dfs = {index: df[df["type"] == "complete"]
-                         for index, df
-                         in self.encodings[self.encodings["type"] == "complete"].groupby("read_id")}
+        # TODO: at least we should remove reads only with noisy units?
+        self.read_dfs = dict(tuple(self.encodings.groupby("read_id")))
         self.read_ids = sorted(self.read_dfs.keys())
         self.comps = {(read_id, strand): self.df_to_composition(self.read_dfs[read_id], strand)
                       for read_id in self.read_ids
                       for strand in ['f', 'r']}
-        self.varmats = {(read_id, strand): self.df_to_varmat(self.read_dfs[read_id], strand)
-                        for read_id in self.read_ids
-                        for strand in ['f', 'r']}
 
     def df_to_composition(self, df, strand):
         return Counter(df.apply(lambda df: (df["peak_id"],
                                             df["repr_id"],
                                             df["strand"] if strand == 'f' else 1 - df["strand"]),
                                 axis=1))
-
-    def df_to_varmat(self, df, strand):
-        return (df if strand == 'f'
-                else df[::-1]).apply(lambda df: ((df["peak_id"],
-                                                  df["repr_id"],
-                                                  df["strand"] if strand == 'f' else 1 - df["strand"]),
-                                                 df[self.varvec_colname]),
-                                     axis=1).reset_index(drop=True)
 
     def ava_read_alignment(self, n_core=1):
         """
@@ -264,10 +335,12 @@ class Overlap:
         n_pairs = len(list_pairs)
         n_sub = -(-n_pairs // n_core)
         list_pairs_sub = [(list_pairs[i * n_sub:(i + 1) * n_sub - 1],
+                           self.read_dfs,
                            self.comps,
-                           self.varmats,
+                           self.varvec_colname,
                            self.th_n_shared_units,
-                           self.th_mean_score)
+                           self.th_mean_score,
+                           self.th_ovlp_len)
                           for i in range(n_core)]
 
         overlaps = {}

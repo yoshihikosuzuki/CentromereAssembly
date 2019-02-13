@@ -290,6 +290,11 @@ class ClusteringNumeric(Clustering):
     A child class which additionally has clustering methods only for numerical data.
     """
 
+    def calc_dist_mat(self, metric="euclidean"):
+        # NOTE: Clustering itself does not require a distance matrix, but t-SNE plot does.
+        self.c_dist_mat = pdist(self.data, metric=metric)
+        self.s_dist_mat = squareform(self.c_dist_mat)
+
     def do_clustering(self, method, **kwargs):
         """
         Wrapper of the clusterings with the data (not distance matrix).
@@ -394,9 +399,7 @@ class ClusteringVarMat(ClusteringNumeric):
         return vmatrix.T
 
     def calc_dist_mat(self):
-        # Used for hierarchical clustering and/or t-SNE plot
-        self.c_dist_mat = pdist(self.data, metric='hamming')
-        self.s_dist_mat = squareform(self.c_dist_mat)
+        super().calc_dist_mat(metric="hamming")
 
     def generate_consensus(self, how="representative"):
         """
