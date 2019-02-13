@@ -15,7 +15,7 @@ plt.style.use('ggplot')
 
 
 def to_unit_type(s, strand):
-    ret = tuple(s[["peak_id", "repr_id", "strand", "type"]])
+    ret = list(s[["peak_id", "repr_id", "strand", "type"]])
     if strand == 1:
         ret[2] = strand - ret[2]
     return ret
@@ -27,7 +27,7 @@ def plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path):
     
     # Score matrix
     trace1 = go.Heatmap(z=score_mat.T,
-                       text=np.array([[f"{to_unit_type(read_df_i.iloc[ri], 0)} vs {to_unit_type(read_df_j.iloc[ci], strand)}<br>%sim={c:.2}"
+                       text=np.array([[f"{ri}: {to_unit_type(read_df_i.iloc[ri], 0)} vs {ci}: {to_unit_type(read_df_j.iloc[ci], strand)}<br>%sim={c:.2}"
                                        for ci, c in enumerate(r)]
                                       for ri, r in enumerate(score_mat)]).T,
                        hoverinfo="text",
@@ -40,7 +40,7 @@ def plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path):
 
     trace2 = go.Scatter(x=[x[0] for x in path],
                         y=[x[1] for x in path],
-                        text=[f"{to_unit_type(read_df_i.iloc[x[0]], 0)} vs {to_unit_type(read_df_j.iloc[x[1]], strand)}<br>%sim={score_mat[x[0]][x[1]]:.2}"
+                        text=[f"{x[0]}: {to_unit_type(read_df_i.iloc[x[0]], 0)} vs {x[1]}: {to_unit_type(read_df_j.iloc[x[1]], strand)}<br>%sim={score_mat[x[0]][x[1]]:.2}"
                               for x in path],
                         hoverinfo="text",
                         name="optimal path")
@@ -63,7 +63,7 @@ def plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path):
     
     # DP matrix
     trace3 = go.Heatmap(z=dp.T,
-                       text=np.array([[f"{to_unit_type(read_df_i.iloc[ri - 1], 0)} vs {to_unit_type(read_df_j.iloc[ci - 1], strand)}<br>%sim={c:.2}"
+                       text=np.array([[f"{ri - 1}: {to_unit_type(read_df_i.iloc[ri - 1], 0)} vs {ci - 1}: {to_unit_type(read_df_j.iloc[ci - 1], strand)}<br>%sim={c:.2}"
                                        if ri * ci != 0 else "0"
                                        for ci, c in enumerate(r)]
                                       for ri, r in enumerate(dp)]).T,
@@ -75,7 +75,7 @@ def plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path):
 
     trace4 = go.Scatter(x=[x[0] + 1 for x in path],
                         y=[x[1] + 1 for x in path],
-                        text=[f"{to_unit_type(read_df_i.iloc[x[0]], 0)} vs {to_unit_type(read_df_j.iloc[x[1]], strand)}<br>%sim={dp[x[0] + 1][x[1] + 1]:.2}"
+                        text=[f"{x[0]}: {to_unit_type(read_df_i.iloc[x[0]], 0)} vs {x[1]}: {to_unit_type(read_df_j.iloc[x[1]], strand)}<br>%sim={dp[x[0] + 1][x[1] + 1]:.2}"
                               for x in path],
                         hoverinfo="text",
                         name="optimal path")
@@ -140,7 +140,7 @@ def calc_alignment(score_mat, match_th, indel_penalty):
         argmax = np.array([np.argmax(dp.T[-1][1:]) + 1, dp.shape[1] - 1])
 
     # Traceback
-    path = [argmax - 1]   # [(unit_i, unit_j), ...] from the traceback starting point; -1 for corresponding to the true unit indices
+    path = [argmax]   # [(unit_i, unit_j), ...] from the traceback starting point
     while True:
         if argmax[0] == 1 or argmax[1] == 1:   # reached the start row or colum
             break
@@ -154,9 +154,11 @@ def calc_alignment(score_mat, match_th, indel_penalty):
             argmax = argmax - [0, 1]   # copy object
         else:   # vertical
             argmax = argmax - [1, 0]
-        path = [argmax - 1] + path   # add the next cell at the FRONT of the list
+        path = [argmax] + path   # add the next cell at the FRONT of the list
 
-    return (dp, path)
+    score = dp[path[-1][0]][path[-1][1]]
+    path = [p - 1 for p in path]   # -1 for converting to the indices in read_df and score_mat
+    return (dp, path, score)
 
 
 def _svs_read_alignment(read_i,
@@ -179,23 +181,28 @@ def _svs_read_alignment(read_i,
                                match_th)
 
     # Take alignment by solving a DP which intermediates between NW and SW
-    dp, path = calc_alignment(score_mat, match_th, indel_penalty)
+    dp, path, score = calc_alignment(score_mat, match_th, indel_penalty)
+    mean_score = score / len(path)
 
     n_unit_i, n_unit_j = read_df_i.shape[0], read_df_j.shape[0]
     start_unit_i, start_unit_j = path[0]
-    end_unit_i, end_unit_j = path[-1] if strand == 0 else n_unit_j - path[-1][::-1]
+    end_unit_i, end_unit_j = path[-1]
+    if strand == 1:
+        start_unit_j, end_unit_j = n_unit_j - 1 - end_unit_j, n_unit_j - 1 - start_unit_j
     start_bp_i, start_bp_j = read_df_i.iloc[start_unit_i]["start"], read_df_j.iloc[start_unit_j]["start"]
     end_bp_i, end_bp_j = read_df_i.iloc[end_unit_i]["end"], read_df_j.iloc[end_unit_j]["end"]
-
-    score = dp[end_unit_i + 1][end_unit_j + 1]
-    mean_score = score / len(path)
 
     alignment_bp_i = end_bp_i - start_bp_i
     alignment_bp_j = end_bp_j - start_bp_j
     overlap_len = sum([max(read_df_i.iloc[i]["length"], read_df_j.iloc[j]["length"]) for i, j in path])   # XXX: TODO: compute accurate value!!!
 
     if plot:
-        plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path)
+        plot_alignment_mat(read_df_i,
+                           read_df_j if strand == 0 else read_df_j[::-1],
+                           strand,
+                           score_mat,
+                           dp,
+                           path)
 
     return [read_i,
             read_j,
@@ -357,15 +364,22 @@ class Overlap:
                                                columns=("read_i",
                                                         "read_j",
                                                         "strand",
-                                                        "i_start",
-                                                        "i_end",
-                                                        "i_len",
-                                                        "j_start",
-                                                        "j_end",
-                                                        "j_len",
+                                                        "i_start_unit",
+                                                        "i_end_unit",
+                                                        "i_n_unit",
+                                                        "j_start_unit",
+                                                        "j_end_unit",
+                                                        "j_n_unit",
+                                                        "i_start_bp",
+                                                        "i_end_bp",
+                                                        "j_start_bp",
+                                                        "j_end_bp",
                                                         "score",
                                                         "mean_score",
-                                                        "alignment")) \
+                                                        "i_alignment_bp",
+                                                        "j_alignment_bp",
+                                                        "ovelap_len",
+                                                        "path")) \
                                     .sort_values(by="strand") \
                                     .sort_values(by="read_j", kind="mergesort") \
                                     .sort_values(by="read_i", kind="mergesort") \
