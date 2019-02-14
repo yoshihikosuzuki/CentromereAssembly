@@ -1,5 +1,3 @@
-import random
-from logzero import logger
 from collections import Counter
 import numpy as np
 import pandas as pd
@@ -10,14 +8,14 @@ from sklearn.mixture import GaussianMixture
 from sklearn.manifold import TSNE
 from sklearn.decomposition import NMF
 import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.offline as py
 import plotly.graph_objs as go
+from logzero import logger
 from BITS.run import run_edlib
 from BITS.utils import run_command, print_log, NoDaemonPool
+from BITS.plot import generate_layout, show_plot, generate_scatter
 import consed
-from .dpmm import DPMM, DPMMCluster
-#from .dpmm_oldname import Clustering, Cluster
+from .dpmm import DPMM
 
 
 class Clustering:
@@ -32,9 +30,10 @@ class Clustering:
     must be set when the distance matrix is computed.
     """
 
-    def __init__(self, input_data):
-        self.data = input_data
-        self.N = input_data.shape[0]   # num of data. NOTE: <input_data> must be (data, features)
+    def __init__(self, data, names):
+        self.data = data
+        self.N = data.shape[0]   # num of data. NOTE: Each row in <data> must be each datum
+        self.names = names   # name for each datum. used for plots
         self.assignment = np.full(self.N, -1, dtype='int8')   # cluster assignment for each data
         self.precomputed = {}   # used to avoid re-calculation of clustering results
 
@@ -116,76 +115,41 @@ class Clustering:
         plt.hist(list(cluster_size.values()), bins=bins)
         plt.show()
 
-    def plot_heatmap(self, cmap="Blues_r", figsize=(12, 12), out_fname=None):
+    def plot_dist_mat(self, width=500, height=500, title=None, out_fname=None):
         """
         Draw a heatmap of the (squared) distance matrix.
         """
+
+        assert self.N <= 100, "Too many data to plot"
 
         trace = go.Heatmap(z=self.s_dist_mat,
                            colorscale="YlGnBu",
                            zmin=0,
                            zmax=1,
                            showscale=False)
+        layout = generate_layout(width, height, title=title)
+        layout["yaxis"] = dict(autorange="reversed")
+        show_plot([trace], layout, out_fname=out_fname)
 
-        layout = go.Layout(width=500,
-                           height=500,
-                           title="Distance matrix",
-                           yaxis=dict(autorange="reversed"))
-
-        py.iplot(go.Figure(data=[trace], layout=layout))
-
-        """
-        plt.figure(figsize=figsize)
-        sns.heatmap(self.s_dist_mat, square=True, vmin=0, vmax=1, cmap=cmap)
-        if out_fname is None:
-            plt.show()
-        else:
-            plt.savefig(out_fname)
-        """
-
-    def plot_tsne(self, coloring="sequential", figsize=(12, 12), out_fname=None):
+    def plot_tsne(self, width=700, height=700, title=None, out_fname=None):
         """
         Embed data into a two dimensional space using t-SNE.
         <self.s_dist_mat> must be precomputed.
         """
 
-        assert hasattr(self, "s_dist_mat"), "No square distance matrix"
+        assert hasattr(self, "s_dist_mat"), "No distance matrix"
 
-        if not hasattr(self, "coord"):
-            self.coord = TSNE(n_components=2, metric='precomputed').fit_transform(self.s_dist_mat)
-
-        trace = go.Scatter(x=self.coord[:, 0].T,
-                           y=self.coord[:, 1].T,
-                           text=self.assignment,
-                           mode="markers",
-                           marker=dict(size=3,
-                                       color=self.assignment,
-                                       colorscale="Rainbow",
-                                       showscale=False))
-        layout = go.Layout(width=700,
-                           height=700,
-                           hovermode='closest')
-        py.iplot(go.Figure(data=[trace], layout=layout))
-
-        """
-        assert coloring in ("sequential", "random"), "<color> must be 'sequential' or 'random'"
-
-        if coloring == "sequential":
-            cmap = plt.get_cmap("gist_ncar")
-            cols = cmap(np.array(range(self.n_clusters)) / self.n_clusters)
-        plt.figure(figsize=figsize)
-        for i, data in enumerate(self.clusters(return_where=True)):
-            cluster_id, where = data
-            plt.scatter(*self.coord[where].T, s=5,
-                        c=cols[i] if coloring == "sequential" else f"#{random.randint(0, 0xFFFFFF):06x}",
-                        label=f"{cluster_id} ({where.shape[0]} seqs)")
-        plt.legend(fontsize=12, markerscale=4, bbox_to_anchor=(1.05, 1))
-
-        if out_fname is None:
-            plt.show()
-        else:
-            plt.savefig(out_fname)
-        """
+        coord = TSNE(n_components=2, metric='precomputed').fit_transform(self.s_dist_mat)
+        trace = generate_scatter(coord[:, 0].T,
+                                 coord[:, 1].T,
+                                 text=[f"{self.names[i]}<br>{self.assignment[i]}"
+                                       for i in range(self.N)],
+                                 marker_size=3)
+        trace["marker"].update(dict(color=self.assignment,
+                                    colorscale="Rainbow",
+                                    showscale=False))
+        layout = generate_layout(width, height, title=title)
+        show_plot([trace], layout, out_fname=out_fname)
 
 
 def __calc_dist_array(i, data):
@@ -221,8 +185,8 @@ class ClusteringSeqs(Clustering):
     Run <self.cluster_greedy> for former, and <self.cluster_hierarchical> for latter.
     """
 
-    def __init__(self, input_data, cyclic=True, rc=True):
-        super().__init__(input_data)
+    def __init__(self, data, names, cyclic=True, rc=True):
+        super().__init__(data, names)
         self.cyclic = cyclic   # do cyclic alignment between two sequences
         self.rc = rc   # allow reverse complement when taking alignment
 
@@ -381,8 +345,9 @@ class ClusteringVarMat(ClusteringNumeric):
        self.assignment[i] = Cluster index to which unit i belongs
     """
 
-    def __init__(self, vmatrix_fname):
-        super().__init__(self.load_vmatrix(vmatrix_fname))
+    def __init__(self, vmatrix_fname, names):
+        data = self.load_vmatrix(vmatrix_fname)
+        super().__init__(data, list(range(data.shape[0])))
 
     def load_vmatrix(self, in_fname):
         N = int(run_command(f"awk 'NR == 1 {{print length($1)}}' {in_fname}"))

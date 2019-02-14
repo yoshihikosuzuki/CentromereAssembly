@@ -146,7 +146,8 @@ class Peak:
         Cluster the intra-TR consensus units
         """
 
-        self.cl_master = ClusteringSeqs(self.cons_units["sequence"])
+        self.cl_master = ClusteringSeqs(self.cons_units["sequence"],
+                                        self.cons_units.apply(lambda df: f"{df['read_id']}({df['path_id']})", axis=1))
         self.cl_master.calc_dist_mat(n_core)
         self.cl_master.cluster_hierarchical()
 

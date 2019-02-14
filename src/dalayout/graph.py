@@ -287,6 +287,17 @@ class Overlap:
                                             df["strand"] if strand == 'f' else 1 - df["strand"]),
                                 axis=1))
 
+    def svs_read_alignment(self, read_i, read_j, strand, match_th=0.7, indel_penalty=0.2, plot=False):
+        return _svs_read_alignment(read_i,
+                                   read_j,
+                                   strand,
+                                   self.read_dfs[read_i],
+                                   self.read_dfs[read_j],
+                                   self.varvec_colname,
+                                   match_th,
+                                   indel_penalty,
+                                   plot)
+
     def ava_read_alignment(self, n_core=1):
         """
         Non-distributed version of all-vs-all read overlap calculation.
@@ -371,7 +382,7 @@ class Overlap:
                                                         "mean_score",
                                                         "i_alignment_bp",
                                                         "j_alignment_bp",
-                                                        "ovelap_len",
+                                                        "overlap_len",
                                                         "path")) \
                                     .sort_values(by="strand") \
                                     .sort_values(by="read_j", kind="mergesort") \
@@ -379,15 +390,12 @@ class Overlap:
                                     .reset_index(drop=True)
 
 
-def construct_string_graph(overlaps, repr_units, th_mean_score=0.0, th_overlap_len=3000):
-    def alignment_to_length(a):
-        return sum([repr_units.loc[(y[0], y[1])]["length"] for x, y, z in a])
-
+def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=3000):
     # NOTE: Because igraph prefers static graph construction, first list the vertices and edges up.
     nodes, edges = set(), set()
     for i, overlap in overlaps.iterrows():
-        f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, score, mean_score, alignment = overlap
-        if mean_score < th_mean_score or alignment_to_length(alignment) < th_overlap_len:
+        f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, f_bb, f_be, g_bb, g_be, score, mean_score, f_bl, g_bl, ovlp_len, path = overlap
+        if mean_score < th_mean_score or ovlp_len < th_overlap_len:
             continue
 
         if strand == "r":  # reversed alignment, swapping the begin and end coordinates
@@ -463,7 +471,60 @@ def construct_string_graph(overlaps, repr_units, th_mean_score=0.0, th_overlap_l
 
 
 def transitive_reduction(sg):
-    pass
+    n_mark = self.n_mark
+    e_reduce = self.e_reduce
+    FUZZ = 500
+    for n in self.nodes:
+        n_mark[n] = "vacant"
+
+    for (n_name, node) in viewitems(self.nodes):
+        out_edges = node.out_edges
+        if len(out_edges) == 0:
+            continue
+
+        out_edges.sort(key=lambda x: x.attr["length"])
+
+        for e in out_edges:
+            w = e.out_node
+            n_mark[w.name] = "inplay"
+
+        max_len = out_edges[-1].attr["length"]
+
+        max_len += FUZZ
+
+        for e in out_edges:
+            e_len = e.attr["length"]
+            w = e.out_node
+            if n_mark[w.name] == "inplay":
+                w.out_edges.sort(key=lambda x: x.attr["length"])
+                for e2 in w.out_edges:
+                    if e2.attr["length"] + e_len < max_len:
+                        x = e2.out_node
+                        if n_mark[x.name] == "inplay":
+                            n_mark[x.name] = "eliminated"
+
+        for e in out_edges:
+            e_len = e.attr["length"]
+            w = e.out_node
+            w.out_edges.sort(key=lambda x: x.attr["length"])
+            if len(w.out_edges) > 0:
+                x = w.out_edges[0].out_node
+                if n_mark[x.name] == "inplay":
+                    n_mark[x.name] = "eliminated"
+            for e2 in w.out_edges:
+                if e2.attr["length"] < FUZZ:
+                    x = e2.out_node
+                    if n_mark[x.name] == "inplay":
+                        n_mark[x.name] = "eliminated"
+
+        for out_edge in out_edges:
+            v = out_edge.in_node
+            w = out_edge.out_node
+            if n_mark[w.name] == "eliminated":
+                e_reduce[(v.name, w.name)] = True
+                v_name, w_name = reverse_end(w.name), reverse_end(v.name)
+                e_reduce[(v_name, w_name)] = True
+            n_mark[w.name] = "vacant"
 
 
 def draw_graph(sg):
