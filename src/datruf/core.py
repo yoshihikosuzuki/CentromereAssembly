@@ -26,7 +26,7 @@ def calc_cover_set(datruf):
                 short_intervals |= intvl
         intersect = subtract_interval(intersect,
                                       short_intervals,
-                                      length_threshold=0)
+                                      th_length=0)
 
         # Detect deletion around only 1 border
         flag_deletion = False
@@ -38,7 +38,7 @@ def calc_cover_set(datruf):
             cover_set.add((bb, ae, ab, be))    # NOTE: be careful with the order!
             uncovered_intervals = subtract_interval(uncovered_intervals,
                                                     interval[bb, ae],
-                                                    length_threshold=100)
+                                                    th_length=100)
             if uncovered_intervals == interval():
                 break
 
