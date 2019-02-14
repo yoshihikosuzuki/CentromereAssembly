@@ -111,7 +111,7 @@ def calc_score_mat(read_df_i, read_df_j, strand, varvec_colname, match_th):
     vv_i = list(read_df_i[varvec_colname])
     vv_j = list(read_df_j[varvec_colname])
     return np.array([[0 if sig_i[i][0] != sig_j[j][0]
-                      else match_th if sig_i[i][1] > 0 or sig_j[j][1] > 0
+                      else match_th if sig_i[i][1] > 0 or sig_j[j][1] > 0   # TODO: we should distinguish between noisy and boundary/deviating?
                       else 1. - float(np.count_nonzero(vv_i[i] != vv_j[j])) / vv_i[i].shape[0]
                       for j in range(read_df_j.shape[0])]
                      for i in range(read_df_i.shape[0])])
@@ -154,17 +154,13 @@ def calc_alignment(score_mat, match_th, indel_penalty):
     return (dp, path, score)
 
 
-def _svs_read_alignment(read_i,
-                        read_j,
-                        strand,
-                        read_df_i,
+def _svs_read_alignment(read_df_i,
                         read_df_j,
+                        strand,
                         varvec_colname,
                         match_th=0.7,
                         indel_penalty=0.2,
                         plot=False):
-
-    strand = 0 if strand == 'f' else 1   # for strand match judgement between two units
 
     # Calculate match score for every unit pair between read_i and read_j
     score_mat = calc_score_mat(read_df_i,
@@ -187,7 +183,7 @@ def _svs_read_alignment(read_i,
 
     alignment_bp_i = end_bp_i - start_bp_i
     alignment_bp_j = end_bp_j - start_bp_j
-    overlap_len = sum([max(read_df_i.iloc[i]["length"], read_df_j.iloc[j]["length"]) for i, j in path])   # XXX: TODO: compute accurate value!!!
+    overlap_len = sum([max(read_df_i.iloc[i]["length"], read_df_j.iloc[j]["length"]) for i, j in path])
 
     if plot:
         plot_alignment_mat(read_df_i,
@@ -197,9 +193,7 @@ def _svs_read_alignment(read_i,
                            dp,
                            path)
 
-    return [read_i,
-            read_j,
-            strand,
+    return [strand,
             start_unit_i,
             end_unit_i,
             n_unit_i,
@@ -225,37 +219,27 @@ def svs_read_alignment(read_i,
                        strand,
                        read_df_i,
                        read_df_j,
-                       comp_i,
-                       comp_j,
                        varvec_colname,
-                       th_n_shared_units,
                        th_mean_score,
                        th_ovlp_len):
 
-    if sum((comp_i & comp_j).values()) >= th_n_shared_units:
-        overlap = _svs_read_alignment(read_i, read_j, strand, read_df_i, read_df_j, varvec_colname)
-        if overlap[14] >= th_mean_score and overlap[17] >= th_ovlp_len:
-            return overlap
-    return None
+    overlap = _svs_read_alignment(read_df_i, read_df_j, strand, varvec_colname)
+    return ([read_i, read_j] + overlap if overlap[12] >= th_mean_score and overlap[15] >= th_ovlp_len
+            else None)
 
 
 def svs_read_alignment_mult(list_pairs,
                             read_dfs,
-                            comps,
                             varvec_colname,
-                            th_n_shared_units,
                             th_mean_score,
                             th_ovlp_len):
 
     return [svs_read_alignment(read_i,
                                read_j,
                                strand,
-                               read_dfs[read_i],   # TODO: not expand here but in svs_read_alignment?
+                               read_dfs[read_i],
                                read_dfs[read_j],
-                               comps[(read_i, 'f')],
-                               comps[(read_j, strand)],
                                varvec_colname,
-                               th_n_shared_units,
                                th_mean_score,
                                th_ovlp_len)
             for read_i, read_j, strand in list_pairs]
@@ -263,9 +247,9 @@ def svs_read_alignment_mult(list_pairs,
 
 @dataclass(repr=False, eq=False)
 class Overlap:
-    encodings: pd.DataFrame
-    varvec_colname: str = "var_vec_global0.0"
-    th_n_shared_units: int = 10   # for preliminary filtering   # TODO: change to bp
+    encodings: InitVar[pd.DataFrame]
+    varvec_colname: str = "var_vec_global0.15"
+    th_n_shared_units: int = 10   # TODO: change to bp
     th_mean_score: float = 0.01
     th_ovlp_len: int = 1000   # in bp
 
@@ -273,19 +257,16 @@ class Overlap:
     read_dfs: dict = field(init=False)
     comps: dict = field(init=False)
 
-    def __post_init__(self):
-        # TODO: at least we should remove reads only with noisy units?
-        self.read_dfs = dict(tuple(self.encodings.groupby("read_id")))
-        self.read_ids = sorted(self.read_dfs.keys())
-        self.comps = {(read_id, strand): self.df_to_composition(self.read_dfs[read_id], strand)
-                      for read_id in self.read_ids
-                      for strand in ['f', 'r']}
+    def __post_init__(self, encodings):
+        # Encodings DataFrame for each read
+        self.read_dfs = dict(tuple(encodings.groupby("read_id")))
 
-    def df_to_composition(self, df, strand):
-        return Counter(df.apply(lambda df: (df["peak_id"],
-                                            df["repr_id"],
-                                            df["strand"] if strand == 'f' else 1 - df["strand"]),
-                                axis=1))
+        # Composition of representative units for each read and for each strand
+        self.comps = {(read_id, 0): Counter(dict(df.groupby(["peak_id", "repr_id", "strand"]).size()))
+                      for read_id, df in self.read_dfs.items()}
+        self.comps.update({(key[0], 1): Counter({(k[0], k[1], (k[2] + 1) % 2): v
+                                                 for k, v in value.items()})
+                           for key, value in self.comps.items()})
 
     def svs_read_alignment(self, read_i, read_j, strand, match_th=0.7, indel_penalty=0.2, plot=False):
         return _svs_read_alignment(read_i,
@@ -298,31 +279,39 @@ class Overlap:
                                    indel_penalty,
                                    plot)
 
-    def ava_read_alignment(self, n_core=1):
+    def list_up_pairs(self):
+        """
+        List up pairs of reads whose alignment will be taken.
+        """
+
+        read_ids = sorted(self.read_dfs.keys())
+        return [(read_i, read_j, strand)
+                for i, read_i in enumerate(read_ids)
+                for read_j in read_ids[i + 1:]
+                for strand in [0, 1]
+                if (sum((self.comps[(read_i, 0)]
+                         & self.comps[(read_j, strand)]).values())
+                    >= self.th_n_shared_units)]   # filter by composition of representative units
+
+    def ava_read_alignment(self, n_core):
         """
         Non-distributed version of all-vs-all read overlap calculation.
         """
 
-        # Pairs of reads to be aligned
-        list_pairs = [(read_i, read_j, strand)
-                      for i, read_i in enumerate(self.read_ids)
-                      for read_j in self.read_ids[i + 1:]
-                      for strand in ['f', 'r']]
-        self._ava_read_alignment(list_pairs, n_core)
+        self._ava_read_alignment(self.list_up_pairs(), n_core)
 
     def ava_read_alignment_distribute(self, n_distribute, n_core):
         """
         Distributed all-vs-all read overlap calculation.
         """
 
-        list_pairs = [(read_i, read_j, strand)
-                      for i, read_i in enumerate(self.read_ids)
-                      for read_j in self.read_ids[i + 1:]
-                      for strand in ['f', 'r']]   # TODO: XXX: functionalize this because non-distributed version also uses it, and filter pairs of reads by composition here!
-        n_pairs = len(list_pairs)
-        n_sub = -(-n_pairs // n_distribute)
+        # Split the tasks
+        list_pairs = self.list_up_pairs()
+        n_sub = -(-len(list_pairs) // n_distribute)
         list_pairs_sub = [list_pairs[i * n_sub:(i + 1) * n_sub - 1]
                           for i in range(n_distribute)]
+
+        # Prepare data for each distributed job and submit them
         save_pickle(self, "overlap_obj.pkl")
         n_digit = int(np.log10(n_distribute) + 1)
         for i, lp in enumerate(list_pairs_sub):
@@ -330,26 +319,21 @@ class Overlap:
             save_pickle(lp, f"list_pairs.{index}.pkl")
             script_fname = f"ava_pair.sge.{index}"
             with open(script_fname, 'w') as f:
-                script = ' '.join([f"run_ava_sub.py",
-                                   f"-n {n_core}",
-                                   f"overlap_obj.pkl",
-                                   f"list_pairs.{index}.pkl",
-                                   f"overlaps.{index}.pkl"])
-                script = sge_nize(script,
-                                  job_name="run_ava_sub",
-                                  n_core=n_core,
-                                  wait=False)
-                f.write(script)
+                f.write(sge_nize(' '.join([f"run_ava_sub.py",
+                                           f"-n {n_core}",
+                                           f"overlap_obj.pkl",
+                                           f"list_pairs.{index}.pkl",
+                                           f"overlaps.{index}.pkl"]),
+                                 job_name="run_ava_sub",
+                                 n_core=n_core,
+                                 wait=False))
             run_command(f"qsub {script_fname}")
 
     def _ava_read_alignment(self, list_pairs, n_core):
-        n_pairs = len(list_pairs)
-        n_sub = -(-n_pairs // n_core)
+        n_sub = -(-len(list_pairs) // n_core)
         list_pairs_sub = [(list_pairs[i * n_sub:(i + 1) * n_sub - 1],
                            self.read_dfs,
-                           self.comps,
                            self.varvec_colname,
-                           self.th_n_shared_units,
                            self.th_mean_score,
                            self.th_ovlp_len)
                           for i in range(n_core)]
