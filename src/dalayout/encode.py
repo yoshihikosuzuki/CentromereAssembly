@@ -114,14 +114,14 @@ def encode_reads(repr_units, reads, peaks, n_core):
                           .reset_index(drop=True)
 
 
-def cut_unit_from_read(reads, encoding, homopolymer_compression=True):   # TODO: parameterize HC
+def cut_unit_from_read(reads, encoding, hc=True):   # TODO: parameterize HC
     """
     Cut the unit sequence from a read, considering the strand.
     <encoding> must be a single line in <encodings>.
     """
 
     s = reads.loc[encoding["read_id"]]["sequence"][encoding["start"]:encoding["end"]]
-    if homopolymer_compression:
+    if hc:
         s = homopolymer_compression(s)
     return s if encoding["strand"] == 0 else revcomp(s)
 
