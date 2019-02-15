@@ -14,20 +14,13 @@ from BITS.utils import run_command, sge_nize, save_pickle, make_line
 plt.style.use('ggplot')
 
 
-def to_unit_type(s, strand):
-    ret = list(s[["peak_id", "repr_id", "strand", "type"]])
-    if strand == 1:
-        ret[2] = strand - ret[2]
-    return ret
-
-
-def plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path):
+def plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path):
     # NOTE: default heatmap is [x (on y-axis) * y (on x-axis)] for a distance matrix [x * y],
     #       so transpose the matrix.
     
     # Score matrix
     trace1 = go.Heatmap(z=score_mat.T,
-                       text=np.array([[f"{ri}: {to_unit_type(read_df_i.iloc[ri], 0)} vs {ci}: {to_unit_type(read_df_j.iloc[ci], strand)}<br>%sim={c:.2}"
+                       text=np.array([[f"{ri}: {read_sig_i[ri][:4]} vs {ci}: {read_sig_j[ci][:4]}<br>%sim={c:.2}"
                                        for ci, c in enumerate(r)]
                                       for ri, r in enumerate(score_mat)]).T,
                        hoverinfo="text",
@@ -40,7 +33,7 @@ def plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path):
 
     trace2 = go.Scatter(x=[x[0] for x in path],
                         y=[x[1] for x in path],
-                        text=[f"{x[0]}: {to_unit_type(read_df_i.iloc[x[0]], 0)} vs {x[1]}: {to_unit_type(read_df_j.iloc[x[1]], strand)}<br>%sim={score_mat[x[0]][x[1]]:.2}"
+                        text=[f"{x[0]}: {read_sig_i[x[0]][:4]} vs {x[1]}: {read_sig_j[x[1]][:4]}<br>%sim={score_mat[x[0]][x[1]]:.2}"
                               for x in path],
                         hoverinfo="text",
                         name="optimal path")
@@ -63,7 +56,7 @@ def plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path):
     
     # DP matrix
     trace3 = go.Heatmap(z=dp.T,
-                       text=np.array([[f"{ri - 1}: {to_unit_type(read_df_i.iloc[ri - 1], 0)} vs {ci - 1}: {to_unit_type(read_df_j.iloc[ci - 1], strand)}<br>%sim={c:.2}"
+                       text=np.array([[f"{ri - 1}: {read_sig_i[ri - 1][:4]} vs {ci - 1}: {read_sig_j[ci - 1][:4]}<br>%sim={c:.2}"
                                        if ri * ci != 0 else "0"
                                        for ci, c in enumerate(r)]
                                       for ri, r in enumerate(dp)]).T,
@@ -75,7 +68,7 @@ def plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path):
 
     trace4 = go.Scatter(x=[x[0] + 1 for x in path],
                         y=[x[1] + 1 for x in path],
-                        text=[f"{x[0]}: {to_unit_type(read_df_i.iloc[x[0]], 0)} vs {x[1]}: {to_unit_type(read_df_j.iloc[x[1]], strand)}<br>%sim={dp[x[0] + 1][x[1] + 1]:.2}"
+                        text=[f"{x[0]}: {read_sig_i[x[0]][:4]} vs {x[1]}: {read_sig_j[x[1]][:4]}<br>%sim={dp[x[0] + 1][x[1] + 1]:.2}"
                               for x in path],
                         hoverinfo="text",
                         name="optimal path")
@@ -97,24 +90,15 @@ def plot_alignment_mat(read_df_i, read_df_j, strand, score_mat, dp, path):
     py.iplot(go.Figure(data=[trace3, trace4], layout=layout2))
 
 
-def calc_score_mat(read_df_i, read_df_j, strand, varvec_colname, match_th):
-    sig_i = list(read_df_i.apply(lambda df: ((df["peak_id"],
-                                              df["strand"],
-                                              df["repr_id"]),
-                                             0 if df["type"] == "complete" else 1),
-                                 axis=1))
-    sig_j = list(read_df_j.apply(lambda df: ((df["peak_id"],
-                                              df["strand"] if strand == 0 else 1 - df["strand"],
-                                              df["repr_id"]),
-                                             0 if df["type"] == "complete" else 1),
-                                 axis=1))
-    vv_i = list(read_df_i[varvec_colname])
-    vv_j = list(read_df_j[varvec_colname])
-    return np.array([[0 if sig_i[i][0] != sig_j[j][0]
-                      else match_th if sig_i[i][1] > 0 or sig_j[j][1] > 0   # TODO: we should distinguish between noisy and boundary/deviating?
-                      else 1. - float(np.count_nonzero(vv_i[i] != vv_j[j])) / vv_i[i].shape[0]
-                      for j in range(read_df_j.shape[0])]
-                     for i in range(read_df_i.shape[0])])
+def calc_score_mat(read_sig_i, read_sig_j, match_th):
+    return np.array([[0 if (read_sig_i[i][0] != read_sig_j[j][0]
+                            or read_sig_i[i][2] != read_sig_j[j][2])
+                      else match_th if (read_sig_i[i][3] != "complete"
+                                        or read_sig_j[j][3] != "complete")
+                      else 0 if read_sig_i[i][1] != read_sig_j[j][1]
+                      else 1. - float(np.count_nonzero(read_sig_i[i][4] != read_sig_j[j][4])) / read_sig_i[i][4].shape[0]   # TODO: count only 1-1 matches
+                      for j in range(len(read_sig_j))]
+                     for i in range(len(read_sig_i))])
 
 
 def calc_alignment(score_mat, match_th, indel_penalty):
@@ -154,46 +138,61 @@ def calc_alignment(score_mat, match_th, indel_penalty):
     return (dp, path, score)
 
 
-def _svs_read_alignment(read_df_i,
-                        read_df_j,
-                        strand,
-                        varvec_colname,
+def _svs_read_alignment(read_sig_i,
+                        read_sig_j,
                         match_th=0.7,
                         indel_penalty=0.2,
                         plot=False):
+    """
+    Perform encoded read vs encoded read alignment.
+    """
 
     # Calculate match score for every unit pair between read_i and read_j
-    score_mat = calc_score_mat(read_df_i,
-                               read_df_j if strand == 0 else read_df_j[::-1],
-                               strand,
-                               varvec_colname,
-                               match_th)
+    score_mat = calc_score_mat(read_sig_i, read_sig_j, match_th)
 
     # Take alignment by solving a DP which intermediates between NW and SW
     dp, path, score = calc_alignment(score_mat, match_th, indel_penalty)
     mean_score = score / len(path)
 
-    n_unit_i, n_unit_j = read_df_i.shape[0], read_df_j.shape[0]
+    if plot:
+        plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path)
+
+    return (mean_score, path)
+
+
+def svs_read_alignment(read_i,
+                       read_j,
+                       strand,
+                       read_sig_i,
+                       read_sig_j,
+                       th_mean_score,
+                       th_ovlp_len):
+
+    mean_score, path = _svs_read_alignment(read_sig_i, read_sig_j)
+    if mean_score < th_mean_score:   # Be careful that score depends on <match_th> and <indel_penalty>
+        return None
+
+    #logger.debug(f"{read_i} vs {read_j}({strand})")
+    overlap_len = sum([max(read_sig_i[i][7], read_sig_j[j][7]) for i, j in path])   # in bp
+    if overlap_len < th_ovlp_len:
+        return None
+
+    n_unit_i, n_unit_j = len(read_sig_i), len(read_sig_j)
     start_unit_i, start_unit_j = path[0]
     end_unit_i, end_unit_j = path[-1]
+
+    start_bp_i, end_bp_i = read_sig_i[start_unit_i][5], read_sig_i[end_unit_i][6]
+    start_bp_j = read_sig_j[start_unit_j if strand == 0 else end_unit_j][5]
+    end_bp_j = read_sig_j[end_unit_j if strand == 0 else start_unit_j][6]
+    
     if strand == 1:
         start_unit_j, end_unit_j = n_unit_j - 1 - end_unit_j, n_unit_j - 1 - start_unit_j
-    start_bp_i, start_bp_j = read_df_i.iloc[start_unit_i]["start"], read_df_j.iloc[start_unit_j]["start"]
-    end_bp_i, end_bp_j = read_df_i.iloc[end_unit_i]["end"], read_df_j.iloc[end_unit_j]["end"]
 
-    alignment_bp_i = end_bp_i - start_bp_i
-    alignment_bp_j = end_bp_j - start_bp_j
-    overlap_len = sum([max(read_df_i.iloc[i]["length"], read_df_j.iloc[j]["length"]) for i, j in path])
-
-    if plot:
-        plot_alignment_mat(read_df_i,
-                           read_df_j if strand == 0 else read_df_j[::-1],
-                           strand,
-                           score_mat,
-                           dp,
-                           path)
-
-    return [strand,
+    # TODO: add read_len_i and read_len_j when considering unique regions
+    # TODO: add overlap type
+    return [read_i,
+            read_j,
+            strand,
             start_unit_i,
             end_unit_i,
             n_unit_i,
@@ -202,44 +201,23 @@ def _svs_read_alignment(read_df_i,
             n_unit_j,
             start_bp_i,
             end_bp_i,
-            # TODO: read_len_i
             start_bp_j,
             end_bp_j,
-            # TODO: read_len_j
-            score,
-            mean_score,
-            alignment_bp_i,
-            alignment_bp_j,
             overlap_len,
+            mean_score,
             path]
 
 
-def svs_read_alignment(read_i,
-                       read_j,
-                       strand,
-                       read_df_i,
-                       read_df_j,
-                       varvec_colname,
-                       th_mean_score,
-                       th_ovlp_len):
-
-    overlap = _svs_read_alignment(read_df_i, read_df_j, strand, varvec_colname)
-    return ([read_i, read_j] + overlap if overlap[12] >= th_mean_score and overlap[15] >= th_ovlp_len
-            else None)
-
-
 def svs_read_alignment_mult(list_pairs,
-                            read_dfs,
-                            varvec_colname,
+                            read_sigs,
                             th_mean_score,
                             th_ovlp_len):
 
     return [svs_read_alignment(read_i,
                                read_j,
                                strand,
-                               read_dfs[read_i],
-                               read_dfs[read_j],
-                               varvec_colname,
+                               read_sigs[(read_i, 0)],
+                               read_sigs[(read_j, strand)],
                                th_mean_score,
                                th_ovlp_len)
             for read_i, read_j, strand in list_pairs]
@@ -253,28 +231,51 @@ class Overlap:
     th_mean_score: float = 0.01
     th_ovlp_len: int = 1000   # in bp
 
-    read_ids: List[int] = field(init=False)
-    read_dfs: dict = field(init=False)
-    comps: dict = field(init=False)
+    read_sigs: dict = field(init=False)
+    read_comps: dict = field(init=False)
 
     def __post_init__(self, encodings):
-        # Encodings DataFrame for each read
-        self.read_dfs = dict(tuple(encodings.groupby("read_id")))
+        gb = encodings.groupby("read_id")
+
+        # To quickly iterate over the units in a read during alignment, convert necessary data in encodings
+        # into a list for each read and for each strand
+        self.read_sigs = {(read_id, 0): list(df.apply(lambda df: (df["peak_id"],
+                                                                  df["repr_id"],
+                                                                  df["strand"],
+                                                                  df["type"],
+                                                                  df[self.varvec_colname],
+                                                                  df["start"],
+                                                                  df["end"],
+                                                                  df["length"]),
+                                                      axis=1))
+                          for read_id, df in gb}
+        self.read_sigs.update({(k[0], 1): [(x[0],
+                                            x[1],
+                                            (x[2] + 1) % 2,   # revcomp
+                                            x[3],
+                                            x[4],
+                                            x[5],
+                                            x[6],
+                                            x[7])   # TODO: can we convert start/end positions here?
+                                           for x in reversed(v)]
+                               for k, v in self.read_sigs.items()})
 
         # Composition of representative units for each read and for each strand
-        self.comps = {(read_id, 0): Counter(dict(df.groupby(["peak_id", "repr_id", "strand"]).size()))
-                      for read_id, df in self.read_dfs.items()}
-        self.comps.update({(key[0], 1): Counter({(k[0], k[1], (k[2] + 1) % 2): v
-                                                 for k, v in value.items()})
-                           for key, value in self.comps.items()})
+        # Used for initial filtering of alignment candidate
+        self.read_comps = {(read_id, 0): Counter(dict(df.groupby(["peak_id",
+                                                                  "repr_id",
+                                                                  "strand"])
+                                                      .size()))
+                           for read_id, df in gb}
+        self.read_comps.update({(key[0], 1): Counter({(k[0],
+                                                       k[1],
+                                                       (k[2] + 1) % 2): v
+                                                      for k, v in value.items()})
+                                for key, value in self.read_comps.items()})
 
     def svs_read_alignment(self, read_i, read_j, strand, match_th=0.7, indel_penalty=0.2, plot=False):
-        return _svs_read_alignment(read_i,
-                                   read_j,
-                                   strand,
-                                   self.read_dfs[read_i],
-                                   self.read_dfs[read_j],
-                                   self.varvec_colname,
+        return _svs_read_alignment(self.read_sigs[(read_i, 0)],
+                                   self.read_sigs[(read_j, strand)],
                                    match_th,
                                    indel_penalty,
                                    plot)
@@ -282,16 +283,17 @@ class Overlap:
     def list_up_pairs(self):
         """
         List up pairs of reads whose alignment will be taken.
+        Only pairs are filtered by the composition of representative units in reads.
         """
 
-        read_ids = sorted(self.read_dfs.keys())
+        read_ids = sorted({x[0] for x in self.read_comps.keys()})
         return [(read_i, read_j, strand)
                 for i, read_i in enumerate(read_ids)
                 for read_j in read_ids[i + 1:]
                 for strand in [0, 1]
-                if (sum((self.comps[(read_i, 0)]
-                         & self.comps[(read_j, strand)]).values())
-                    >= self.th_n_shared_units)]   # filter by composition of representative units
+                if (sum((self.read_comps[(read_i, 0)]
+                         & self.read_comps[(read_j, strand)]).values())
+                    >= self.th_n_shared_units)]
 
     def ava_read_alignment(self, n_core):
         """
@@ -332,8 +334,7 @@ class Overlap:
     def _ava_read_alignment(self, list_pairs, n_core):
         n_sub = -(-len(list_pairs) // n_core)
         list_pairs_sub = [(list_pairs[i * n_sub:(i + 1) * n_sub - 1],
-                           self.read_dfs,
-                           self.varvec_colname,
+                           self.read_sigs,
                            self.th_mean_score,
                            self.th_ovlp_len)
                           for i in range(n_core)]
@@ -362,11 +363,8 @@ class Overlap:
                                                         "i_end_bp",
                                                         "j_start_bp",
                                                         "j_end_bp",
-                                                        "score",
-                                                        "mean_score",
-                                                        "i_alignment_bp",
-                                                        "j_alignment_bp",
                                                         "overlap_len",
+                                                        "mean_score",
                                                         "path")) \
                                     .sort_values(by="strand") \
                                     .sort_values(by="read_j", kind="mergesort") \
@@ -378,11 +376,11 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=3000):
     # NOTE: Because igraph prefers static graph construction, first list the vertices and edges up.
     nodes, edges = set(), set()
     for i, overlap in overlaps.iterrows():
-        f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, f_bb, f_be, g_bb, g_be, score, mean_score, f_bl, g_bl, ovlp_len, path = overlap
+        f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, f_bb, f_be, g_bb, g_be, ovlp_len, mean_score, path = overlap
         if mean_score < th_mean_score or ovlp_len < th_overlap_len:
             continue
 
-        if strand == "r":  # reversed alignment, swapping the begin and end coordinates
+        if strand == 1:  # reversed alignment, swapping the begin and end coordinates
             g_b, g_e = g_e, g_b
 
         # build the string graph edges for each overlap
