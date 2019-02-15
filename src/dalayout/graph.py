@@ -368,7 +368,7 @@ class Overlap:
                                     .reset_index(drop=True)
 
 
-def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=3000):
+def construct_string_graph(overlaps, reads, th_mean_score=0.0, th_overlap_len=3000):
     # NOTE: Because igraph prefers static graph construction, first list the vertices and edges up.
     nodes, edges = set(), set()
     for i, overlap in overlaps.iterrows():
@@ -378,6 +378,8 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=3000):
 
         if strand == 1:  # reversed alignment, swapping the begin and end coordinates
             g_b, g_e = g_e, g_b
+
+        f_bl, g_bl = reads.loc[f_id, "length"], reads.loc[g_id, "length"]
 
         # build the string graph edges for each overlap
         if f_b > 3:
@@ -394,8 +396,8 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=3000):
                               "%s:B" % f_id,
                               "%s:E" % f_id,
                               "%s:E" % g_id])
-                edges.update([("%s:B" % g_id, "%s:B" % f_id),
-                              ("%s:E" % f_id, "%s:E" % g_id)])
+                edges.update([("%s:B" % g_id, "%s:B" % f_id, f_bb),
+                              ("%s:E" % f_id, "%s:E" % g_id, g_bl - g_be)])
             else:
                 """
                      f.B         f.E
@@ -409,8 +411,8 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=3000):
                               "%s:B" % f_id,
                               "%s:E" % f_id,
                               "%s:B" % g_id])
-                edges.update([("%s:E" % g_id, "%s:B" % f_id),
-                              ("%s:E" % f_id, "%s:B" % g_id)])
+                edges.update([("%s:E" % g_id, "%s:B" % f_id, f_bb),
+                              ("%s:E" % f_id, "%s:B" % g_id, g_be)])
         else:
             if g_b < g_e:
                 """
@@ -425,8 +427,8 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=3000):
                               "%s:B" % g_id,
                               "%s:E" % g_id,
                               "%s:E" % f_id])
-                edges.update([("%s:B" % f_id, "%s:B" % g_id),
-                              ("%s:E" % g_id, "%s:E" % f_id)])
+                edges.update([("%s:B" % f_id, "%s:B" % g_id, g_bb),
+                              ("%s:E" % g_id, "%s:E" % f_id, f_bl - f_be)])
             else:
                 """
                                     f.B         f.E
@@ -440,69 +442,58 @@ def construct_string_graph(overlaps, th_mean_score=0.0, th_overlap_len=3000):
                               "%s:E" % g_id,
                               "%s:B" % g_id,
                               "%s:E" % f_id])
-                edges.update([("%s:B" % f_id, "%s:E" % g_id),
-                              ("%s:B" % g_id, "%s:E" % f_id)])
+                edges.update([("%s:B" % f_id, "%s:E" % g_id, g_bl - g_bb),
+                              ("%s:B" % g_id, "%s:E" % f_id, f_bl - f_be)])
 
-    return ig.Graph.DictList(edges=(dict(source=s, target=t) for s, t in edges),
+    return ig.Graph.DictList(edges=(dict(source=s, target=t, length=l) for s, t, l in edges),
                              vertices=None,
                              directed=True)
 
 
 def transitive_reduction(sg):
-    n_mark = self.n_mark
-    e_reduce = self.e_reduce
-    FUZZ = 500
-    for n in self.nodes:
-        n_mark[n] = "vacant"
+    v_mark = ["vacant" for v in sg.vs]
+    e_reduce = {e.tuple: False for e in sg.es}
+    FUZZ = 10   # TODO: in bp; assuming no unit shifts
 
-    for (n_name, node) in viewitems(self.nodes):
-        out_edges = node.out_edges
-        if len(out_edges) == 0:
+    for v in sg.vs:
+        if v.outdegree() == 0:
             continue
 
-        out_edges.sort(key=lambda x: x.attr["length"])
+        oes = sorted(sg.es.select(_source=v.index), key=lambda x: x["length"])
+        longest = oes[-1]["length"] + FUZZ
+        for oe in oes:
+            v_mark[oe.target] = "inplay"
 
-        for e in out_edges:
-            w = e.out_node
-            n_mark[w.name] = "inplay"
+        for oe in oes:
+            if v_mark[oe.target] == "inplay":
+                ooes = sorted(sg.es.select(_source=oe.target), key=lambda x: x["length"])
+                for ooe in ooes:
+                    if oe["length"] + ooe["length"] <= longest and v_mark[ooe.target] == "inplay":
+                        v_mark[ooe.target] = "eliminated"
 
-        max_len = out_edges[-1].attr["length"]
+        for oe in oes:
+            ooes = sorted(sg.es.select(_source=oe.target), key=lambda x: x["length"])
+            if len(ooes) > 1:
+                shortest = ooes[0].target
+                if v_mark[shortest] == "inplay":
+                    v_mark[shortest] == "eliminated"
+            for ooe in ooes:
+                if ooe["length"] < FUZZ and v_mark[ooe.target] == "inplay":
+                    v_mark[ooe.target] = "eliminated"
 
-        max_len += FUZZ
+        for oe in oes:
+            if v_mark[oe.target] == "eliminated":
+                e_reduce[oe.tuple] = True   # TODO: confirm revcomp edges will be also removed in the same way
+            v_mark[oe.target] = "vacant"
 
-        for e in out_edges:
-            e_len = e.attr["length"]
-            w = e.out_node
-            if n_mark[w.name] == "inplay":
-                w.out_edges.sort(key=lambda x: x.attr["length"])
-                for e2 in w.out_edges:
-                    if e2.attr["length"] + e_len < max_len:
-                        x = e2.out_node
-                        if n_mark[x.name] == "inplay":
-                            n_mark[x.name] = "eliminated"
-
-        for e in out_edges:
-            e_len = e.attr["length"]
-            w = e.out_node
-            w.out_edges.sort(key=lambda x: x.attr["length"])
-            if len(w.out_edges) > 0:
-                x = w.out_edges[0].out_node
-                if n_mark[x.name] == "inplay":
-                    n_mark[x.name] = "eliminated"
-            for e2 in w.out_edges:
-                if e2.attr["length"] < FUZZ:
-                    x = e2.out_node
-                    if n_mark[x.name] == "inplay":
-                        n_mark[x.name] = "eliminated"
-
-        for out_edge in out_edges:
-            v = out_edge.in_node
-            w = out_edge.out_node
-            if n_mark[w.name] == "eliminated":
-                e_reduce[(v.name, w.name)] = True
-                v_name, w_name = reverse_end(w.name), reverse_end(v.name)
-                e_reduce[(v_name, w_name)] = True
-            n_mark[w.name] = "vacant"
+    # Re-construct a graph
+    return ig.Graph.DictList(edges=(dict(source=e["source"],
+                                         target=e["target"],
+                                         length=e["length"])
+                                    for e in sg.es
+                                    if not e_reduce[e.tuple]),
+                             vertices=None,
+                             directed=True)
 
 
 def draw_graph(sg):
