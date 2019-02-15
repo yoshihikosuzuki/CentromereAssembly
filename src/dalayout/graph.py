@@ -210,6 +210,8 @@ def svs_read_alignment(read_i,
 
 def svs_read_alignment_mult(list_pairs,
                             read_sigs,
+                            read_comps,
+                            th_n_shared_units,
                             th_mean_score,
                             th_ovlp_len):
 
@@ -220,7 +222,10 @@ def svs_read_alignment_mult(list_pairs,
                                read_sigs[(read_j, strand)],
                                th_mean_score,
                                th_ovlp_len)
-            for read_i, read_j, strand in list_pairs]
+            for read_i, read_j, strand in list_pairs
+            if (sum((read_comps[(read_i, 0)]
+                     & read_comps[(read_j, strand)]).values())
+                >= th_n_shared_units)]   # filter by representative units composition
 
 
 @dataclass(repr=False, eq=False)
@@ -290,10 +295,7 @@ class Overlap:
         return [(read_i, read_j, strand)
                 for i, read_i in enumerate(read_ids)
                 for read_j in read_ids[i + 1:]
-                for strand in [0, 1]
-                if (sum((self.read_comps[(read_i, 0)]
-                         & self.read_comps[(read_j, strand)]).values())
-                    >= self.th_n_shared_units)]
+                for strand in [0, 1]]
 
     def ava_read_alignment(self, n_core):
         """
@@ -335,6 +337,8 @@ class Overlap:
         n_sub = -(-len(list_pairs) // n_core)
         list_pairs_sub = [(list_pairs[i * n_sub:(i + 1) * n_sub - 1],
                            self.read_sigs,
+                           self.read_comps,
+                           self.th_n_shared_units,
                            self.th_mean_score,
                            self.th_ovlp_len)
                           for i in range(n_core)]
