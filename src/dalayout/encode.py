@@ -5,7 +5,7 @@ import pandas as pd
 from multiprocessing import Pool
 from BITS.run import run_edlib, run_consed, consed_to_varmat
 from BITS.utils import print_log
-from BITS.seq import revcomp
+from BITS.seq import revcomp, homopolymer_compression
 import consed
 
 
@@ -114,13 +114,15 @@ def encode_reads(repr_units, reads, peaks, n_core):
                           .reset_index(drop=True)
 
 
-def cut_unit_from_read(reads, encoding):
+def cut_unit_from_read(reads, encoding, homopolymer_compression=True):   # TODO: parameterize HC
     """
     Cut the unit sequence from a read, considering the strand.
     <encoding> must be a single line in <encodings>.
     """
 
     s = reads.loc[encoding["read_id"]]["sequence"][encoding["start"]:encoding["end"]]
+    if homopolymer_compression:
+        s = homopolymer_compression(s)
     return s if encoding["strand"] == 0 else revcomp(s)
 
 
