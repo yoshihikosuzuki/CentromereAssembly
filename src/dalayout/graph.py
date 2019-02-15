@@ -267,16 +267,8 @@ class Overlap:
 
         # Composition of representative units for each read and for each strand
         # Used for initial filtering of alignment candidate
-        self.read_comps = {(read_id, 0): Counter(dict(df.groupby(["peak_id",
-                                                                  "repr_id",
-                                                                  "strand"])
-                                                      .size()))
-                           for read_id, df in gb}
-        self.read_comps.update({(key[0], 1): Counter({(k[0],
-                                                       k[1],
-                                                       (k[2] + 1) % 2): v
-                                                      for k, v in value.items()})
-                                for key, value in self.read_comps.items()})
+        self.read_comps = {k: Counter([x[:3] for x in v])
+                           for k, v in self.read_sigs.items()}
 
     def svs_read_alignment(self, read_i, read_j, strand, match_th=0.7, indel_penalty=0.2, plot=False):
         return _svs_read_alignment(self.read_sigs[(read_i, 0)],
