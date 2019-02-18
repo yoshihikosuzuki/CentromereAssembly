@@ -268,6 +268,7 @@ def svs_read_alignment(read_i,
 def svs_read_alignment_mult(list_pairs,
                             read_sigs,
                             read_comps,
+                            reads,
                             th_n_shared_units,
                             th_mean_score,
                             th_ovlp_len):
@@ -277,6 +278,7 @@ def svs_read_alignment_mult(list_pairs,
                                strand,
                                read_sigs[(read_i, 0)],
                                read_sigs[(read_j, strand)],
+                               reads,
                                th_mean_score,
                                th_ovlp_len)
             for read_i, read_j, strand in list_pairs
@@ -287,6 +289,7 @@ def svs_read_alignment_mult(list_pairs,
 
 @dataclass(repr=False, eq=False)
 class Overlap:
+    reads: pd.DataFrame
     encodings: InitVar[pd.DataFrame]
     varvec_colname: str = "var_vec_global0.15"
     th_n_shared_units: int = 10   # TODO: change to bp
@@ -387,6 +390,7 @@ class Overlap:
         list_pairs_sub = [(list_pairs[i * n_sub:(i + 1) * n_sub - 1],
                            self.read_sigs,
                            self.read_comps,
+                           self.reads,
                            self.th_n_shared_units,
                            self.th_mean_score,
                            self.th_ovlp_len)

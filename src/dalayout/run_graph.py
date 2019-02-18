@@ -10,7 +10,9 @@ def main():
     args = load_args()
 
     # Calculate all-vs-all read alignments
-    o = Overlap(load_pickle(args.encodings_fname), varvec_colname=args.varvec_colname)
+    o = Overlap(pd.read_csv(args.reads_fname, sep='\t', index_col=0),
+                load_pickle(args.encodings_fname),
+                varvec_colname=args.varvec_colname)
     o.ava_read_alignment_distribute(args.n_distribute, args.n_core)
 
 
@@ -18,6 +20,13 @@ def load_args():
     import argparse
     parser = argparse.ArgumentParser(
         description=(""))
+
+    parser.add_argument(
+        "-r",
+        "--reads_fname",
+        type=str,
+        default="tr_reads",
+        help=("TR reads. [tr_reads]"))
 
     parser.add_argument(
         "-e",
