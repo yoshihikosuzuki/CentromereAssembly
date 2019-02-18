@@ -414,9 +414,12 @@ class Overlap:
                                                         "j_n_unit",
                                                         "i_start_bp",
                                                         "i_end_bp",
+                                                        "i_len_bp",
                                                         "j_start_bp",
                                                         "j_end_bp",
+                                                        "j_len_bp",
                                                         "overlap_len",
+                                                        "overlap_type",
                                                         "mean_score",
                                                         "path")) \
                                     .sort_values(by="strand") \
