@@ -165,6 +165,7 @@ def svs_read_alignment(read_i,
                        strand,
                        read_sig_i,
                        read_sig_j,
+                       reads,
                        th_mean_score,
                        th_ovlp_len):
 
@@ -176,6 +177,8 @@ def svs_read_alignment(read_i,
     overlap_len = sum([max(read_sig_i[i][7], read_sig_j[j][7]) for i, j in path])   # in bp
     if overlap_len < th_ovlp_len:
         return None
+    # TODO: overlap length not by sum of the unit lengths but end_bp - start_bp
+    # TODO: check consistency of end_bp - start-bp between read i and j
 
     n_unit_i, n_unit_j = len(read_sig_i), len(read_sig_j)
     start_unit_i, start_unit_j = path[0]
@@ -188,8 +191,59 @@ def svs_read_alignment(read_i,
     if strand == 1:
         start_unit_j, end_unit_j = n_unit_j - 1 - end_unit_j, n_unit_j - 1 - start_unit_j
 
-    # TODO: add read_len_i and read_len_j when considering unique regions
-    # TODO: add overlap type
+    read_len_i, read_len_j = reads.loc[read_i, "length"], reads.loc[read_j, "length"]
+    if start_unit_i > 3:
+        if strand == 0:
+            """
+                 f.B         f.E
+              f  ----------->
+              g         ------------->
+                        g.B           g.E
+            """
+            if n_unit_j - end_unit_j - 1 < 3:
+                overlap_type = "contains"
+            else:
+                overlap_type = "suffix-prefix"
+        else:
+            """
+                 f.B         f.E
+              f  ----------->
+              g         <-------------
+                        g.E           g.B
+            """
+            if start_unit_j < 3:
+                overlap_type = "contains"
+            else:
+                overlap_type = "suffix-suffix"
+    else:
+        if n_unit_i - end_unit_i - 1 < 3:
+            overlap_type = "contained"
+        else:
+            if strand == 0:
+                """
+                                    f.B         f.E
+                  f                 ----------->
+                  g         ------------->
+                            g.B           g.E
+                """
+                if start_unit_j < 3:
+                    overlap_type = "contains"
+                else:
+                    overlap_type = "prefix-suffix"
+            else:
+                """
+                                    f.B         f.E
+                  f                 ----------->
+                  g         <-------------
+                            g.E           g.B
+                """
+                if n_unit_j - end_unit_j - 1 < 3:
+                    overlap_type = "contains"
+                else:
+                    overlap_type = "prefix-prefix"
+    # TODO: check consistency of overlap type in units and bps between read i and read j
+    # (i.e. is the overlap really dovetail even with bp coordinate system?)
+
     return [read_i,
             read_j,
             strand,
@@ -201,9 +255,12 @@ def svs_read_alignment(read_i,
             n_unit_j,
             start_bp_i,
             end_bp_i,
+            read_len_i,
             start_bp_j,
             end_bp_j,
+            read_len_j,
             overlap_len,
+            overlap_type,
             mean_score,
             path]
 
@@ -233,8 +290,8 @@ class Overlap:
     encodings: InitVar[pd.DataFrame]
     varvec_colname: str = "var_vec_global0.15"
     th_n_shared_units: int = 10   # TODO: change to bp
-    th_mean_score: float = 0.01
-    th_ovlp_len: int = 1000   # in bp
+    th_mean_score: float = 0.04
+    th_ovlp_len: int = 3000   # in bp
 
     read_sigs: dict = field(init=False)
     read_comps: dict = field(init=False)
@@ -368,82 +425,45 @@ class Overlap:
                                     .reset_index(drop=True)
 
 
-def construct_string_graph(overlaps, reads, th_mean_score=0.0, th_overlap_len=3000):
+def construct_string_graph(overlaps, reads, th_mean_score=0.04, th_overlap_len=3000):
     # NOTE: Because igraph prefers static graph construction, first list the vertices and edges up.
     nodes, edges = set(), set()
     for i, overlap in overlaps.iterrows():
-        f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, f_bb, f_be, g_bb, g_be, ovlp_len, mean_score, path = overlap
+        f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, f_bb, f_be, f_bl, g_bb, g_be, g_bl, ovlp_len, ovlp_type, mean_score, path = overlap
+
         if mean_score < th_mean_score or ovlp_len < th_overlap_len:
             continue
 
-        if strand == 1:  # reversed alignment, swapping the begin and end coordinates
-            g_b, g_e = g_e, g_b
-
-        f_bl, g_bl = reads.loc[f_id, "length"], reads.loc[g_id, "length"]
-
-        # build the string graph edges for each overlap
-        if f_b > 3:
-            if g_b < g_e:
-                """
-                     f.B         f.E
-                  f  ----------->
-                  g         ------------->
-                            g.B           g.E
-                """
-                if f_b < 3 or g_l - g_e < 3:   # contained
-                    continue
-                nodes.update(["%s:B" % g_id,
-                              "%s:B" % f_id,
-                              "%s:E" % f_id,
-                              "%s:E" % g_id])
-                edges.update([("%s:B" % g_id, "%s:B" % f_id, f_bb),
-                              ("%s:E" % f_id, "%s:E" % g_id, g_bl - g_be)])
-            else:
-                """
-                     f.B         f.E
-                  f  ----------->
-                  g         <-------------
-                            g.E           g.B
-                """
-                if f_b < 3 or g_e < 3:
-                    continue
-                nodes.update(["%s:E" % g_id,
-                              "%s:B" % f_id,
-                              "%s:E" % f_id,
-                              "%s:B" % g_id])
-                edges.update([("%s:E" % g_id, "%s:B" % f_id, f_bb),
-                              ("%s:E" % f_id, "%s:B" % g_id, g_be)])
-        else:
-            if g_b < g_e:
-                """
-                                    f.B         f.E
-                  f                 ----------->
-                  g         ------------->
-                            g.B           g.E
-                """
-                if g_b < 3 or f_l - f_e < 3:
-                    continue
-                nodes.update(["%s:B" % f_id,
-                              "%s:B" % g_id,
-                              "%s:E" % g_id,
-                              "%s:E" % f_id])
-                edges.update([("%s:B" % f_id, "%s:B" % g_id, g_bb),
-                              ("%s:E" % g_id, "%s:E" % f_id, f_bl - f_be)])
-            else:
-                """
-                                    f.B         f.E
-                  f                 ----------->
-                  g         <-------------
-                            g.E           g.B
-                """
-                if g_l - g_e < 3 or f_l - f_e < 3:
-                    continue
-                nodes.update(["%s:B" % f_id,
-                              "%s:E" % g_id,
-                              "%s:B" % g_id,
-                              "%s:E" % f_id])
-                edges.update([("%s:B" % f_id, "%s:E" % g_id, g_bl - g_bb),
-                              ("%s:B" % g_id, "%s:E" % f_id, f_bl - f_be)])
+        if ovlp_type in ["contains", "contained"]:
+            continue
+        elif ovlp_type == "suffix-prefix":
+            nodes.update(["%s:B" % g_id,
+                          "%s:B" % f_id,
+                          "%s:E" % f_id,
+                          "%s:E" % g_id])
+            edges.update([("%s:B" % g_id, "%s:B" % f_id, f_bb),
+                          ("%s:E" % f_id, "%s:E" % g_id, g_bl - g_be)])
+        elif ovlp_type == "suffix-suffix":
+            nodes.update(["%s:E" % g_id,
+                          "%s:B" % f_id,
+                          "%s:E" % f_id,
+                          "%s:B" % g_id])
+            edges.update([("%s:E" % g_id, "%s:B" % f_id, f_bb),
+                          ("%s:E" % f_id, "%s:B" % g_id, g_bb)])
+        elif ovlp_type == "prefix-suffix":
+            nodes.update(["%s:B" % f_id,
+                          "%s:B" % g_id,
+                          "%s:E" % g_id,
+                          "%s:E" % f_id])
+            edges.update([("%s:B" % f_id, "%s:B" % g_id, g_bb),
+                          ("%s:E" % g_id, "%s:E" % f_id, f_bl - f_be)])
+        else:   # prefix-prefix
+            nodes.update(["%s:B" % f_id,
+                          "%s:E" % g_id,
+                          "%s:B" % g_id,
+                          "%s:E" % f_id])
+            edges.update([("%s:B" % f_id, "%s:E" % g_id, g_bl - g_be),
+                          ("%s:B" % g_id, "%s:E" % f_id, f_bl - f_be)])
 
     return ig.Graph.DictList(edges=(dict(source=s, target=t, length=l) for s, t, l in edges),
                              vertices=None,
