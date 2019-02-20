@@ -9,8 +9,6 @@ import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.utils import make_line, interval_len
 
-plt.style.use('ggplot')
-
 
 class Plotter():
     """

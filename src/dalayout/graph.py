@@ -1,4 +1,3 @@
-from typing import List
 from dataclasses import dataclass, field, InitVar
 from multiprocessing import Pool
 from logzero import logger
@@ -6,12 +5,9 @@ import numpy as np
 import pandas as pd
 import igraph as ig
 from collections import Counter
-import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.utils import run_command, sge_nize, save_pickle, make_line
-
-plt.style.use('ggplot')
 
 
 def plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path):
@@ -432,7 +428,7 @@ class Overlap:
                                     .reset_index(drop=True)
 
 
-def construct_string_graph(overlaps, reads, th_mean_score=0.04, th_overlap_len=3000):
+def construct_string_graph(overlaps, th_mean_score=0.04, th_overlap_len=3000):
     # NOTE: Because igraph prefers static graph construction, first list the vertices and edges up.
     nodes, edges = set(), set()
     for i, overlap in overlaps.iterrows():
