@@ -71,7 +71,7 @@ def main():
                             job_name="finalize_datruf",
                             n_core=1,
                             mem_per_cpu=40000,
-                            depend='afterany:' + ':'.join(jids),
+                            depend='afterany:' + ','.join(jids),
                             wait=True)
     with open(script_fname, 'w') as f:
         f.write(script)
