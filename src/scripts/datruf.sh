@@ -8,6 +8,7 @@ fi
 # Load config file
 . $1
 
+mkdir -p datruf
 if ${USE_JOB_SCHEDULER}; then
     datruf_run_distribute.py -n ${N_CORE_DATRUF} \
                              -p ${N_DISTRIBUTE} \
@@ -22,5 +23,5 @@ else
                   $([ -n "${DEBUG_MODE}" ] && echo "-D") \
                   ${DB_PREFIX}.db \
                   TAN.${DB_PREFIX}.las \
-                  > datruf.log 2>&1
+                  > datruf/datruf.log 2>&1
 fi

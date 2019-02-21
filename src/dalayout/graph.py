@@ -7,7 +7,7 @@ import igraph as ig
 from collections import Counter
 import plotly.offline as py
 import plotly.graph_objs as go
-from BITS.utils import run_command, sge_nize, save_pickle, make_line
+from BITS.utils import run_command, submit_job, save_pickle, make_line
 
 
 def plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path):
@@ -373,22 +373,39 @@ class Overlap:
                           for i in range(n_distribute)]
 
         # Prepare data for each distributed job and submit them
-        save_pickle(self, "overlap_obj.pkl")
         n_digit = int(np.log10(n_distribute) + 1)
+        run_command("mkdir -p dalayout; rm -f dalayout/overlap*")
+        save_pickle(self, "dalayout/overlap_obj.pkl")
+
+        jids = []
         for i, lp in enumerate(list_pairs_sub):
             index = str(i + 1).zfill(n_digit)
-            save_pickle(lp, f"list_pairs.{index}.pkl")
-            script_fname = f"ava_pair.sge.{index}"
-            with open(script_fname, 'w') as f:
-                f.write(sge_nize(' '.join([f"run_ava_sub.py",
-                                           f"-n {n_core}",
-                                           f"overlap_obj.pkl",
-                                           f"list_pairs.{index}.pkl",
-                                           f"overlaps.{index}.pkl"]),
-                                 job_name="run_ava_sub",
-                                 n_core=n_core,
-                                 wait=False))
-            run_command(f"qsub {script_fname}")
+            save_pickle(lp, f"dalayout/list_pairs.{index}.pkl")
+            jids.append(submit_job(' '.join([f"run_ava_sub.py",
+                                             f"-n {n_core}",
+                                             f"dalayout/overlap_obj.pkl",
+                                             f"dalayout/list_pairs.{index}.pkl",
+                                             f"dalayout/overlaps.{index}.pkl"]),
+                                   f"dalayout/ava_pair.sge.{index}",
+                                   "sge",
+                                   "qsub",
+                                   job_name="ava_sub",
+                                   out_log="dalayout/log.stdout",
+                                   err_log="dalayout/log.stderr",
+                                   n_core=n_core,
+                                   wait=False))
+
+        # Merge the results
+        submit_job("dalayout_gather_ava_sub.py -d dalayout",
+                   f"dalayout/gather.sge",
+                   "sge",
+                   "qsub",
+                   job_name="gather_ava_sub",
+                   out_log="dalayout/log.stdout",
+                   err_log="dalayout/log.stderr",
+                   n_core=1,
+                   depend=jids,
+                   wait=True)
 
     def _ava_read_alignment(self, list_pairs, n_core):
         n_sub = -(-len(list_pairs) // n_core)

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from multiprocessing import Pool
 from BITS.run import run_edlib, run_consed, consed_to_varmat
-from BITS.utils import print_log
+from BITS.utils import print_log, run_command
 from BITS.seq import revcomp, homopolymer_compression
 import consed
 
@@ -142,7 +142,7 @@ def cut_unit_from_read(reads, encoding, hc):   # TODO: parameterize HC
 
 
 def _detect_variants(peak_id, repr_id, repr_unit, reads, encoding_df, variant_fraction, hc):
-    units_fname = f"peak_{peak_id}_repr_{repr_id}.raw_units"
+    units_fname = f"consed_out/peak_{peak_id}_repr_{repr_id}.raw_units"
     consed_fname = f"{units_fname}.t{variant_fraction}.consed"
     varmat_fname = f"{consed_fname}.V"
 
@@ -168,7 +168,7 @@ def _detect_variants(peak_id, repr_id, repr_unit, reads, encoding_df, variant_fr
                                     for line in f])),
                          index=encoding_df.index) \
                  .apply(lambda s: np.array(s))
-        # TODO: XXX: CHECK IF [1:-1] IS TRULY CORRESPOING SEQUENTIALLY TO THE UNITS BY LOOKING CONSED'S CODES
+        # TODO: XXX: CHECK IF [1:-1] IS TRULY CORRESPOING SEQUENTIALLY TO THE UNITS BY LOOKING CONSED'S CODE
 
 
 @print_log("variant detection", show_args=False)

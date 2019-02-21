@@ -3,7 +3,7 @@ import logging
 import logzero
 from logzero import logger
 import pandas as pd
-from BITS.utils import load_pickle, save_pickle
+from BITS.utils import load_pickle, save_pickle, run_command
 from .encode import encode_reads, detect_variants
 
 
@@ -26,6 +26,7 @@ def main():
         pd.read_csv("cover_rate", sep='\t', index_col=0)
 
     # Detect global variants for each representative unit class
+    run_command("mkdir -p consed_out")
     detect_variants(repr_units, tr_reads, encodings, args.variant_fraction, args.hc)
     save_pickle(encodings, args.out_pkl_fname)
 
