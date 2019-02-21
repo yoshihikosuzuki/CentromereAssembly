@@ -1,11 +1,10 @@
 import numpy as np
 from logzero import logger
-from BITS.utils import run_command, sge_nize, slurm_nize
+from BITS.utils import run_command, submit_job
+from .run import Runner
 
 
 def main():
-    from .run import Runner
-
     args = load_args()
 
     # Use Runner instance just for some preparation of data
@@ -16,68 +15,50 @@ def main():
     n_digit = int(np.log10(args.n_distribute) + 1)
 
     # Submit scripts each of which runs datruf_run.py
+    logger.info("Scattering jobs. Intermediate files are stored in datruf/")
+    run_command("mkdir -p datruf; rm datruf/*")
     jids = []
     for i in range(args.n_distribute):
         index = str(i + 1).zfill(n_digit)
-        script_fname = f"run_datruf.{args.job_scheduler}.{index}"
+        jids.append(submit_job(' '.join([f"datruf_run.py",
+                                         f"-s {r.start_dbid + i * n_dbid_part}",
+                                         f"-e {r.start_dbid + (i + 1) * n_dbid_part - 1}",
+                                         f"-m datruf/{args.out_main_fname}.{index}",
+                                         f"-u datruf/{args.out_units_fname}.{index}",
+                                         f"{'--only_interval' if args.only_interval else ''}",
+                                         f"{'-D' if args.debug_mode else ''}",
+                                         f"-n {args.n_core}",
+                                         f"{args.db_file}",
+                                         f"{args.las_file}"]),
+                               f"datruf/run_datruf.{args.job_scheduler}.{index}",
+                               args.job_scheduler,
+                               args.submit_job,
+                               job_name="datruf_dist",
+                               out_log="datruf/log.stdout",
+                               err_log="datruf/log.stderr",
+                               n_core=args.n_core,
+                               queue_or_partition=args.queue_or_partition,
+                               time_limit="24:00:00",   # NOTE: only for slurm
+                               mem_limit=40000,   # NOTE: only for slurm
+                               wait=False))
 
-        with open(script_fname, 'w') as f:
-            script = ' '.join([f"datruf_run.py",
-                               f"-s {r.start_dbid + i * n_dbid_part}",
-                               f"-e {r.start_dbid + (i + 1) * n_dbid_part - 1}",
-                               f"-m {args.out_main_fname}.{index}",
-                               f"-u {args.out_units_fname}.{index}",
-                               f"{'--only_interval' if args.only_interval else ''}",
-                               f"{'-D' if args.debug_mode else ''}",
-                               f"-n {args.n_core}",
-                               f"{args.db_file}",
-                               f"{args.las_file}"])
-
-            if args.job_scheduler == "sge":
-                script = sge_nize(script,   # TODO: use * oprater
-                                  job_name="run_datruf",
-                                  n_core=args.n_core,
-                                  wait=False)
-            elif args.job_scheduler == "slurm":
-                script = slurm_nize(script,
-                                    job_name="run_datruf",
-                                    n_core=args.n_core,
-                                    mem_per_cpu=40000,
-                                    wait=False)
-            f.write(script)
-
-        ret = run_command(f"{args.submit_job} {script_fname}")
-        if args.job_scheduler == "sge":
-            jids.append(ret.split()[2])
-        elif args.job_scheduler == "slurm":
-            jids.append(ret.split()[-1])
-
-    # Prepare a script for finalization of the task
-    script_fname = f"finalize_datruf.{args.job_scheduler}"
-    script = '\n'.join([f"cat {args.out_main_fname}.* > {args.out_main_fname}.cat",
-                        f"cat {args.out_units_fname}.* > {args.out_units_fname}.cat",
-                        f"awk -F'\\t' 'BEGIN {{count = 0}} NR == 1 {{print $0}} $1 != \"\" {{printf count; for (i = 2; i <= NF; i++) {{printf \"\\t\" $i}}; print \"\"; count++}}' {args.out_main_fname}.cat > {args.out_main_fname}",
-                        f"awk -F'\\t' 'BEGIN {{count = 0}} NR == 1 {{print $0}} $1 != \"\" {{printf count; for (i = 2; i <= NF; i++) {{printf \"\\t\" $i}}; print \"\"; count++}}' {args.out_units_fname}.cat > {args.out_units_fname}",
-                        f"rm {args.out_units_fname}.*; rm {args.out_main_fname}.*"])
-    
-    if args.job_scheduler == "sge":
-        script = sge_nize(script,
-                          job_name="finalize_datruf",
-                          n_core=1,
-                          depend=','.join(jids),
-                          wait=True)
-    elif args.job_scheduler == "slurm":
-        script = slurm_nize(script,
-                            job_name="finalize_datruf",
-                            n_core=1,
-                            mem_per_cpu=40000,
-                            depend='afterany:' + ','.join(jids),
-                            wait=True)
-    with open(script_fname, 'w') as f:
-        f.write(script)
-
-    run_command(f"{args.submit_job} {script_fname}")
-    #logger.info("Run `$ bash finalize_datruf.sh` after finishing all jobs")
+    # Merge the results
+    logger.info("Waiting for all jobs to be finished...")
+    submit_job('\n'.join([f"cat datruf/{args.out_main_fname}.* > datruf/{args.out_main_fname}.cat",
+                          f"cat datruf/{args.out_units_fname}.* > datruf/{args.out_units_fname}.cat",
+                          f"awk -F'\\t' 'BEGIN {{count = 0}} NR == 1 {{print $0}} $1 != \"\" {{printf count; for (i = 2; i <= NF; i++) {{printf \"\\t\" $i}}; print \"\"; count++}}' datruf/{args.out_main_fname}.cat > {args.out_main_fname}",
+                          f"awk -F'\\t' 'BEGIN {{count = 0}} NR == 1 {{print $0}} $1 != \"\" {{printf count; for (i = 2; i <= NF; i++) {{printf \"\\t\" $i}}; print \"\"; count++}}' datruf/{args.out_units_fname}.cat > {args.out_units_fname}"]),
+               f"datruf/finalize_datruf.{args.job_scheduler}",
+               args.job_scheduler,
+               args.submit_job,
+               job_name="datruf_finalize",
+               out_log="datruf/log.stdout",
+               err_log="datruf/log.stderr",
+               n_core=1,
+               queue_or_partition=args.queue_or_partition,
+               mem_limit=40000,   # NOTE: only for slurm
+               depend=jids,
+               wait=True)
 
 
 def load_args():
@@ -189,6 +170,13 @@ def load_args():
         type=str,
         default="qsub",
         help="Command name to submit a job with the specified scheduler. [qsub]")
+
+    parser.add_argument(
+        "-q",
+        "--queue_or_partition",
+        type=str,
+        default=None,
+        help="Name of queue (SGE) or partition (SLURM) to which jobs are submitted. [None]")
 
     return parser.parse_args()
 
