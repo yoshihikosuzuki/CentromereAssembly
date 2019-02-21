@@ -20,13 +20,13 @@ $ python setup.py install
 
 ## How to run
 
-The simplest way is to use `dacembler.sh` with a config file which can be prepared by modifying `template.config`. You need to specify your environment-specific parameters, the number of cores, etc., in the config file. Once you complete it (here we call it as `config_file`), you can run dacembler by:
+The simplest way is to use `dacembler.sh` with a config file which can be prepared by modifying `config.template` in this repository root. You need to specify your environment-specific parameters, the number of cores, etc., in the config file. Once you complete it (here we call it as `config_file`), you can run dacembler by:
 
 ```bash
 $ dacembler.sh config_file
 ```
 
-Actually `dacembler.sh` calls `datander.sh`, `datruf.sh`, `dacmaster.sh`, and `dalayout.sh` in this order with `config_file`. And they further execute python scripts.
+Actually `dacembler.sh` just calls `datander.sh`, `datruf.sh`, `dacmaster.sh`, and `dalayout.sh` in this order with `config_file`. And they further execute python scripts.
 
 
 ## Overview of the modules
