@@ -153,7 +153,13 @@ def _svs_read_alignment(read_sig_i,
     if plot:
         plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path)
 
-    return (mean_score, path)
+    # Calculate second-best alignment to check slippy alignment
+    for x, y in path:
+        score_mat[x][y] = -np.inf
+    dp_second, path_second, score_second = calc_alignment(score_mat, match_th, indel_penalty)
+    mean_score_second = score_second / len(path_second)
+
+    return (mean_score, path, mean_score_second, path_second)
 
 
 def svs_read_alignment(read_i,
@@ -165,7 +171,7 @@ def svs_read_alignment(read_i,
                        th_mean_score,
                        th_ovlp_len):
 
-    mean_score, path = _svs_read_alignment(read_sig_i, read_sig_j)
+    mean_score, path, mean_score_second, path_second = _svs_read_alignment(read_sig_i, read_sig_j)
     if mean_score < th_mean_score:   # Be careful that score depends on <match_th> and <indel_penalty>
         return None
 
@@ -173,6 +179,7 @@ def svs_read_alignment(read_i,
     overlap_len = sum([max(read_sig_i[i][7], read_sig_j[j][7]) for i, j in path])   # in bp
     if overlap_len < th_ovlp_len:
         return None
+    overlap_len_second = sum([max(read_sig_i[i][7], read_sig_j[j][7]) for i, j in path_second])   # in bp
     # TODO: overlap length not by sum of the unit lengths but end_bp - start_bp
     # TODO: check consistency of end_bp - start-bp between read i and j
 
@@ -258,7 +265,9 @@ def svs_read_alignment(read_i,
             overlap_len,
             overlap_type,
             mean_score,
-            path]
+            path,
+            mean_score_second,
+            overlap_len_second]
 
 
 def svs_read_alignment_mult(list_pairs,
@@ -421,7 +430,9 @@ class Overlap:
                                                         "overlap_len",
                                                         "overlap_type",
                                                         "mean_score",
-                                                        "path")) \
+                                                        "path",
+                                                        "mean_score_second",
+                                                        "overlap_len_second")) \
                                     .sort_values(by="strand") \
                                     .sort_values(by="read_j", kind="mergesort") \
                                     .sort_values(by="read_i", kind="mergesort") \

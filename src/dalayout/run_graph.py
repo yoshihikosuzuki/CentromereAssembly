@@ -39,8 +39,8 @@ def load_args():
         "-v",
         "--varvec_colname",
         type=str,
-        default="var_vec_global0.0",
-        help=("Column name to be used for alignemt. [var_vec_global0.0]"))
+        default="var_vec_global0.15",
+        help=("Column name to be used for alignemt. [var_vec_global0.15]"))
 
     parser.add_argument(
         "-p",

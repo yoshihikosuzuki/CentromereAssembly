@@ -11,10 +11,14 @@ import consed
 
 def _encode_reads(repr_units, reads, peaks):
     encodings = {}
+    cover_rate = {}
     index = 0
     for read_id, read in reads.iterrows():
         # Copy to a new variable so that we can modify the sequence
         read_seq = read["sequence"]
+        read_len = read["length"]
+
+        mapped_len = 0
 
         # Mapping of each representative unit to the read
         mapping = repr_units.apply(lambda df: run_edlib(df["sequence"],
@@ -53,6 +57,7 @@ def _encode_reads(repr_units, reads, peaks):
                                                      or best_mapping_len > peaks[best_peak_id].info.max_len)
                                 else "complete")
             index += 1
+            mapped_len += best_mapping_len
 
             # Mask the best mapped region from the read
             read_seq = read_seq[:best_mapping.start] \
@@ -73,6 +78,9 @@ def _encode_reads(repr_units, reads, peaks):
                                                       strand_prior=best_mapping.strand),
                                        axis=1)
 
+        if mapped_len > 0:
+            cover_rate[read_id] = (read_len, mapped_len, round(float(mapped_len) / read_len, 2))
+
     encodings = pd.DataFrame.from_dict(encodings,
                                        orient="index",
                                        columns=("read_id",
@@ -89,7 +97,13 @@ def _encode_reads(repr_units, reads, peaks):
                             .sort_values(by="read_id", kind="mergesort") \
                             .reset_index(drop=True)
 
-    return encodings
+    cover_rate = pd.DataFrame.from_dict(cover_rate,
+                                        orient="index",
+                                        columns=("read_len",
+                                                 "mapped_len",
+                                                 "cover_rate"))
+
+    return (encodings, cover_rate)
 
 
 @print_log("read encoding", show_args=False)
@@ -109,12 +123,13 @@ def encode_reads(repr_units, reads, peaks, n_core):
                                               peaks)
                                              for i in range(n_core)])]
 
-    return pd.concat(rets).sort_values(by="start") \
-                          .sort_values(by="read_id", kind="mergesort") \
-                          .reset_index(drop=True)
+    return (pd.concat([r[0] for r in rets]).sort_values(by="start") \
+            .sort_values(by="read_id", kind="mergesort") \
+            .reset_index(drop=True),
+            pd.concat([r[1] for r in rets]))
 
 
-def cut_unit_from_read(reads, encoding, hc=True):   # TODO: parameterize HC
+def cut_unit_from_read(reads, encoding, hc):   # TODO: parameterize HC
     """
     Cut the unit sequence from a read, considering the strand.
     <encoding> must be a single line in <encodings>.
@@ -126,13 +141,13 @@ def cut_unit_from_read(reads, encoding, hc=True):   # TODO: parameterize HC
     return s if encoding["strand"] == 0 else revcomp(s)
 
 
-def _detect_variants(peak_id, repr_id, repr_unit, reads, encoding_df, variant_fraction):
+def _detect_variants(peak_id, repr_id, repr_unit, reads, encoding_df, variant_fraction, hc):
     units_fname = f"peak_{peak_id}_repr_{repr_id}.raw_units"
     consed_fname = f"{units_fname}.t{variant_fraction}.consed"
     varmat_fname = f"{consed_fname}.V"
 
     # Write the representative unit and raw units aligned to it for a Consed input
-    units = encoding_df.apply(lambda d: cut_unit_from_read(reads, d), axis=1)
+    units = encoding_df.apply(lambda d: cut_unit_from_read(reads, d, hc), axis=1)
     with open(units_fname, 'w') as f:
         f.write(repr_unit + '\n' + '\n'.join(units) + '\n')
 
@@ -157,7 +172,7 @@ def _detect_variants(peak_id, repr_id, repr_unit, reads, encoding_df, variant_fr
 
 
 @print_log("variant detection", show_args=False)
-def detect_variants(repr_units, reads, encodings, variant_fraction):
+def detect_variants(repr_units, reads, encodings, variant_fraction, hc):
     """
     Add a column of "unit variant vector" in <encodings>.
     The column is calculated for each grouped part of <encodings>, and in the end merged.
@@ -168,7 +183,8 @@ def detect_variants(repr_units, reads, encodings, variant_fraction):
                                  repr_units.loc[(peak_id, repr_id), "sequence"],
                                  reads,
                                  encoding_df,
-                                 variant_fraction)
+                                 variant_fraction,
+                                 hc)
                 for (peak_id, repr_id), encoding_df
                 in encodings[encodings["type"] == "complete"].groupby(["peak_id", "repr_id"])]
 

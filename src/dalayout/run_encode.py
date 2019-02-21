@@ -17,14 +17,16 @@ def main():
 
     # Encode reads by mapping the representative units
     if not os.path.isfile(args.out_pkl_fname):
-        encodings = encode_reads(repr_units, tr_reads, pf.peaks, args.n_core)
+        encodings, cover_rate = encode_reads(repr_units, tr_reads, pf.peaks, args.n_core)
         save_pickle(encodings, args.out_pkl_fname)
+        cover_rate.to_csv("cover_rate", sep='\t')
     else:
         logger.info(f"Load {args.out_pkl_fname}")
         encodings = load_pickle(args.out_pkl_fname)
+        pd.read_csv("cover_rate", sep='\t', index_col=0)
 
     # Detect global variants for each representative unit class
-    detect_variants(repr_units, tr_reads, encodings, args.variant_fraction)
+    detect_variants(repr_units, tr_reads, encodings, args.variant_fraction, args.hc)
     save_pickle(encodings, args.out_pkl_fname)
 
     # Calculate all-vs-all read alignments
@@ -64,8 +66,15 @@ def load_args():
         "-t",
         "--variant_fraction",
         type=float,
-        default=0.0,
-        help=("Value of Consed's -t option. 0.0 means all variant sites will be used. [0.0]"))
+        default=0.15,
+        help=("Value of Consed's -t option. 0.0 means all variant sites will be used. [0.15]"))
+
+    parser.add_argument(
+        "-H",
+        "--hc",
+        action="store_true",
+        default=False,
+        help=("Perform variant calling with homopolymer compressed units. [False]"))
 
     parser.add_argument(
         "-o",

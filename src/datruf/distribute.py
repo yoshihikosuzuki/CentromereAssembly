@@ -16,7 +16,7 @@ def main():
 
     # Submit scripts each of which runs datruf_run.py
     logger.info("Scattering jobs. Intermediate files are stored in datruf/")
-    run_command("mkdir -p datruf; rm datruf/*")
+    run_command("mkdir -p datruf; rm -f datruf/*")
     jids = []
     for i in range(args.n_distribute):
         index = str(i + 1).zfill(n_digit)
