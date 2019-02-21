@@ -5,7 +5,6 @@ from interval import interval
 import numpy as np
 import pandas as pd
 from sklearn.neighbors import KernelDensity
-import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.run import run_edlib
@@ -13,8 +12,6 @@ from BITS.seq import load_fasta
 from BITS.utils import print_log, NoDaemonPool
 import consed
 from .clustering import ClusteringSeqs
-
-plt.style.use('ggplot')
 
 
 @dataclass(repr=False, eq=False)

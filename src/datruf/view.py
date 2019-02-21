@@ -12,8 +12,6 @@ from BITS.utils import run_command, make_line
 from .load import load_tr_intervals, load_alignments, load_paths
 from .core import calc_cover_set, calc_min_cover_set
 
-plt.style.use('ggplot')
-
 
 class Viewer:
     """

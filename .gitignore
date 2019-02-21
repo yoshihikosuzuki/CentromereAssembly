@@ -1,7 +1,7 @@
 develop/
-run/
 consed/
 consed_python/
+.snakemake/
 *.ipynb
 
 

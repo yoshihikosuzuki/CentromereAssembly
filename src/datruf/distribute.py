@@ -16,6 +16,7 @@ def main():
     n_digit = int(np.log10(args.n_distribute) + 1)
 
     # Submit scripts each of which runs datruf_run.py
+    jids = []
     for i in range(args.n_distribute):
         index = str(i + 1).zfill(n_digit)
         script_fname = f"run_datruf.{args.job_scheduler}.{index}"
@@ -45,18 +46,38 @@ def main():
                                     wait=False)
             f.write(script)
 
-        run_command(f"{args.submit_job} {script_fname}")
+        ret = run_command(f"{args.submit_job} {script_fname}")
+        if args.job_scheduler == "sge":
+            jids.append(ret.split()[2])
+        elif args.job_scheduler == "slurm":
+            jids.append(ret.split()[-1])
 
     # Prepare a script for finalization of the task
-    with open("finalize_datruf.sh", 'w') as f:
-        # Same as doing pd.concat and reset_index
-        f.write('\n'.join([f"cat {args.out_main_fname}.* > {args.out_main_fname}.cat",
-                           f"cat {args.out_units_fname}.* > {args.out_units_fname}.cat",
-                           f"awk -F'\\t' 'BEGIN {{count = 0}} NR == 1 {{print $0}} $1 != \"\" {{printf count; for (i = 2; i <= NF; i++) {{printf \"\\t\" $i}}; print \"\"; count++}}' {args.out_main_fname}.cat > {args.out_main_fname}",
-                           f"awk -F'\\t' 'BEGIN {{count = 0}} NR == 1 {{print $0}} $1 != \"\" {{printf count; for (i = 2; i <= NF; i++) {{printf \"\\t\" $i}}; print \"\"; count++}}' {args.out_units_fname}.cat > {args.out_units_fname}",
-                           f"rm {args.out_units_fname}.*; rm {args.out_main_fname}.*"]) + '\n')
+    script_fname = f"finalize_datruf.{args.job_scheduler}"
+    script = '\n'.join([f"cat {args.out_main_fname}.* > {args.out_main_fname}.cat",
+                        f"cat {args.out_units_fname}.* > {args.out_units_fname}.cat",
+                        f"awk -F'\\t' 'BEGIN {{count = 0}} NR == 1 {{print $0}} $1 != \"\" {{printf count; for (i = 2; i <= NF; i++) {{printf \"\\t\" $i}}; print \"\"; count++}}' {args.out_main_fname}.cat > {args.out_main_fname}",
+                        f"awk -F'\\t' 'BEGIN {{count = 0}} NR == 1 {{print $0}} $1 != \"\" {{printf count; for (i = 2; i <= NF; i++) {{printf \"\\t\" $i}}; print \"\"; count++}}' {args.out_units_fname}.cat > {args.out_units_fname}",
+                        f"rm {args.out_units_fname}.*; rm {args.out_main_fname}.*"])
+    
+    if args.job_scheduler == "sge":
+        script = sge_nize(script,
+                          job_name="finalize_datruf",
+                          n_core=1,
+                          depend=','.join(jids),
+                          wait=True)
+    elif args.job_scheduler == "slurm":
+        script = slurm_nize(script,
+                            job_name="finalize_datruf",
+                            n_core=1,
+                            mem_per_cpu=40000,
+                            depend='afterany:' + ','.join(jids),
+                            wait=True)
+    with open(script_fname, 'w') as f:
+        f.write(script)
 
-    logger.info("Run `$ bash finalize_datruf.sh` after finishing all jobs")
+    run_command(f"{args.submit_job} {script_fname}")
+    #logger.info("Run `$ bash finalize_datruf.sh` after finishing all jobs")
 
 
 def load_args():
