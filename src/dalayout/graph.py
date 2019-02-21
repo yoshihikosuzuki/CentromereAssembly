@@ -20,9 +20,9 @@ def plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path):
     
     # Score matrix
     trace1 = go.Heatmap(z=score_mat.T,
-                       text=np.array([[f"{ri}: {read_sig_i[ri][:4]} vs {ci}: {read_sig_j[ci][:4]}<br>%sim={c:.2}"
-                                       for ci, c in enumerate(r)]
-                                      for ri, r in enumerate(score_mat)]).T,
+                        text=np.array([[f"{ri}: {read_sig_i[ri][:4]} vs {ci}: {read_sig_j[ci][:4]}<br>%sim={c:.2}"
+                                        for ci, c in enumerate(r)]
+                                       for ri, r in enumerate(score_mat)]).T,
                        hoverinfo="text",
                        colorscale='YlGnBu',
                        #colorscale='Greys',
