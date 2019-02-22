@@ -8,11 +8,10 @@ from sklearn.mixture import GaussianMixture
 from sklearn.manifold import TSNE
 from sklearn.decomposition import NMF
 import matplotlib.pyplot as plt
-import plotly.offline as py
 import plotly.graph_objs as go
 from logzero import logger
 from BITS.run import run_edlib
-from BITS.utils import run_command, print_log, NoDaemonPool
+from BITS.utils import run_command, print_log, NoDaemonPool, submit_job, save_pickle, load_pickle
 from BITS.plot import generate_layout, show_plot, generate_scatter
 import consed
 from .dpmm import DPMM
@@ -171,10 +170,9 @@ def __calc_dist_array(i, data):
     return (i, dist_array)
 
 
-def _calc_dist_array(args):
-    s, t, data = args
-    logger.debug(f"Starting row {s}-{t}")
-    return [__calc_dist_array(i, data) for i in range(s, t)]
+def _calc_dist_array(rows, data):
+    logger.debug(f"Starting row {rows[0]}-{rows[-1]}")
+    return [__calc_dist_array(row, data) for row in rows]
 
 
 class ClusteringSeqs(Clustering):
@@ -191,7 +189,7 @@ class ClusteringSeqs(Clustering):
         self.rc = rc   # allow reverse complement when taking alignment
 
     @print_log("distance matrix calculation")
-    def calc_dist_mat(self, n_core=1, n_distribute=1):   # TODO: implement distibuted version
+    def _calc_dist_mat(self, rows, n_core):
         """
         Calculate all-vs-all distance matrix between the sequences.
         Both cyclic alignment and reverse complement sequence are considered.
@@ -199,30 +197,74 @@ class ClusteringSeqs(Clustering):
         is each row of the (triangular) distance matrix.
         """
 
-        # Allocate a square distance matrix
-        self.s_dist_mat = np.zeros((self.N, self.N), dtype='float32')
+        n_sub = -(-len(rows) // n_core)
+        tasks = [(rows[i * n_sub:(i + 1) * n_sub - 1],
+                  self.data)
+                 for i in range(n_core)]
 
-        # Split jobs while considering that weight is different for each row
-        tasks = []
-        n_sub = -(-((self.N - 1) * (self.N - 1)) // n_core / 2)
-        s = 0
-        total = 0
-        for t in range(self.N - 1):
-            total += self.N - 1 - t
-            if total >= n_sub:
-                tasks.append((s, t + 1, self.data))
-                s = t + 1
-                total = 0
-        if total > 0:
-            tasks.append((s, self.N - 1, self.data))
-
+        dist_arrays = []
         with NoDaemonPool(n_core) as pool:
-            for ret in pool.map(_calc_dist_array, tasks):
-                for r in ret:
-                    i, dist_array = r
-                    self.s_dist_mat[i, i + 1:] = self.s_dist_mat[i + 1:, i] = dist_array
+            for ret in pool.starmap(_calc_dist_array, tasks):
+                dist_arrays += ret
+        return dist_arrays
 
-        # Generate a condensed matrix
+    def calc_dist_mat(self, n_core=1, n_distribute=1, dir_prefix=".", file_prefix="clustering"):
+        """
+        <prefix> must be that of only FILE NAMES, do not include directory name.
+        """
+
+        rows = [int(i / 2) if i % 2 == 0
+                else self.N - 2 - int((i - 1) / 2)
+                for i in range(self.N - 1)]
+
+        if n_distribute == 1:
+            # No distributed computation. Directly calculate in parallel.
+            dist_arrays = self._calc_dist_mat(rows, n_core)
+        else:
+            # Distributed computation
+            n_sub = -(-len(rows) // n_distribute)
+            rows_sub = [rows[i * n_sub:(i + 1) * n_sub - 1]
+                        for i in range(n_distribute)]
+            n_digit = int(np.log10(n_distribute) + 1)
+            jids = []
+            save_pickle(self, f"{dir_prefix}/{file_prefix}_obj.pkl")
+            for i, rs in enumerate(rows_sub):
+                index = str(i + 1).zfill(n_digit)
+                save_pickle(rs, f"{dir_prefix}/{file_prefix}_rows.{index}.pkl")
+                jids.append(submit_job(' '.join([f"calc_dist_mat_sub.py",
+                                                 f"-n {n_core}",
+                                                 f"{dir_prefix}/{file_prefix}_obj.pkl",
+                                                 f"{dir_prefix}/{file_prefix}_rows.{index}.pkl",
+                                                 f"{dir_prefix}/{file_prefix}.{index}.pkl"]),
+                                       f"{dir_prefix}/{file_prefix}.sge.{index}",
+                                       "sge",
+                                       "qsub",
+                                       job_name="dist_mat_sub",
+                                       out_log="{dir_prefix}/log.stdout",
+                                       err_log="{dir_prefix}/log.stderr",
+                                       n_core=n_core,
+                                       wait=False))
+
+            # Merge the results
+            submit_job("sleep 1s",
+                       f"{dir_prefix}/gather.sge",
+                       "sge",
+                       "qsub",
+                       job_name="gather_calc_dist_mat",
+                       out_log="{dir_prefix}/log.stdout",
+                       err_log="{dir_prefix}/log.stderr",
+                       n_core=1,
+                       depend=jids,
+                       wait=True)
+
+            dist_arrays = []
+            for fname in run_command(f"find {dir_prefix} -name '{file_prefix}.*.pkl'").split('\n'):
+                dist_arrays += load_pickle(fname)
+
+        self.s_dist_mat = np.zeros((self.N, self.N), dtype='float32')
+        for r in dist_arrays:
+            i, dist_array = r
+            self.s_dist_mat[i, i + 1:] = self.s_dist_mat[i + 1:, i] = dist_array
         self.c_dist_mat = squareform(self.s_dist_mat)
 
     def _generate_consensus(self):

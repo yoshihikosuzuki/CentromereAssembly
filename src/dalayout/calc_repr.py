@@ -28,10 +28,11 @@ def main():
                        np.array(units.index),
                        cyclic=False,
                        rc=False)
-    c.calc_dist_mat(args.n_core, args.n_distribute)
+    prefix = f"clustering.{args.peak_id}.{args.repr_id}"
+    c.calc_dist_mat(args.n_core, args.n_distribute, dir_prefix="repr", file_prefix=prefix)
     c.cluster_hierarchical()
     c.generate_consensus()   # representative units
-    save_pickle(c, "repr/clustering.{peak_id}.{repr_id}.pkl")
+    save_pickle(c, f"{prefix}.pkl")
 
 
 def load_args():

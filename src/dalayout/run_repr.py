@@ -1,44 +1,18 @@
 import logging
 import logzero
 from logzero import logger
-import numpy as np
 import pandas as pd
-from BITS.utils import load_pickle, save_pickle, run_command
-from .encode import encode_reads, cut_unit_from_read
-from dacmaster.clustering import ClusteringSeqs
-
-
-def calc_
-        units = (encodings[encodings.apply(lambda df: (df["peak_id"] == 1
-                                                       and df["repr_id"] == 0
-                                                       and df["type"] != "boundary"
-                                                       and cover_rate.loc[df["read_id"]]["cover_rate"] >= 0.5),
-                                           axis=1)]
-                 .apply(lambda d: cut_unit_from_read(pf.reads, d, False), axis=1))
-        c = ClusteringSeqs(units.reset_index(drop=True),
-                           np.array(units.index),
-                           cyclic=False,
-                           rc=False)
-        c.calc_dist_mat(args.n_core, args.n_distribute)
-        c.cluster_hierarchical()
-        r = c.generate_consensus()   # representative units
-
+from BITS.utils import load_pickle, save_pickle, run_command, submit_job
 
 
 def main():
     args = load_args()
 
-    # Load data
     repr_units = pd.read_csv(args.repr_units_fname, sep='\t', index_col=[0, 1])
-    pf = load_pickle(args.peaks_finder_fname)
-
-    # Encode reads by master units
-    encodings = load_pickle(args.out_pkl_fname)
-    cover_rate = pd.read_csv("cover_rate", sep='\t', index_col=0)
 
     # For each master unit, do again clustering of the synchronized raw units
-    # TODO: parallelization (of distributed calc_dist_mat for each)
     run_command("mkdir -p repr; rm -f repr/*")
+    jids = []
     for peak_id, repr_id in repr_units.index.values:
         jids.append(submit_job(' '.join([f"calc_repr.py",
                                          f"-e encodings.pkl",
@@ -55,21 +29,32 @@ def main():
                                out_log="repr/log.stdout",
                                err_log="repr/log.stderr",
                                n_core=1,
-                               wait=False))   # return value will be a pickle of ClusteringSeqs object?
+                               wait=False))
 
-    """
-    # Merge the results
-    submit_job("dalayout_gather_ava_sub.py -d dalayout",
-               f"dalayout/gather_ava_sub.{job_scheduler}",
-               job_scheduler,
-               submit_command,
-               job_name="gather_ava_sub",
-               out_log="dalayout/log.stdout",
-               err_log="dalayout/log.stderr",
+    submit_job("sleep 1s",
+               f"repr/gather.gather.sge",
+               "sge",
+               "qsub",
+               job_name="gather_dist_mat",
+               out_log="repr/log.stdout",
+               err_log="repr//log.stderr",
                n_core=1,
                depend=jids,
                wait=True)
-    """
+
+    # Merge the results
+    new_repr_units = pd.DataFrame()
+    for peak_id, repr_id in repr_units.index.values:
+        c = load_pickle(f"clustering.{args.peak_id}.{args.repr_id}.pkl")
+        new_repr_units = pd.concat([new_repr_units,
+                                    c.cons_units.assign(peak_id=args.peak_id).assign(master_id=args.repr_id).assign(repr_id=range(c.cons_units.shape[0]))])
+    new_repr_units.reset_index(drop=True).reindex(column=("peak_id",
+                                                          "master_id",
+                                                          "repr_id",
+                                                          "cluster_id",
+                                                          "cluster_size",
+                                                          "length",
+                                                          "sequence")).set_index(["peak_id", "master_id", "repr_id"]).to_csv("new_repr_units", sep='\t')
 
 
 def load_args():
