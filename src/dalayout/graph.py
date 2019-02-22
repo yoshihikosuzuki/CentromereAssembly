@@ -361,7 +361,12 @@ class Overlap:
 
         self._ava_read_alignment(self.list_up_pairs(), n_core)
 
-    def ava_read_alignment_distribute(self, n_distribute, n_core):
+    def ava_read_alignment_distribute(self,
+                                      n_distribute,
+                                      n_core,
+                                      job_scheduler,
+                                      submit_command,
+                                      queue_or_partition):
         """
         Distributed all-vs-all read overlap calculation.
         """
@@ -386,24 +391,30 @@ class Overlap:
                                              f"dalayout/overlap_obj.pkl",
                                              f"dalayout/list_pairs.{index}.pkl",
                                              f"dalayout/overlaps.{index}.pkl"]),
-                                   f"dalayout/ava_pair.sge.{index}",
-                                   "sge",
-                                   "qsub",
+                                   f"dalayout/ava_pair.{job_scheduler}.{index}",
+                                   job_scheduler,
+                                   submit_command,
                                    job_name="ava_sub",
                                    out_log="dalayout/log.stdout",
                                    err_log="dalayout/log.stderr",
                                    n_core=n_core,
+                                   queue_or_partition=queue_or_partition,
+                                   time_limit="24:00:00",
+                                   mem_limit=10000,
                                    wait=False))
 
         # Merge the results
         submit_job("dalayout_gather_ava_sub.py -d dalayout",
-                   f"dalayout/gather.sge",
-                   "sge",
-                   "qsub",
+                   f"dalayout/gather_ava_sub.{job_scheduler}",
+                   job_scheduler,
+                   submit_command,
                    job_name="gather_ava_sub",
                    out_log="dalayout/log.stdout",
                    err_log="dalayout/log.stderr",
                    n_core=1,
+                   queue_or_partition=queue_or_partition,
+                   time_limit="24:00:00",
+                   mem_limit=10000,
                    depend=jids,
                    wait=True)
 
@@ -504,7 +515,7 @@ def construct_string_graph(overlaps, th_mean_score=0.04, th_overlap_len=3000):
 def transitive_reduction(sg):
     v_mark = ["vacant" for v in sg.vs]
     e_reduce = {e.tuple: False for e in sg.es}
-    FUZZ = 10   # TODO: in bp; assuming no unit shifts
+    FUZZ = 10   # in bp; this length is in general shorter than unit length, thus we accept no unit shifts
 
     for v in sg.vs:
         if v.outdegree() == 0:

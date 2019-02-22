@@ -178,6 +178,7 @@ def detect_variants(repr_units, reads, encodings, variant_fraction, hc):
     The column is calculated for each grouped part of <encodings>, and in the end merged.
     """
 
+    run_command("mkdir -p consed_out")
     var_vecs = [_detect_variants(peak_id,
                                  repr_id,
                                  repr_units.loc[(peak_id, repr_id), "sequence"],
@@ -189,5 +190,5 @@ def detect_variants(repr_units, reads, encodings, variant_fraction, hc):
                 in encodings[encodings["type"] == "complete"].groupby(["peak_id", "repr_id"])]
 
     # NOTE: each layer on variant calling has a distinct column
-    col_name = f"var_vec_global{variant_fraction}"
+    col_name = f"var_vec_global{variant_fraction}{'_hc' if hc else ''}"
     encodings[col_name] = pd.concat(var_vecs)

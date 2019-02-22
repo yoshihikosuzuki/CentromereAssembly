@@ -8,7 +8,7 @@ fi
 # Load config file
 . $1
 
-rm -f .${DB_PREFIX}.tan.* TAN.*
+rm -f .${DB_PREFIX}.*.tan.* .${DB_PREFIX}.tan.* TAN.*
 mkdir -p datander
 HPC.TANmask -T${N_CORE_DATANDER} ${DB_PREFIX}.db > datander/run_datander.sh
 

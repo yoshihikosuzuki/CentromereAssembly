@@ -13,7 +13,12 @@ def main():
     o = Overlap(pd.read_csv(args.reads_fname, sep='\t', index_col=0),
                 load_pickle(args.encodings_fname),
                 varvec_colname=args.varvec_colname)
-    o.ava_read_alignment_distribute(args.n_distribute, args.n_core)
+
+    o.ava_read_alignment_distribute(args.n_distribute,
+                                    args.n_core,
+                                    args.job_scheduler,
+                                    args.submit_command,
+                                    args.queue_or_partition)
 
 
 def load_args():
@@ -62,6 +67,27 @@ def load_args():
         action="store_true",
         default=False,
         help=("Run in debug mode. [False]"))
+
+    parser.add_argument(
+        "-j",
+        "--job_scheduler",
+        type=str,
+        default="sge",
+        help="Job scheduler name. ('sge' or 'slurm)' [sge]")
+
+    parser.add_argument(
+        "-c",
+        "--submit_command",
+        type=str,
+        default="qsub",
+        help="Command name to submit a job with the specified scheduler. [qsub]")
+
+    parser.add_argument(
+        "-q",
+        "--queue_or_partition",
+        type=str,
+        default=None,
+        help="Name of queue (SGE) or partition (SLURM) to which jobs are submitted. [None]")
 
     args = parser.parse_args()
     if args.debug_mode:

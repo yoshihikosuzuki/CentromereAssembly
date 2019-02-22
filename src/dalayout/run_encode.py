@@ -26,15 +26,8 @@ def main():
         pd.read_csv("cover_rate", sep='\t', index_col=0)
 
     # Detect global variants for each representative unit class
-    run_command("mkdir -p consed_out")
     detect_variants(repr_units, tr_reads, encodings, args.variant_fraction, args.hc)
     save_pickle(encodings, args.out_pkl_fname)
-
-    # Calculate all-vs-all read alignments
-
-    # Construct a graph
-
-    # Generate a layout
 
 
 def load_args():

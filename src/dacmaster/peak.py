@@ -140,7 +140,7 @@ class Peak:
     @print_log("hierarchical clustering of consensus units")
     def cluster_cons_units(self, n_core):
         """
-        Cluster the intra-TR consensus units
+        Cluster the intra-TR consensus units.
         """
 
         self.cl_master = ClusteringSeqs(self.cons_units["sequence"],

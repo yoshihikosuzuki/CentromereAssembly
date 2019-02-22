@@ -32,14 +32,14 @@ def main():
                                          f"{args.las_file}"]),
                                f"datruf/run_datruf.{args.job_scheduler}.{index}",
                                args.job_scheduler,
-                               args.submit_job,
+                               args.submit_command,
                                job_name="datruf_dist",
                                out_log="datruf/log.stdout",
                                err_log="datruf/log.stderr",
                                n_core=args.n_core,
                                queue_or_partition=args.queue_or_partition,
                                time_limit="24:00:00",   # NOTE: only for slurm
-                               mem_limit=40000,   # NOTE: only for slurm
+                               mem_limit=10000,   # NOTE: only for slurm
                                wait=False))
 
     # Merge the results
@@ -50,7 +50,7 @@ def main():
                           f"awk -F'\\t' 'BEGIN {{count = 0}} NR == 1 {{print $0}} $1 != \"\" {{printf count; for (i = 2; i <= NF; i++) {{printf \"\\t\" $i}}; print \"\"; count++}}' datruf/{args.out_units_fname}.cat > {args.out_units_fname}"]),
                f"datruf/finalize_datruf.{args.job_scheduler}",
                args.job_scheduler,
-               args.submit_job,
+               args.submit_command,
                job_name="datruf_finalize",
                out_log="datruf/log.stdout",
                err_log="datruf/log.stderr",
@@ -166,7 +166,7 @@ def load_args():
 
     parser.add_argument(
         "-c",
-        "--submit_job",
+        "--submit_command",
         type=str,
         default="qsub",
         help="Command name to submit a job with the specified scheduler. [qsub]")
