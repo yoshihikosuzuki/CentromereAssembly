@@ -68,6 +68,7 @@ N_CORE_DACMASTER=8
 ##### DALAYOUT #####
 ####################
 
+VARIANT_FRAC=0.15
 N_CORE_ENCODE=24
 # comment in or out;   # TODO: chenge to True or False
 VCALL_HC=true

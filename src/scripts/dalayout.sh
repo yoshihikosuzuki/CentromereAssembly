@@ -9,7 +9,7 @@ fi
 . $1
 
 mkdir -p dalayout
-echo "dalayout_run_encode.py -n ${N_CORE_ENCODE} $([ -n "${VCALL_HC}" ] && echo "-H") $([ -n "${DEBUG_MODE}" ] && echo "-D")" > dalayout/run_dalayout_encode.sh
+echo "dalayout_run_encode.py -n ${N_CORE_ENCODE} $([ -n "${VARIANT_FRAC}" ] && echo "-t ${VARIANT_FRAC}") $([ -n "${VCALL_HC}" ] && echo "-H") $([ -n "${DEBUG_MODE}" ] && echo "-D")" > dalayout/run_dalayout_encode.sh
 
 if ${USE_JOB_SCHEDULER}; then
     echo "Starting encoding"
@@ -28,4 +28,9 @@ else
 fi
 
 # For now only sge
-dalayout_run_graph.py -p ${N_DISTRIBUTE_DALAYOUT} -n ${N_CORE_DALAYOUT}
+dalayout_run_graph.py -p ${N_DISTRIBUTE_DALAYOUT} \
+                      -n ${N_CORE_DALAYOUT} \
+                      -j ${JOB_SCHEDULER} \
+                      -c ${SUBMIT_JOB} \
+                      $([ -n "${VARIANT_FRAC}" ] && echo "-v var_vec_global${VARIANT_FRAC}$([ -n "${VCALL_HC}" ] && echo "_hc")") \
+                      $([ -n "${QUEUE_OR_PARTITION}" ] && echo "-q ${QUEUE_OR_PARTITION}")
