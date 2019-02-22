@@ -191,7 +191,7 @@ class ClusteringSeqs(Clustering):
         self.rc = rc   # allow reverse complement when taking alignment
 
     @print_log("distance matrix calculation")
-    def calc_dist_mat(self, n_core=1):
+    def calc_dist_mat(self, n_core=1, n_distribute=1):   # TODO: implement distibuted version
         """
         Calculate all-vs-all distance matrix between the sequences.
         Both cyclic alignment and reverse complement sequence are considered.
@@ -225,28 +225,85 @@ class ClusteringSeqs(Clustering):
         # Generate a condensed matrix
         self.c_dist_mat = squareform(self.s_dist_mat)
 
-    def generate_consensus(self):
-        """
-        Determine a representative sequence for each cluster.
-        """
-
+    def _generate_consensus(self):
         ret = {}
         index = 0
         for cluster_id, seqs in super().clusters():
-            cons_seq = consed.consensus([seq if i == 0
-                                         else run_edlib(seqs.iloc[0],
-                                                        seq,
-                                                        "global",
-                                                        cyclic=True,
-                                                        rc=True,
-                                                        return_seq=True).seq
-                                         for i, seq in enumerate(seqs)],
+            # TODO: XXX: here assumes the first sequence is somewhat "accurate" though this does not always hold; choose the "center" sequence!
+            cons_seq = consed.consensus(list(seqs) if not (self.cyclic or self.rc)   # input are already synchronized
+                                        else [seq if i == 0
+                                              else run_edlib(seqs.iloc[0],
+                                                             seq,
+                                                             "global",
+                                                             cyclic=self.cyclic,
+                                                             rc=self.rc,
+                                                             return_seq=True).seq
+                                              for i, seq in enumerate(seqs)],
                                         n_iter=3)
-            ret[index] = (cluster_id, seqs.shape[0], len(cons_seq), cons_seq)
-            index += 1
-
-        return pd.DataFrame.from_dict(ret, orient="index",
+            if cons_seq != "":
+                ret[index] = (cluster_id, seqs.shape[0], len(cons_seq), cons_seq)
+                index += 1
+        return pd.DataFrame.from_dict(ret,
+                                      orient="index",
                                       columns=("cluster_id", "cluster_size", "length", "sequence"))
+
+    def generate_consensus(self,
+                           th_merge=0.05,
+                           th_noisy=0.01,
+                           th_synchronize=0.3):
+        """
+        Calculate a consensus sequence for each cluster.
+        1. Initial consensus sequences are computed by Consed.
+        2. Every two consensus sequences which have dis-similarity less than <th_merge> are merged.
+           If you do not want to merge any clusters, then specify <th_merge=0>.
+        3. Any cluster whose size is less than (<self.N> * <th_noisy>) is removed.
+           Specify <th_noisy=0> to keep all clusters.
+        4. Synchronize the phase of clusters which share dis-similarity less than <th_synchronize>.
+        """
+
+        # TODO: detect and remove STR-like consensus sequences (in peak?)
+
+        # Initial consensus sequences
+        cons_seqs = self._generate_consensus()
+        logger.info(f"Initial consensus sequences:\n{cons_seqs}")
+
+        # Merge too close clusters
+        n_cons = cons_seqs.shape[0]   # <self.n_clusters> can be different from <n_cons> due to Consed error
+        for i in range(n_cons - 1):
+            for j in range(i + 1, n_cons):
+                if run_edlib(cons_seqs["sequence"].iloc[i],
+                             cons_seqs["sequence"].iloc[j],
+                             "global",
+                             cyclic=self.cyclic,
+                             rc=self.rc,
+                             only_diff=True) < th_merge:
+                    self.merge_cluster(cons_seqs["cluster_id"].iloc[i],
+                                       cons_seqs["cluster_id"].iloc[j])
+        cons_seqs = self._generate_consensus()
+        logger.info(f"After merging similar units:\n{cons_seqs}")
+
+        # Remove remaining noisy clusters
+        del_row = [index for index, df in cons_seqs.iterrows()
+                   if df["cluster_size"] < self.N * th_noisy]   # too small cluster
+        cons_seqs = cons_seqs.drop(del_row).reset_index(drop=True)
+        logger.debug(f"After removing noisy clusters:\n{cons_seqs}")
+
+        # Synchronize phase of the consensus units (= start position)
+        n_cons = cons_seqs.shape[0]
+        for i in range(n_cons - 1):   # TODO: simultaneously synchronize, or fix single seed
+            for j in range(i + 1, n_cons):
+                align = run_edlib(cons_seqs["sequence"].iloc[i],
+                                  cons_seqs["sequence"].iloc[j],
+                                  "global",
+                                  cyclic=self.cyclic,
+                                  rc=self.rc,
+                                  return_seq=True)
+                if align.diff < th_synchronize:
+                    logger.debug(f"Synchronize {i} and {j} (strand = {align.strand})")
+                    cons_seqs.loc[j, "sequence"] = align.seq
+        logger.info(f"Final consensus sequences:\n{cons_seqs}")
+
+        self.cons_seqs = cons_seqs
 
 
 class ClusteringNumeric(Clustering):

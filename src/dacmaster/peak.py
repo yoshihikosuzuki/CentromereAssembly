@@ -74,41 +74,17 @@ def _take_intra_consensus(args_list):
 
 @dataclass(repr=False, eq=False)
 class Peak:
-    """
-    Instance variables:
-      @ reads <pd.df>: all TR-reads
-          Index: dbid
-          [header, length, sequence]
-
-      @ raw_units <pd.df>: unsynchronized raw units
-          [read_id, path_id, start, end, length, sequence]
-
-      @ cons_units <pd.df>: unsynchronized intra-TR consensus units
-          [read_id, path_id, length, sequence]
-
-      @ repr_units <pd.df>: synchronized, global-level representative units
-          [repr_id, cluster_id, cluster_size, length, sequence]
-
-      @ cl_master <ClusteringSeqs>: perform clustering of <raw_units> to construct master units
-    """
-
     info: PeakInfo
     reads: pd.DataFrame
     raw_units: pd.DataFrame
 
     def calc_repr_units(self, min_n_units, n_core):
-        """
-        Main rountine.
-        """
-
         self.take_intra_consensus(min_n_units, n_core)
         self.cluster_cons_units(n_core)
-        self.generate_master_units()
+        self.master_units = self.cl_master.cons_seqs
 
     @print_log("intra-TR consensus")
     def take_intra_consensus(self, min_n_units, n_core):
-        # TODO: divide into homogeneous TR and heterogeneous TR?
-
         tasks = [(read_id, path_id, list(df_path["sequence"]))
                  for read_id, df_read in self.raw_units.groupby("read_id")
                  for path_id, df_path in df_read.groupby("path_id")
@@ -135,7 +111,6 @@ class Peak:
                                                           "path_id",
                                                           "length",
                                                           "sequence"))
-        self.cons_units.to_csv("cons_units", sep='\t')
 
     @print_log("hierarchical clustering of consensus units")
     def cluster_cons_units(self, n_core):
@@ -144,70 +119,11 @@ class Peak:
         """
 
         self.cl_master = ClusteringSeqs(self.cons_units["sequence"],
-                                        self.cons_units.apply(lambda df: f"{df['read_id']}({df['path_id']})", axis=1))
+                                        self.cons_units.apply(lambda df: f"{df['read_id']}({df['path_id']})",
+                                                              axis=1))
         self.cl_master.calc_dist_mat(n_core)
         self.cl_master.cluster_hierarchical()
-
-    @print_log("master units construction")
-    def generate_master_units(self,
-                              redundant_threshold=0.05,
-                              noisy_threshold=0.01,
-                              similar_threshold=0.3):
-        """
-        Take consensus for each cluster of consensus units while removing noisy results.
-        """
-
-        self.master_units = self.cl_master.generate_consensus()
-        logger.info(f"Original master units:\n{self.master_units}")
-
-        # Merge too close clusters
-        n_master = self.master_units.shape[0]
-        for i in range(n_master - 1):
-            seq_i = self.master_units["sequence"].iloc[i]
-            if seq_i == "":
-                continue
-            for j in range(i + 1, n_master):
-                seq_j = self.master_units["sequence"].iloc[j]
-                if seq_j == "":
-                    continue
-                diff = run_edlib(seq_i,
-                                 seq_j,
-                                 "global",
-                                 cyclic=True,
-                                 rc=True,
-                                 only_diff=True)
-                if diff < redundant_threshold:
-                    self.cl_master.merge_cluster(self.master_units["cluster_id"].iloc[i],
-                                                 self.master_units["cluster_id"].iloc[j])
-        self.master_units = self.cl_master.generate_consensus()
-        logger.info(f"After merging close units:\n{self.master_units}")
-
-        # Remove remaining noisy clusters
-        del_row = [index for index, df in self.master_units.iterrows()
-                   if df["cluster_size"] < self.cl_master.N * noisy_threshold   # too small cluster
-                   or len(df["sequence"]) == 0]   # Consed failure
-        self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
-        logger.debug(f"After removing noisy clusters:\n{self.master_units}")
-
-        # Synchronize phase, i.e. start position
-        del_row = []
-        n_master = self.master_units.shape[0]
-        for i in range(n_master - 1):   # TODO: simultaneously synchronize, or fix single seed
-            seq_i = self.master_units["sequence"].iloc[i]
-            for j in range(i + 1, n_master):
-                seq_j = self.master_units["sequence"].iloc[j]
-                align = run_edlib(seq_i,
-                                  seq_j,
-                                  "global",
-                                  cyclic=True,
-                                  rc=True,
-                                  return_seq=True,
-                                  return_seq_diff_th=similar_threshold)
-                if align.seq is not None:
-                    #logger.debug(f"Synchronize {i} and {j} (strand = {align['strand']})")
-                    self.master_units.loc[j, "sequence"] = align.seq
-        self.master_units = self.master_units.drop(del_row).reset_index(drop=True)
-        logger.info(f"Final mater units:\n{self.master_units}")
+        self.cl_master.generate_consensus()
 
 
 @dataclass(repr=False, eq=False)
@@ -300,27 +216,6 @@ class PeaksFinder:
         layout = go.Layout(xaxis=dict(title='Unit length'),
                            yaxis=dict(title='Density'))
         py.iplot(go.Figure(data=[smoothed], layout=layout))
-
-        """ TODO: fix bug in this multi-plot code and replace to it
-        original = go.Histogram(x=(self.units["length"] if entire
-                                   else (self.units["length"]
-                                         .pipe(lambda s: s[self.min_len < s])
-                                         .pipe(lambda s: s[s < self.max_len]))),
-                                xbins=dict(start=0 if entire else self.min_len,
-                                           end=self.units["length"].max() if entire else self.max_len,
-                                           size=1))
-        layout = go.Layout(xaxis=dict(title='Unit length'),
-                           yaxis=dict(title='Frequency'),
-                           yaxis2=dict(title='Density', side='right'))
-        py.iplot(go.Figure(data=[original, smoothed], layout=layout))
-        smoothed = go.Scatter(x=np.arange(self.min_len, self.max_len + 1),
-                              y=self.dens,
-                              yaxis='y2')
-        layout = go.Layout(xaxis=dict(title='Unit length'),
-                           yaxis=dict(title='Frequency'),
-                           yaxis2=dict(title='Density', side='right'))
-        py.iplot(go.Figure(data=[original, smoothed], layout=layout))
-        """
 
     @print_log("peak detection")
     def run(self):

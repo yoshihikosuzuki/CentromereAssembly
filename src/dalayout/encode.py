@@ -129,7 +129,7 @@ def encode_reads(repr_units, reads, peaks, n_core):
             pd.concat([r[1] for r in rets]))
 
 
-def cut_unit_from_read(reads, encoding, hc):   # TODO: parameterize HC
+def cut_unit_from_read(reads, encoding, hc):
     """
     Cut the unit sequence from a read, considering the strand.
     <encoding> must be a single line in <encodings>.

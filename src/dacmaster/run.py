@@ -16,13 +16,8 @@ def main():
     # For each peak, calculate representative units
     repr_units = pd.DataFrame()
     for i, peak in enumerate(pf.peaks):
-        #if i != len(pf.peaks) - 1:   # only the last peak   # NOTE: for debug
-        #    continue
-
         logger.info(f"Start peak {i}")
         peak.calc_repr_units(args.min_n_units, args.n_core)
-
-        # Add "peak_id" and "repr_id" columns
         repr_units = pd.concat([repr_units,
                                 peak.master_units.assign(peak_id=i) \
                                                  .assign(repr_id=range(peak.master_units.shape[0]))])
