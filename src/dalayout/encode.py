@@ -142,7 +142,7 @@ def cut_unit_from_read(reads, encoding, hc):   # TODO: parameterize HC
 
 
 def _detect_variants(peak_id, repr_id, repr_unit, reads, encoding_df, variant_fraction, hc):
-    units_fname = f"consed_out/peak_{peak_id}_repr_{repr_id}.raw_units"
+    units_fname = f"consed_out/peak_{peak_id}_repr_{repr_id}.raw_units{'.hc' if hc else ''}"
     consed_fname = f"{units_fname}.t{variant_fraction}.consed"
     varmat_fname = f"{consed_fname}.V"
 

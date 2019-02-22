@@ -5,8 +5,10 @@
 ##### GENERAL #####
 ###################
 
-# Comment-out if you do not want to run in debug mode   # TODO: change to True or False
+# Comment-out if you do not want to run in debug mode
 DEBUG_MODE=true
+
+TASK=all   # one of {all, datander, datruf, dacmaster, dalayout}
 
 
 #########################
@@ -70,7 +72,7 @@ N_CORE_DACMASTER=8
 
 VARIANT_FRAC=0.15
 N_CORE_ENCODE=24
-# comment in or out;   # TODO: chenge to True or False
+# comment in or out
 VCALL_HC=true
 N_DISTRIBUTE_DALAYOUT=12
 N_CORE_DALAYOUT=6
