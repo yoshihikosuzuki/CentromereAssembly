@@ -32,7 +32,7 @@ def main():
     c.calc_dist_mat(args.n_core, args.n_distribute, dir_prefix="repr", file_prefix=prefix)
     c.cluster_hierarchical()
     c.generate_consensus()   # representative units
-    save_pickle(c, f"{prefix}.pkl")
+    save_pickle(c, f"repr/{prefix}.pkl")
 
 
 def load_args():

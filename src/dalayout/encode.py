@@ -37,7 +37,7 @@ def _encode_reads(repr_units, reads, peaks):
 
             # Choose a representative unit which has the best identity to some region of the read
             best_idx = mapping_diff.idxmin()
-            best_peak_id, best_repr_id = best_idx
+            best_peak_id = best_idx[0]   # NOTE: the first index must be peak ID
             best_mapping = mapping.loc[best_idx]
             best_mapping_len = best_mapping.end - best_mapping.start
             th_len_from_boundary = peaks[best_peak_id].info.lens[-1] * 0.15   # TODO: search for optimal
@@ -45,9 +45,7 @@ def _encode_reads(repr_units, reads, peaks):
                                 best_mapping.start,
                                 best_mapping.end,
                                 best_mapping_len,
-                                best_peak_id,
-                                best_repr_id,
-                                0,   # or "global"
+                                *best_idx,
                                 round(best_mapping.diff, 3),
                                 best_mapping.strand,
                                 "boundary" if (best_mapping.start < th_len_from_boundary
@@ -87,9 +85,7 @@ def _encode_reads(repr_units, reads, peaks):
                                                 "start",
                                                 "end",
                                                 "length",
-                                                "peak_id",
-                                                "repr_id",
-                                                "varset_id",
+                                                *repr_units.index.names,
                                                 "diff",
                                                 "strand",
                                                 "type")) \
@@ -141,8 +137,8 @@ def cut_unit_from_read(reads, encoding, hc):
     return s if encoding["strand"] == 0 else revcomp(s)
 
 
-def _detect_variants(peak_id, repr_id, repr_unit, reads, encoding_df, variant_fraction, hc):
-    units_fname = f"consed_out/peak_{peak_id}_repr_{repr_id}.raw_units{'.hc' if hc else ''}"
+def _detect_variants(repr_index, repr_unit, reads, encoding_df, variant_fraction, hc):
+    units_fname = f"consed_out/repr_{'.'.join(repr_index)}.raw_units{'.hc' if hc else ''}"
     consed_fname = f"{units_fname}.t{variant_fraction}.consed"
     varmat_fname = f"{consed_fname}.V"
 
@@ -179,15 +175,14 @@ def detect_variants(repr_units, reads, encodings, variant_fraction, hc):
     """
 
     run_command("mkdir -p consed_out")
-    var_vecs = [_detect_variants(peak_id,
-                                 repr_id,
-                                 repr_units.loc[(peak_id, repr_id), "sequence"],
+    var_vecs = [_detect_variants(repr_index,
+                                 repr_units.loc[repr_index, "sequence"],
                                  reads,
                                  encoding_df,
                                  variant_fraction,
                                  hc)
-                for (peak_id, repr_id), encoding_df
-                in encodings[encodings["type"] == "complete"].groupby(["peak_id", "repr_id"])]
+                for repr_index, encoding_df
+                in encodings[encodings["type"] == "complete"].groupby(repr_units.index.names)]
 
     # NOTE: each layer on variant calling has a distinct column
     col_name = f"var_vec_global{variant_fraction}{'_hc' if hc else ''}"

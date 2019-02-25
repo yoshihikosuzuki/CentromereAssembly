@@ -263,7 +263,7 @@ class ClusteringSeqs(Clustering):
                        wait=True)
 
             dist_arrays = []
-            for fname in run_command(f"find {dir_prefix} -name '{file_prefix}.*.pkl'").split('\n'):
+            for fname in run_command(f"find {dir_prefix} -name '{file_prefix}.*.pkl'").strip().split('\n'):
                 dist_arrays += load_pickle(fname)
 
         self.s_dist_mat = np.zeros((self.N, self.N), dtype='float32')
@@ -294,6 +294,23 @@ class ClusteringSeqs(Clustering):
                                       orient="index",
                                       columns=("cluster_id", "cluster_size", "length", "sequence"))
 
+    def _merge_clusters(self, th_merge):
+        flag_next = False
+        n_cons = self.cons_seqs.shape[0]   # != <self.n_clusters> due to Consed error
+        for i in range(n_cons - 1):
+            for j in range(i + 1, n_cons):
+                if run_edlib(self.cons_seqs["sequence"].iloc[i],
+                             self.cons_seqs["sequence"].iloc[j],
+                             "global",
+                             cyclic=self.cyclic,
+                             rc=self.rc,
+                             only_diff=True) < th_merge:
+                    self.merge_cluster(self.cons_seqs["cluster_id"].iloc[i],
+                                       self.cons_seqs["cluster_id"].iloc[j])
+                    flag_next = True
+        self.cons_seqs = self._generate_consensus()
+        return flag_next
+
     def generate_consensus(self,
                            th_merge=0.05,
                            th_noisy=0.01,
@@ -311,46 +328,34 @@ class ClusteringSeqs(Clustering):
         # TODO: detect and remove STR-like consensus sequences (in peak?)
 
         # Initial consensus sequences
-        cons_seqs = self._generate_consensus()
-        logger.info(f"Initial consensus sequences:\n{cons_seqs}")
+        self.cons_seqs = self._generate_consensus()
+        logger.info(f"Initial consensus sequences:\n{self.cons_seqs}")
 
         # Merge too close clusters
-        n_cons = cons_seqs.shape[0]   # <self.n_clusters> can be different from <n_cons> due to Consed error
-        for i in range(n_cons - 1):
-            for j in range(i + 1, n_cons):
-                if run_edlib(cons_seqs["sequence"].iloc[i],
-                             cons_seqs["sequence"].iloc[j],
-                             "global",
-                             cyclic=self.cyclic,
-                             rc=self.rc,
-                             only_diff=True) < th_merge:
-                    self.merge_cluster(cons_seqs["cluster_id"].iloc[i],
-                                       cons_seqs["cluster_id"].iloc[j])
-        cons_seqs = self._generate_consensus()
-        logger.info(f"After merging similar units:\n{cons_seqs}")
+        while self._merge_clusters(th_merge):
+            pass
+        logger.info(f"After merging similar units:\n{self.cons_seqs}")
 
         # Remove remaining noisy clusters
-        del_row = [index for index, df in cons_seqs.iterrows()
+        del_row = [index for index, df in self.cons_seqs.iterrows()
                    if df["cluster_size"] < self.N * th_noisy]   # too small cluster
-        cons_seqs = cons_seqs.drop(del_row).reset_index(drop=True)
-        logger.debug(f"After removing noisy clusters:\n{cons_seqs}")
+        self.cons_seqs = self.cons_seqs.drop(del_row).reset_index(drop=True)
+        logger.debug(f"After removing noisy clusters:\n{self.cons_seqs}")
 
         # Synchronize phase of the consensus units (= start position)
-        n_cons = cons_seqs.shape[0]
+        n_cons = self.cons_seqs.shape[0]
         for i in range(n_cons - 1):   # TODO: simultaneously synchronize, or fix single seed
             for j in range(i + 1, n_cons):
-                align = run_edlib(cons_seqs["sequence"].iloc[i],
-                                  cons_seqs["sequence"].iloc[j],
+                align = run_edlib(self.cons_seqs["sequence"].iloc[i],
+                                  self.cons_seqs["sequence"].iloc[j],
                                   "global",
                                   cyclic=self.cyclic,
                                   rc=self.rc,
                                   return_seq=True)
                 if align.diff < th_synchronize:
                     logger.debug(f"Synchronize {i} and {j} (strand = {align.strand})")
-                    cons_seqs.loc[j, "sequence"] = align.seq
-        logger.info(f"Final consensus sequences:\n{cons_seqs}")
-
-        self.cons_seqs = cons_seqs
+                    self.cons_seqs.loc[j, "sequence"] = align.seq
+        logger.info(f"Final consensus sequences:\n{self.cons_seqs}")
 
 
 class ClusteringNumeric(Clustering):

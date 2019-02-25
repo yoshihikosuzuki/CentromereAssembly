@@ -37,7 +37,7 @@ def main():
                "qsub",
                job_name="gather_dist_mat",
                out_log="repr/log.stdout",
-               err_log="repr//log.stderr",
+               err_log="repr/log.stderr",
                n_core=1,
                depend=jids,
                wait=True)
@@ -45,16 +45,23 @@ def main():
     # Merge the results
     new_repr_units = pd.DataFrame()
     for peak_id, repr_id in repr_units.index.values:
-        c = load_pickle(f"clustering.{peak_id}.{repr_id}.pkl")
+        c = load_pickle(f"repr/clustering.{peak_id}.{repr_id}.pkl")
         new_repr_units = pd.concat([new_repr_units,
-                                    c.cons_units.assign(peak_id=peak_id).assign(master_id=repr_id).assign(repr_id=range(c.cons_units.shape[0]))])
-    new_repr_units.reset_index(drop=True).reindex(column=("peak_id",
-                                                          "master_id",
-                                                          "repr_id",
-                                                          "cluster_id",
-                                                          "cluster_size",
-                                                          "length",
-                                                          "sequence")).set_index(["peak_id", "master_id", "repr_id"]).to_csv("new_repr_units", sep='\t')
+                                    c.cons_seqs.assign(peak_id=peak_id) \
+                                    .assign(master_id=repr_id) \
+                                    .assign(repr_id=range(c.cons_seqs.shape[0]))])
+    new_repr_units.reset_index(drop=True) \
+                  .reindex(columns=("peak_id",
+                                    "master_id",
+                                    "repr_id",
+                                    "cluster_id",
+                                    "cluster_size",
+                                    "length",
+                                    "sequence")) \
+                  .set_index(["peak_id",
+                              "master_id",
+                              "repr_id"]) \
+                  .to_csv("new_repr_units", sep='\t')
 
 
 def load_args():
