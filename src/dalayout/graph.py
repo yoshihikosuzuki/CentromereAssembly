@@ -471,7 +471,7 @@ def construct_string_graph(overlaps, th_mean_score=0.04, th_overlap_len=3000):
     # NOTE: Because igraph prefers static graph construction, first list the vertices and edges up.
     nodes, edges = set(), set()
     for i, overlap in overlaps.iterrows():
-        f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, f_bb, f_be, f_bl, g_bb, g_be, g_bl, ovlp_len, ovlp_type, mean_score, path = overlap
+        f_id, g_id, strand, f_b, f_e, f_l, g_b, g_e, g_l, f_bb, f_be, f_bl, g_bb, g_be, g_bl, ovlp_len, ovlp_type, mean_score, path, mean_score_second, ovlp_len_second = overlap
 
         if mean_score < th_mean_score or ovlp_len < th_overlap_len:
             continue
