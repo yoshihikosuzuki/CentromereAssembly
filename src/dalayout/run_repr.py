@@ -16,7 +16,7 @@ def main():
     for peak_id, repr_id in repr_units.index.values:
         jids.append(submit_job(' '.join([f"calc_repr.py",
                                          f"-e encodings.pkl",
-                                         f"-c cover_rate",
+                                         f"-C cover_rate",
                                          f"-r tr_reads",
                                          f"-n {args.n_core}",
                                          f"-p {args.n_distribute}",
@@ -45,9 +45,9 @@ def main():
     # Merge the results
     new_repr_units = pd.DataFrame()
     for peak_id, repr_id in repr_units.index.values:
-        c = load_pickle(f"clustering.{args.peak_id}.{args.repr_id}.pkl")
+        c = load_pickle(f"clustering.{peak_id}.{repr_id}.pkl")
         new_repr_units = pd.concat([new_repr_units,
-                                    c.cons_units.assign(peak_id=args.peak_id).assign(master_id=args.repr_id).assign(repr_id=range(c.cons_units.shape[0]))])
+                                    c.cons_units.assign(peak_id=peak_id).assign(master_id=repr_id).assign(repr_id=range(c.cons_units.shape[0]))])
     new_repr_units.reset_index(drop=True).reindex(column=("peak_id",
                                                           "master_id",
                                                           "repr_id",

@@ -151,28 +151,28 @@ class Clustering:
         show_plot([trace], layout, out_fname=out_fname)
 
 
-def __calc_dist_array(i, data):
+def __calc_dist_array(i, data, cyclic, rc):
     """
-    This is just for parallelization of distance matrix calculation
+    Compute row i vs columns (i+1) to N in the distance matrix. N is data size.
     """
 
     # row <i> in the distance matrix
     dist_array = np.array([run_edlib(data[i],
                                      data[j],
                                      "global",
-                                     cyclic=True,
-                                     rc=True,
+                                     cyclic=cyclic,
+                                     rc=rc,
                                      only_diff=True)
                            for j in range(i + 1, data.shape[0])],
                           dtype='float32')
 
-    logger.debug(f"Finished @ row {i}")
+    #logger.debug(f"Finished @ row {i}")
     return (i, dist_array)
 
 
-def _calc_dist_array(rows, data):
+def _calc_dist_array(rows, data, cyclic, rc):
     logger.debug(f"Starting row {rows[0]}-{rows[-1]}")
-    return [__calc_dist_array(row, data) for row in rows]
+    return [__calc_dist_array(row, data, cyclic, rc) for row in rows]
 
 
 class ClusteringSeqs(Clustering):
@@ -188,7 +188,6 @@ class ClusteringSeqs(Clustering):
         self.cyclic = cyclic   # do cyclic alignment between two sequences
         self.rc = rc   # allow reverse complement when taking alignment
 
-    @print_log("distance matrix calculation")
     def _calc_dist_mat(self, rows, n_core):
         """
         Calculate all-vs-all distance matrix between the sequences.
@@ -199,7 +198,9 @@ class ClusteringSeqs(Clustering):
 
         n_sub = -(-len(rows) // n_core)
         tasks = [(rows[i * n_sub:(i + 1) * n_sub - 1],
-                  self.data)
+                  self.data,
+                  self.cyclic,
+                  self.rc)
                  for i in range(n_core)]
 
         dist_arrays = []
@@ -208,6 +209,7 @@ class ClusteringSeqs(Clustering):
                 dist_arrays += ret
         return dist_arrays
 
+    @print_log("distance matrix calculation")
     def calc_dist_mat(self, n_core=1, n_distribute=1, dir_prefix=".", file_prefix="clustering"):
         """
         <prefix> must be that of only FILE NAMES, do not include directory name.
@@ -216,6 +218,9 @@ class ClusteringSeqs(Clustering):
         rows = [int(i / 2) if i % 2 == 0
                 else self.N - 2 - int((i - 1) / 2)
                 for i in range(self.N - 1)]
+
+        if n_core * n_distribute > len(rows):
+            n_core, n_distribute = 1, 1
 
         if n_distribute == 1:
             # No distributed computation. Directly calculate in parallel.
@@ -240,8 +245,8 @@ class ClusteringSeqs(Clustering):
                                        "sge",
                                        "qsub",
                                        job_name="dist_mat_sub",
-                                       out_log="{dir_prefix}/log.stdout",
-                                       err_log="{dir_prefix}/log.stderr",
+                                       out_log=f"{dir_prefix}/log.stdout",
+                                       err_log=f"{dir_prefix}/log.stderr",
                                        n_core=n_core,
                                        wait=False))
 
@@ -251,8 +256,8 @@ class ClusteringSeqs(Clustering):
                        "sge",
                        "qsub",
                        job_name="gather_calc_dist_mat",
-                       out_log="{dir_prefix}/log.stdout",
-                       err_log="{dir_prefix}/log.stderr",
+                       out_log=f"{dir_prefix}/log.stdout",
+                       err_log=f"{dir_prefix}/log.stderr",
                        n_core=1,
                        depend=jids,
                        wait=True)

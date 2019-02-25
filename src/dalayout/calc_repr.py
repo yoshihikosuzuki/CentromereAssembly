@@ -58,7 +58,7 @@ def load_args():
         help=("Encodings by master units. [encodings.pkl]"))
 
     parser.add_argument(
-        "-c",
+        "-C",
         "--cover_rate",
         type=str,
         default="cover_rate",
