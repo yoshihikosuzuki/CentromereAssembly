@@ -483,31 +483,31 @@ def construct_string_graph(overlaps, th_mean_score=0.04, th_overlap_len=3000):
                           "%s:B" % f_id,
                           "%s:E" % f_id,
                           "%s:E" % g_id])
-            edges.update([("%s:B" % g_id, "%s:B" % f_id, f_bb),
-                          ("%s:E" % f_id, "%s:E" % g_id, g_bl - g_be)])
+            edges.update([("%s:B" % g_id, "%s:B" % f_id, f_bb, mean_score),
+                          ("%s:E" % f_id, "%s:E" % g_id, g_bl - g_be, mean_score)])
         elif ovlp_type == "suffix-suffix":
             nodes.update(["%s:E" % g_id,
                           "%s:B" % f_id,
                           "%s:E" % f_id,
                           "%s:B" % g_id])
-            edges.update([("%s:E" % g_id, "%s:B" % f_id, f_bb),
-                          ("%s:E" % f_id, "%s:B" % g_id, g_bb)])
+            edges.update([("%s:E" % g_id, "%s:B" % f_id, f_bb, mean_score),
+                          ("%s:E" % f_id, "%s:B" % g_id, g_bb, mean_score)])
         elif ovlp_type == "prefix-suffix":
             nodes.update(["%s:B" % f_id,
                           "%s:B" % g_id,
                           "%s:E" % g_id,
                           "%s:E" % f_id])
-            edges.update([("%s:B" % f_id, "%s:B" % g_id, g_bb),
-                          ("%s:E" % g_id, "%s:E" % f_id, f_bl - f_be)])
+            edges.update([("%s:B" % f_id, "%s:B" % g_id, g_bb, mean_score),
+                          ("%s:E" % g_id, "%s:E" % f_id, f_bl - f_be, mean_score)])
         else:   # prefix-prefix
             nodes.update(["%s:B" % f_id,
                           "%s:E" % g_id,
                           "%s:B" % g_id,
                           "%s:E" % f_id])
-            edges.update([("%s:B" % f_id, "%s:E" % g_id, g_bl - g_be),
-                          ("%s:B" % g_id, "%s:E" % f_id, f_bl - f_be)])
+            edges.update([("%s:B" % f_id, "%s:E" % g_id, g_bl - g_be, mean_score),
+                          ("%s:B" % g_id, "%s:E" % f_id, f_bl - f_be, mean_score)])
 
-    return ig.Graph.DictList(edges=(dict(source=s, target=t, length=l) for s, t, l in edges),
+    return ig.Graph.DictList(edges=(dict(source=s, target=t, length=l, score=p) for s, t, l, p in edges),
                              vertices=None,
                              directed=True)
 
@@ -551,14 +551,15 @@ def transitive_reduction(sg):
     # Re-construct a graph
     return ig.Graph.DictList(edges=(dict(source=e["source"],
                                          target=e["target"],
-                                         length=e["length"])
+                                         length=e["length"],
+                                         score=e["score"])
                                     for e in sg.es
                                     if not e_reduce[e.tuple]),
                              vertices=None,
                              directed=True)
 
 
-def draw_graph(sg):
+def draw_graph(sg, cover_rate):
     E = [e.tuple for e in sg.es]
     N = sg.vcount()
     pos = sg.layout('kk')
@@ -579,26 +580,33 @@ def draw_graph(sg):
     
     node_trace = go.Scatter(x=[pos[node][0] for node in range(N)],
                             y=[pos[node][1] for node in range(N)],
-                            text=[f"{node['name']}<br>{node.outdegree()} out-nodes" for node in sg.vs],
+                            text=[f"{pos[node.index]}<br>{node['name']}<br>{node.outdegree()} out-nodes" for node in sg.vs],
                             mode='markers',
                             hoverinfo='text',
                             marker=dict(
                                 showscale=False,
                                 colorscale='YlGnBu',
                                 reversescale=True,
-                                color=[node.outdegree() for node in sg.vs],
+                                color=[node.outdegree() if cover_rate.loc[int(node["name"].split(':')[0]), "cover_rate"] >= 0.95 else "red" for node in sg.vs],
                                 size=10,
                                 line=dict(width=2)))
     
     layout = go.Layout(width=1000, height=1000,
-                       xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                       yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                       xaxis=dict(showgrid=False,
+                                  zeroline=True,
+                                  zerolinecolor="yellow",
+                                  showticklabels=True),
+                       yaxis=dict(showgrid=False,
+                                  zeroline=True,
+                                  zerolinecolor="yellow",
+                                  showticklabels=True),
                        shapes=shapes,
                        hovermode='closest',
                        margin=go.layout.Margin(l=0, r=0, b=0, t=0),
                        showlegend=False)
     fig = go.Figure(data=[edge_trace, node_trace], layout=layout)
     py.iplot(fig)
+    return pos
 
 
 def construct_unit_graph(overlaps):
