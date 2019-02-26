@@ -145,7 +145,7 @@ def _detect_variants(repr_index, repr_unit, reads, encoding_df, variant_fraction
     # Write the representative unit and raw units aligned to it for a Consed input
     units = encoding_df.apply(lambda d: cut_unit_from_read(reads, d, hc), axis=1)
     with open(units_fname, 'w') as f:
-        f.write(repr_unit + '\n' + '\n'.join(units) + '\n')
+        f.write((repr_unit if not hc else homopolymer_compression(repr_unit)) + '\n' + '\n'.join(units) + '\n')
 
     # Run Consed
     run_consed(units_fname,

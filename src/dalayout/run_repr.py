@@ -50,6 +50,9 @@ def main():
                                     c.cons_seqs.assign(peak_id=peak_id) \
                                     .assign(master_id=repr_id) \
                                     .assign(repr_id=range(c.cons_seqs.shape[0]))])
+
+    # TODO: merge again similar new representatives here
+        
     new_repr_units.reset_index(drop=True) \
                   .reindex(columns=("peak_id",
                                     "master_id",
