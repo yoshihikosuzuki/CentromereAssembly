@@ -138,7 +138,7 @@ def cut_unit_from_read(reads, encoding, hc):
 
 
 def _detect_variants(repr_index, repr_unit, reads, encoding_df, variant_fraction, hc):
-    units_fname = f"consed_out/repr_{'.'.join(repr_index)}.raw_units{'.hc' if hc else ''}"
+    units_fname = f"consed_out/repr_{'.'.join(list(map(str, repr_index)))}.raw_units{'.hc' if hc else ''}"
     consed_fname = f"{units_fname}.t{variant_fraction}.consed"
     varmat_fname = f"{consed_fname}.V"
 

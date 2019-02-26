@@ -87,12 +87,10 @@ def plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path):
 
 
 def calc_score_mat(read_sig_i, read_sig_j, match_th):
-    return np.array([[0 if (read_sig_i[i][0] != read_sig_j[j][0]
-                            or read_sig_i[i][2] != read_sig_j[j][2])
-                      else match_th if (read_sig_i[i][3] != "complete"
-                                        or read_sig_j[j][3] != "complete")
-                      else 0 if read_sig_i[i][1] != read_sig_j[j][1]
-                      else 1. - float(np.count_nonzero(read_sig_i[i][4] != read_sig_j[j][4])) / read_sig_i[i][4].shape[0]   # TODO: count only 1-1 matches
+    return np.array([[0 if read_sig_i[i][:4] != read_sig_j[j][:4]
+                      else match_th if (read_sig_i[i][4] != "complete"
+                                        or read_sig_j[j][4] != "complete")
+                      else 1. - float(np.count_nonzero(read_sig_i[i][5] != read_sig_j[j][5])) / read_sig_i[i][5].shape[0]
                       for j in range(len(read_sig_j))]
                      for i in range(len(read_sig_i))])
 
@@ -310,7 +308,8 @@ class Overlap:
         # To quickly iterate over the units in a read during alignment, convert necessary data in encodings
         # into a list for each read and for each strand
         self.read_sigs = {(read_id, 0): list(df.apply(lambda df: (df["peak_id"],
-                                                                  df["repr_id"],   # TODO: refactor to use master and repr
+                                                                  df["master_id"],
+                                                                  df["repr_id"],
                                                                   df["strand"],
                                                                   df["type"],
                                                                   df[self.varvec_colname],
@@ -319,20 +318,15 @@ class Overlap:
                                                                   df["length"]),
                                                       axis=1))
                           for read_id, df in gb}
-        self.read_sigs.update({(k[0], 1): [(x[0],
-                                            x[1],
-                                            (x[2] + 1) % 2,   # revcomp
-                                            x[3],
-                                            x[4],
-                                            x[5],
-                                            x[6],
-                                            x[7])   # TODO: can we convert start/end positions here?
+        self.read_sigs.update({(k[0], 1): [(*x[0:3],
+                                            (x[3] + 1) % 2,   # revcomp
+                                            *x[4:])   # TODO: can we convert start/end positions here?
                                            for x in reversed(v)]
                                for k, v in self.read_sigs.items()})
 
         # Composition of representative units for each read and for each strand
         # Used for initial filtering of alignment candidate
-        self.read_comps = {k: Counter([x[:3] for x in v])
+        self.read_comps = {k: Counter([x[:4] for x in v])
                            for k, v in self.read_sigs.items()}
 
     def svs_read_alignment(self, read_i, read_j, strand, match_th=0.7, indel_penalty=0.2, plot=False):

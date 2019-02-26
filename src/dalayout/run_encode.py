@@ -4,7 +4,7 @@ import logzero
 from logzero import logger
 import pandas as pd
 from BITS.utils import load_pickle, save_pickle, run_command
-from .new_encode import encode_reads, detect_variants
+from .encode import encode_reads, detect_variants
 
 
 def main():

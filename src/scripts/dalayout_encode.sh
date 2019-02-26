@@ -9,7 +9,7 @@ fi
 . $1
 
 mkdir -p dalayout
-echo "dalayout_run_encode.py -n ${N_CORE_ENCODE} $([ -n "${VARIANT_FRAC}" ] && echo "-t ${VARIANT_FRAC}") $([ -n "${VCALL_HC}" ] && echo "-H") $([ -n "${DEBUG_MODE}" ] && echo "-D")" > dalayout/run_dalayout_encode.sh
+echo "dalayout_run_encode.py -n ${N_CORE_ENCODE} $([ -n "${N_INDEX}" ] && echo "-i ${N_INDEX}") $([ -n "${VARIANT_FRAC}" ] && echo "-t ${VARIANT_FRAC}") $([ -n "${VCALL_HC}" ] && echo "-H") $([ -n "${DEBUG_MODE}" ] && echo "-D")" > dalayout/run_dalayout_encode.sh
 
 if ${USE_JOB_SCHEDULER}; then
     echo "Starting encoding"

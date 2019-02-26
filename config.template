@@ -70,6 +70,7 @@ N_CORE_DACMASTER=8
 ##### DALAYOUT #####
 ####################
 
+N_INDEX=2
 VARIANT_FRAC=0.15
 N_CORE_ENCODE=24
 # comment in or out
