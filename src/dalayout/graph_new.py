@@ -16,7 +16,7 @@ def plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path):
     
     # Score matrix
     trace1 = go.Heatmap(z=score_mat.T,
-                        text=np.array([[f"{ri}: {read_sig_i[ri][:4]} vs {ci}: {read_sig_j[ci][:4]}<br>%sim={c:.2}"
+                        text=np.array([[f"{ri}: {read_sig_i[ri][:5]} vs {ci}: {read_sig_j[ci][:5]}<br>%sim={c:.2}"
                                         for ci, c in enumerate(r)]
                                        for ri, r in enumerate(score_mat)]).T,
                         hoverinfo="text",
@@ -29,7 +29,7 @@ def plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path):
 
     trace2 = go.Scatter(x=[x[0] for x in path],
                         y=[x[1] for x in path],
-                        text=[f"{x[0]}: {read_sig_i[x[0]][:4]} vs {x[1]}: {read_sig_j[x[1]][:4]}<br>%sim={score_mat[x[0]][x[1]]:.2}"
+                        text=[f"{x[0]}: {read_sig_i[x[0]][:5]} vs {x[1]}: {read_sig_j[x[1]][:5]}<br>%sim={score_mat[x[0]][x[1]]:.2}"
                               for x in path],
                         hoverinfo="text",
                         name="optimal path")
@@ -52,7 +52,7 @@ def plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path):
     
     # DP matrix
     trace3 = go.Heatmap(z=dp.T,
-                        text=np.array([[f"{ri - 1}: {read_sig_i[ri - 1][:4]} vs {ci - 1}: {read_sig_j[ci - 1][:4]}<br>%sim={c:.2}"
+                        text=np.array([[f"{ri - 1}: {read_sig_i[ri - 1][:5]} vs {ci - 1}: {read_sig_j[ci - 1][:5]}<br>%sim={c:.2}"
                                         if ri * ci != 0 else "0"
                                         for ci, c in enumerate(r)]
                                        for ri, r in enumerate(dp)]).T,
@@ -64,7 +64,7 @@ def plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path):
 
     trace4 = go.Scatter(x=[x[0] + 1 for x in path],
                         y=[x[1] + 1 for x in path],
-                        text=[f"{x[0]}: {read_sig_i[x[0]][:4]} vs {x[1]}: {read_sig_j[x[1]][:4]}<br>%sim={dp[x[0] + 1][x[1] + 1]:.2}"
+                        text=[f"{x[0]}: {read_sig_i[x[0]][:5]} vs {x[1]}: {read_sig_j[x[1]][:5]}<br>%sim={dp[x[0] + 1][x[1] + 1]:.2}"
                               for x in path],
                         hoverinfo="text",
                         name="optimal path")
@@ -174,10 +174,10 @@ def svs_read_alignment(read_i,
         return None
 
     #logger.debug(f"{read_i} vs {read_j}({strand})")
-    overlap_len = sum([max(read_sig_i[i][7], read_sig_j[j][7]) for i, j in path])   # in bp
+    overlap_len = sum([max(read_sig_i[i][8], read_sig_j[j][8]) for i, j in path])   # in bp
     if overlap_len < th_ovlp_len:
         return None
-    overlap_len_second = sum([max(read_sig_i[i][7], read_sig_j[j][7]) for i, j in path_second])   # in bp
+    overlap_len_second = sum([max(read_sig_i[i][8], read_sig_j[j][8]) for i, j in path_second])   # in bp
     # TODO: overlap length not by sum of the unit lengths but end_bp - start_bp
     # TODO: check consistency of end_bp - start-bp between read i and j
 
@@ -185,9 +185,9 @@ def svs_read_alignment(read_i,
     start_unit_i, start_unit_j = path[0]
     end_unit_i, end_unit_j = path[-1]
 
-    start_bp_i, end_bp_i = read_sig_i[start_unit_i][5], read_sig_i[end_unit_i][6]
-    start_bp_j = read_sig_j[start_unit_j if strand == 0 else end_unit_j][5]
-    end_bp_j = read_sig_j[end_unit_j if strand == 0 else start_unit_j][6]
+    start_bp_i, end_bp_i = read_sig_i[start_unit_i][6], read_sig_i[end_unit_i][7]
+    start_bp_j = read_sig_j[start_unit_j if strand == 0 else end_unit_j][6]
+    end_bp_j = read_sig_j[end_unit_j if strand == 0 else start_unit_j][7]
     
     if strand == 1:
         start_unit_j, end_unit_j = n_unit_j - 1 - end_unit_j, n_unit_j - 1 - start_unit_j
