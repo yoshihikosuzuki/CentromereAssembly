@@ -87,9 +87,12 @@ def plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path):
 
 
 def calc_score_mat(read_sig_i, read_sig_j, match_th):
-    return np.array([[0 if read_sig_i[i][:4] != read_sig_j[j][:4]
+    return np.array([[0 if (read_sig_i[i][0] != read_sig_j[j][0]
+                            or read_sig_i[i][3] != read_sig_j[j][3])
                       else match_th if (read_sig_i[i][4] != "complete"
                                         or read_sig_j[j][4] != "complete")
+                      else 0 if (read_sig_i[i][1] != read_sig_j[j][1]
+                                 or read_sig_i[i][2] != read_sig_j[j][2])
                       else 1. - float(np.count_nonzero(read_sig_i[i][5] != read_sig_j[j][5])) / read_sig_i[i][5].shape[0]
                       for j in range(len(read_sig_j))]
                      for i in range(len(read_sig_i))])
@@ -320,7 +323,7 @@ class Overlap:
                           for read_id, df in gb}
         self.read_sigs.update({(k[0], 1): [(*x[0:3],
                                             (x[3] + 1) % 2,   # revcomp
-                                            *x[4:])   # TODO: can we convert start/end positions here?
+                                            *x[4:])
                                            for x in reversed(v)]
                                for k, v in self.read_sigs.items()})
 
