@@ -4,7 +4,9 @@ from logzero import logger
 import numpy as np
 import pandas as pd
 import igraph as ig
+import networkx as nx
 from collections import Counter
+import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
 from BITS.utils import run_command, submit_job, save_pickle, make_line
@@ -559,11 +561,10 @@ def transitive_reduction(sg):
                              directed=True)
 
 
-def draw_graph(sg, cover_rate):
+def draw_graph_plotly(sg, pos, cover_rate):
     E = [e.tuple for e in sg.es]
     N = sg.vcount()
-    pos = sg.layout('kk')
-    
+
     edge_trace = go.Scatter(x=[i for l in [(pos[s][0], pos[t][0], None) for s, t in E] for i in l],
                             y=[i for l in [(pos[s][1], pos[t][1], None) for s, t in E] for i in l],
                             line=dict(width=0.5, color='black'),
@@ -606,6 +607,27 @@ def draw_graph(sg, cover_rate):
                        showlegend=False)
     fig = go.Figure(data=[edge_trace, node_trace], layout=layout)
     py.iplot(fig)
+
+
+def draw_graph_nx(sg, pos, cover_rate):
+    G = nx.DiGraph(sg.get_edgelist())
+    p = list(pos)
+
+    plt.figure(figsize=(20, 20))
+    nx.draw(G, p, node_size=100, width=3)
+    nx.draw_networkx_labels(G, p)
+    plt.show()
+
+
+def draw_graph(sg, cover_rate, by='nx'):
+    assert by in ['plotly', 'nx'], "Invalid name of <by>"
+    
+    pos = sg.layout('kk')
+    if by == 'plotly':
+        draw_graph_plotly(sg, pos, cover_rate)
+    else:
+        draw_graph_nx(sg, pos, cover_rate)
+
     return pos
 
 
