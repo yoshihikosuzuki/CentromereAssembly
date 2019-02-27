@@ -158,10 +158,12 @@ def _detect_variants(repr_index, repr_unit, reads, encoding_df, variant_fraction
 
     # Load variant vectors
     with open(varmat_fname, 'r') as f:
+        varvecs = list(zip(*[list(map(int, list(line.strip()[1:-1]))) for line in f]))
+        if len(varvecs) == 0:   # no variants found
+            varvecs = [(0, ) for i in range(encoding_df.shape[0])]
+
         # Use index same as <encodings> so that the results can be placed at proper locations in it
-        return pd.Series(list(zip(*[list(map(int,
-                                             list(line.strip()[1:-1])))
-                                    for line in f])),
+        return pd.Series(varvecs,
                          index=encoding_df.index) \
                  .apply(lambda s: np.array(s))
         # TODO: XXX: CHECK IF [1:-1] IS TRULY CORRESPOING SEQUENTIALLY TO THE UNITS BY LOOKING CONSED'S CODE
