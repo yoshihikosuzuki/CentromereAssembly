@@ -233,7 +233,7 @@ class Viewer:
                                            axis=1))
             data += [go.Scatter(x=encodings["start"],
                                 y=encodings["start"],
-                                text=encodings.apply(lambda df: f"{df['peak_id']}:{df['repr_id']}{'+' if df['strand'] == 0 else '-'} ",
+                                text=encodings.apply(lambda df: f"{df['peak_id']}:{df['master_id']}:{df['repr_id']}{'+' if df['strand'] == 0 else '-'} ",
                                                      axis=1),
                                 textposition="bottom left",
                                 textfont=dict(size=10, color="black"),
@@ -241,7 +241,7 @@ class Viewer:
                                 name="representative ID"),
                      go.Scatter(x=encodings["start"],
                                 y=encodings["start"],
-                                text=encodings.reset_index().apply(lambda df: f"{df.name} ({df['peak_id']}:{df['repr_id']}{'+' if df['strand'] == 0 else '-'})<br>[{df['start']}, {df['end']}] ({df['length']} bp)<br>diff = {df['diff']}",
+                                text=encodings.reset_index().apply(lambda df: f"{df.name} ({df['peak_id']}:{df['master_id']}:{df['repr_id']}{'+' if df['strand'] == 0 else '-'})<br>[{df['start']}, {df['end']}] ({df['length']} bp)<br>diff = {df['diff']}",
                                                      axis=1),
                                 hoverinfo="text",
                                 showlegend=False)]

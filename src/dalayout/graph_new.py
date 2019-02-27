@@ -147,6 +147,13 @@ def _svs_read_alignment(read_sig_i,
     # Calculate match score for every unit pair between read_i and read_j
     score_mat = calc_score_mat(read_sig_i, read_sig_j, match_th)
 
+    # Remove the last 5 units to exclude too short second-best alignments
+    for i in range(5):
+        score_mat[i][-1] = -np.inf
+        score_mat[-1 - i][0] = -np.inf
+        score_mat[-1][i] = -np.inf
+        score_mat[0][-1 - i] = -np.inf
+
     # Take alignment by solving a DP which intermediates between NW and SW
     dp, path, score = calc_alignment(score_mat, match_th, indel_penalty)
     mean_score = score / len(path)
