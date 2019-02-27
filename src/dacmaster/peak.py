@@ -92,7 +92,7 @@ class Peak:
 
         n_tasks = len(tasks)
         n_sub = -(-n_tasks // n_core)   # num. of tasks for each core
-        tasks_sub = [tasks[i * n_sub:(i + 1) * n_sub - 1] for i in range(n_core)]
+        tasks_sub = [tasks[i * n_sub:(i + 1) * n_sub] for i in range(n_core)]
 
         self.cons_units = {}
         index = 0

@@ -197,7 +197,7 @@ class ClusteringSeqs(Clustering):
         """
 
         n_sub = -(-len(rows) // n_core)
-        tasks = [(rows[i * n_sub:(i + 1) * n_sub - 1],
+        tasks = [(rows[i * n_sub:(i + 1) * n_sub],
                   self.data,
                   self.cyclic,
                   self.rc)
@@ -228,7 +228,7 @@ class ClusteringSeqs(Clustering):
         else:
             # Distributed computation
             n_sub = -(-len(rows) // n_distribute)
-            rows_sub = [rows[i * n_sub:(i + 1) * n_sub - 1]
+            rows_sub = [rows[i * n_sub:(i + 1) * n_sub]
                         for i in range(n_distribute)]
             n_digit = int(np.log10(n_distribute) + 1)
             jids = []

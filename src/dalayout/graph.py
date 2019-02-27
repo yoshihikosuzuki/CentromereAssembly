@@ -376,7 +376,7 @@ class Overlap:
         # Split the tasks
         list_pairs = self.list_up_pairs()
         n_sub = -(-len(list_pairs) // n_distribute)
-        list_pairs_sub = [list_pairs[i * n_sub:(i + 1) * n_sub - 1]
+        list_pairs_sub = [list_pairs[i * n_sub:(i + 1) * n_sub]
                           for i in range(n_distribute)]
 
         # Prepare data for each distributed job and submit them
