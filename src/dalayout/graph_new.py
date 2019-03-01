@@ -7,7 +7,8 @@ import igraph as ig
 from collections import Counter
 import plotly.offline as py
 import plotly.graph_objs as go
-from BITS.utils import run_command, submit_job, save_pickle, make_line
+from BITS.utils import run_command, submit_job, save_pickle
+from BITS.plot import make_line
 
 
 def plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path):

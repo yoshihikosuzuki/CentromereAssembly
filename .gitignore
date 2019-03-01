@@ -3,6 +3,8 @@ consed/
 consed_python/
 .snakemake/
 *.ipynb
+*.seqs
+*consed*
 
 
 .DS_Store

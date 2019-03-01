@@ -18,7 +18,7 @@ def main():
                                     args.n_core,
                                     args.job_scheduler,
                                     args.submit_command,
-                                    args.queue_or_partition)
+                                    args.queue_name)
 
 
 def load_args():
@@ -84,7 +84,7 @@ def load_args():
 
     parser.add_argument(
         "-q",
-        "--queue_or_partition",
+        "--queue_name",
         type=str,
         default=None,
         help="Name of queue (SGE) or partition (SLURM) to which jobs are submitted. [None]")

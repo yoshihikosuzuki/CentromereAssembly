@@ -2,7 +2,8 @@ from dataclasses import dataclass
 import numpy as np
 from interval import interval
 from logzero import logger
-from BITS.utils import make_line, interval_len, subtract_interval
+from BITS.interval import interval_len, subtract_interval
+from BITS.plot import make_line
 
 
 def calc_cover_set(datruf):

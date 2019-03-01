@@ -11,8 +11,9 @@ import matplotlib.pyplot as plt
 import plotly.graph_objs as go
 from logzero import logger
 from BITS.run import run_edlib
-from BITS.utils import run_command, print_log, NoDaemonPool, submit_job, save_pickle, load_pickle
+from BITS.utils import run_command, print_log, NoDaemonPool, save_pickle, load_pickle
 from BITS.plot import generate_layout, show_plot, generate_scatter
+from BITS.scheduler import Scheduler
 import consed
 from .dpmm import DPMM
 
@@ -232,35 +233,28 @@ class ClusteringSeqs(Clustering):
                         for i in range(n_distribute)]
             n_digit = int(np.log10(n_distribute) + 1)
             jids = []
+            s = Scheduler("sge",
+                          "qsub",
+                          out_log=f"{dir_prefix}/log")
             save_pickle(self, f"{dir_prefix}/{file_prefix}_obj.pkl")
             for i, rs in enumerate(rows_sub):
                 index = str(i + 1).zfill(n_digit)
                 save_pickle(rs, f"{dir_prefix}/{file_prefix}_rows.{index}.pkl")
-                jids.append(submit_job(' '.join([f"calc_dist_mat_sub.py",
-                                                 f"-n {n_core}",
-                                                 f"{dir_prefix}/{file_prefix}_obj.pkl",
-                                                 f"{dir_prefix}/{file_prefix}_rows.{index}.pkl",
-                                                 f"{dir_prefix}/{file_prefix}.{index}.pkl"]),
-                                       f"{dir_prefix}/{file_prefix}.sge.{index}",
-                                       "sge",
-                                       "qsub",
-                                       job_name="dist_mat_sub",
-                                       out_log=f"{dir_prefix}/log.stdout",
-                                       err_log=f"{dir_prefix}/log.stderr",
-                                       n_core=n_core,
-                                       wait=False))
+                jids.append(s.submit(' '.join([f"calc_dist_mat_sub.py",
+                                               f"-n {n_core}",
+                                               f"{dir_prefix}/{file_prefix}_obj.pkl",
+                                               f"{dir_prefix}/{file_prefix}_rows.{index}.pkl",
+                                               f"{dir_prefix}/{file_prefix}.{index}.pkl"]),
+                                     f"{dir_prefix}/{file_prefix}.sge.{index}",
+                                     job_name="dist_mat_sub",
+                                     n_core=n_core))
 
             # Merge the results
-            submit_job("sleep 1s",
-                       f"{dir_prefix}/gather.sge",
-                       "sge",
-                       "qsub",
-                       job_name="gather_calc_dist_mat",
-                       out_log=f"{dir_prefix}/log.stdout",
-                       err_log=f"{dir_prefix}/log.stderr",
-                       n_core=1,
-                       depend=jids,
-                       wait=True)
+            s.submit("sleep 1s",
+                     f"{dir_prefix}/gather.sge",
+                     job_name="gather_calc_dist_mat",
+                     depend=jids,
+                     wait=True)
 
             dist_arrays = []
             for fname in run_command(f"find {dir_prefix} -name '{file_prefix}.*.pkl'").strip().split('\n'):
@@ -470,7 +464,7 @@ class ClusteringVarMat(ClusteringNumeric):
                 vmatrix[i, :] = list(map(int, list(line.strip())))
 
         # Change the matrix form as (UNITS, VARIANTS)
-        return vmatrix.T
+        return vmatrix.T[1:-1, :]
 
     def calc_dist_mat(self):
         super().calc_dist_mat(metric="hamming")

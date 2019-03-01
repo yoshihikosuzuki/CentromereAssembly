@@ -9,7 +9,9 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import plotly.offline as py
 import plotly.graph_objs as go
-from BITS.utils import run_command, submit_job, save_pickle, make_line
+from BITS.utils import run_command, save_pickle
+from BITS.scheduler import Scheduler
+from BITS.plot import make_line
 
 
 def plot_alignment_mat(read_sig_i, read_sig_j, score_mat, dp, path):
@@ -368,7 +370,7 @@ class Overlap:
                                       n_core,
                                       job_scheduler,
                                       submit_command,
-                                      queue_or_partition):
+                                      queue_name):
         """
         Distributed all-vs-all read overlap calculation.
         """
@@ -385,40 +387,28 @@ class Overlap:
         save_pickle(self, "dalayout/overlap_obj.pkl")
 
         jids = []
+        s = Scheduler(job_scheduler,
+                      submit_command,
+                      queue_name,
+                      out_log="dalayout/log")
         for i, lp in enumerate(list_pairs_sub):
             index = str(i + 1).zfill(n_digit)
             save_pickle(lp, f"dalayout/list_pairs.{index}.pkl")
-            jids.append(submit_job(' '.join([f"run_ava_sub.py",
-                                             f"-n {n_core}",
-                                             f"dalayout/overlap_obj.pkl",
-                                             f"dalayout/list_pairs.{index}.pkl",
-                                             f"dalayout/overlaps.{index}.pkl"]),
-                                   f"dalayout/ava_pair.{job_scheduler}.{index}",
-                                   job_scheduler,
-                                   submit_command,
-                                   job_name="ava_sub",
-                                   out_log="dalayout/log.stdout",
-                                   err_log="dalayout/log.stderr",
-                                   n_core=n_core,
-                                   queue_or_partition=queue_or_partition,
-                                   time_limit="24:00:00",
-                                   mem_limit=10000,
-                                   wait=False))
+            jids.append(s.submit(' '.join([f"run_ava_sub.py",
+                                           f"-n {n_core}",
+                                           f"dalayout/overlap_obj.pkl",
+                                           f"dalayout/list_pairs.{index}.pkl",
+                                           f"dalayout/overlaps.{index}.pkl"]),
+                                 f"dalayout/ava_pair.{job_scheduler}.{index}",
+                                 job_name="ava_sub",
+                                 n_core=n_core))
 
         # Merge the results
-        submit_job("dalayout_gather_ava_sub.py -d dalayout",
-                   f"dalayout/gather_ava_sub.{job_scheduler}",
-                   job_scheduler,
-                   submit_command,
-                   job_name="gather_ava_sub",
-                   out_log="dalayout/log.stdout",
-                   err_log="dalayout/log.stderr",
-                   n_core=1,
-                   queue_or_partition=queue_or_partition,
-                   time_limit="24:00:00",
-                   mem_limit=10000,
-                   depend=jids,
-                   wait=True)
+        s.submit("dalayout_gather_ava_sub.py -d dalayout",
+                 f"dalayout/gather_ava_sub.{job_scheduler}",
+                 job_name="gather_ava_sub",
+                 depend=jids,
+                 wait=True)
 
     def _ava_read_alignment(self, list_pairs, n_core):
         n_sub = -(-len(list_pairs) // n_core)

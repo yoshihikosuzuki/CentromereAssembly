@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 from matplotlib_venn import venn2, venn3
 import plotly.offline as py
 import plotly.graph_objs as go
-from BITS.utils import make_line, interval_len
+from BITS.interval import interval_len
+from BITS.plot import make_line
 
 
 class Plotter():
