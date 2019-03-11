@@ -11,7 +11,7 @@ def main():
 
     # Prepare the directory
     run_command(f"rm -f .{args.db_prefix}.*.tan.* .{args.db_prefix}.tan.* TAN.*")
-    run_command(f"mkdir -p {dir_name}")
+    run_command(f"mkdir -p {dir_name}; rm -f {dir_name}/*")
 
     # Run the script
     script = '\n'.join([run_command(f"HPC.TANmask -T{args.n_core} {args.db_prefix}.db"),
