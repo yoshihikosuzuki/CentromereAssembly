@@ -1,4 +1,4 @@
-import os.parh.isfile
+from os.path import isfile
 import numpy as np
 import pandas as pd
 from multiprocessing import Pool
@@ -14,36 +14,44 @@ def _find_units_mult(read_ids):
     return [find_units(read_id) for read_id in read_ids]
 
 
-def find_units(args):   # entry point of distributed computation   # TODO: how to pass the args without main and argparser?
-    # load data
+def find_units(tr_intervals_all, alignments_all, n_core):   # entry point of distributed computation   # TODO: how to pass the args without main and argparser?
+    read_ids = set(tr_intervals_all["dbid"])
 
-    # split list
-    all_read_ids = list(range(args.start_id, args.end_id + 1))
-    n_per_core =  -(-len(all_read_ids) // args.n_core)
-    list_read_ids = [all_read_ids[i * n_per_core : (i + 1) * n_per_core]   # TODO: add any arguments needed
-                     for i in range(args.n_core)]
-    
-    with Pool(n_core) as pool:
-        for ret in pool.starmap(find_units_mult, list_read_ids):
-            # add results
+    if n_core == 1:
+        _find_units_mult(read_ids, tr_intervals_all, alignments_all)
+    else:
+        # split list
+        n_per_core =  -(-len(read_ids) // n_core)
+        list_args = [(read_ids[i * n_per_core : (i + 1) * n_per_core],
+                      tr_intervals_all,
+                      alignments_all)
+                     for i in range(n_core)]
+        with Pool(n_core) as pool:
+            for ret in pool.starmap(find_units_mult, list_args):
+                # add results
 
 
-def check_input(args, dbdump="datander_dbdump", ladump="datander_ladump"):
-    # TODO: convert dump files into DF-friendly format
-    if not os.path.isfile(dbdump):
-        logger.info("DBdump file does not exist. Generating.")
-        run_command(f"DBdump -r -h -mtan {args.db_file} | awk '$1 == \"R\" {{dbid = $2}} $1 == \"T0\" && $2 > 0 {{for (i = 0; i < )}}' > {dbdump}")
-    if not os.path.isfile(ladump):
-        logger.info("LAdump file does not exist. Generating.")
-        run_command(f"LAdump -c {args.db_file} {args.las_file} > {ladump}")
+def check_end_id(args):
+    # Set <end_id> as the last read if not specified
+    if args.end_id <= 0:
+        args.end_id = int(run_command(f"DBdump {args.db_file} | awk 'NR == 1 {{print $3}}'").strip())
+
+
+def load_dumps(args):
+    # Extract data from DBdump's and LAdump's output
+    # NOTE: start/end read IDs are both inclusive
+    tr_intervals_all = pd.DataFrame([x.split('\t') for x in run_command(f"DBdump -r -h -mtan {args.db_file} | awk '$1 == \"R\" {{dbid = $2}} $1 == \"T0\" && {args.start_id} <= dbid && dbid <= {args.end_id} && $2 > 0 {{for (i = 1; i <= $2; i++) printf(\"%s\\t%s\\t%s\\n\", dbid, $(2 * i + 1), $(2 * i + 2))}}'").strip().split('\n')],
+                                    columns=("dbid", "start", "end"))
+    alignments_all = pd.DataFrame([x.split('\t') for x in run_command(f"LAdump -c {args.db_file} {args.las_file} | awk '$1 == \"P\" {{dbid = $2}} $1 == \"C\" && {args.start_id} <= dbid && dbid <= {args.end_id} {{printf(\"%s\\t%s\\t%s\\t%s\\t%s\\n\", dbid, $2, $3, $4, $5)}}'").strip().split('\n')],
+                                  columns=("dbid", "abpos", "aepos", "bbpos", "bepos"))
+    return (tr_intervals_all, alignments_all)
 
 
 def main():
     args = load_args()
-    check_input(args)
-    if args.end_id <= 0:   # last read
-        args.end_id = int(run_command(f"DBdump {args.db_file} | awk 'NR == 1 {{print $3}}'").strip())
-    find_units(args)
+    check_end_id(args)
+    tr_intervals_all, alignments_all = load_dumps(args)
+    find_units(tr_intervals_all, alignments_all, args.n_core)
 
 
 def load_args():
@@ -55,18 +63,6 @@ def load_args():
 
     p.add_argument("las_file",
                    help="Output of TANmask of the modified DAMASTER package.")
-
-    p.add_argument("-d",
-                   "--dbdump",
-                   type=str,
-                   default="datander_dbdump",
-                   help="DBdump file which will be automatically generated. [datander_dbdump]")
-
-    p.add_argument("-l",
-                   "--ladump",
-                   type=str,
-                   default="datander_ladump",
-                   help="LAdump file which will be automatically generated. [datander_ladump]")
 
     p.add_argument("-s",
                    "--start_dbid",
@@ -86,13 +82,19 @@ def load_args():
                    default=1,
                    help="Degree of parallelization. [1]")
 
+    p.add_argument("-p",
+                   "--n_distribute",
+                   type=int,
+                   default=1,
+                   help="Degree of parallelization. [1]")
+
     p.add_argument("-D",
                    "--debug_mode",
                    action="store_true",
                    default=False,
                    help="Show debug messages. [False]")
 
-    args = parser.parse_args()
+    args = p.parse_args()
     debug_mode(args.debug_mode)
     return args
 

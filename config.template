@@ -1,79 +1,57 @@
-# NOTE: Do NOT insert spaces inside a statement because this file will be loaded by bash.
+[GENERAL]
+
+# Comment out if you do not want to run in debug mode
+DEBUG_MODE = true
 
 
-###################
-##### GENERAL #####
-###################
+[JOB_SCHEDULER]
 
-# Comment-out if you do not want to run in debug mode
-DEBUG_MODE=true
+# Comment out or set as false if you do not want to use a job scheduler
+USE_SCHEDULER = true
 
-TASK=all   # one of {all, datander, datruf, dacmaster, dalayout}
+## All options below in this section are valid only when USE_SCHEDULER exists or is true:
 
+# Choose one of two
+SCHEDULER_NAME = sge
+#SCHEDULER_NAME = slurm
 
-#########################
-##### JOB SCHEDULER #####
-#########################
+# Choose one of two
+SUBMIT_COMMAND = qsub
+#SUBMIT_JOB = sbatch
 
-# Comment-out if you do not want to use a job scheduler
-USE_JOB_SCHEDULER=true
-
-# Choose one of two; valid only when ${USE_JOB_SCHEDULER} exists
-JOB_SCHEDULER=sge
-#JOB_SCHEDULER=slurm
-
-# Command for submitting a job; valid only when ${USE_JOB_SCHEDULER} exists
-SUBMIT_JOB=qsub
-#SUBMIT_JOB=sbatch
-
-# [Opt-in] Queue name (SGE) or partition name (SLURM); valid only when ${USE_JOB_SCHEDULER} exists
-#QUEUE_OR_PARTITION=
-
-# [Opt-in] For SLURM
-#TIME_LIMIT=
-
-# [Opt-in] For SLURM
-#MEM_LIMIT=
+# [Opt-in] QUEUE_NAME is queue name (SGE) or partition name (SLURM)
+#QUEUE_NAME = 
+#TIME_LIMIT = 
+#MEM_LIMIT = 
 
 
-############################
-##### DAZZLER DATABASE #####
-############################
+[DAZZ_DB]
 
-DB_PREFIX=DMEL
+DB_PREFIX = DMEL
 
 
-####################
-##### DATANDER #####
-####################
+[DATANDER]
 
-N_CORE_DATANDER=8
+N_CORE = 8
 
 
-##################
-##### DATRUF #####
-##################
+[DATRUF]
 
-N_DISTRIBUTE=8
-N_CORE_DATRUF=4
+N_DISTRIBUTE = 8
+N_CORE = 4
 
 
-#####################
-##### DACMASTER #####
-#####################
+[DACMASTER]
 
-MIN_N_UNITS=10
-N_CORE_DACMASTER=8
+MIN_N_UNITS = 10
+N_CORE = 8
 
 
-####################
-##### DALAYOUT #####
-####################
+[DALAYOUT]
 
-N_INDEX=2
-VARIANT_FRAC=0.15
-N_CORE_ENCODE=24
-# comment in or out
-VCALL_HC=true
-N_DISTRIBUTE_DALAYOUT=12
-N_CORE_DALAYOUT=6
+N_INDEX = 2
+VARIANT_FRAC = 0.15
+N_CORE_ENCODE = 24
+VCALL_HC = true
+N_DISTRIBUTE_DALAYOUT = 12
+N_CORE_DALAYOUT = 6
