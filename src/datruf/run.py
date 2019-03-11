@@ -2,10 +2,8 @@ import os.path
 import numpy as np
 import pandas as pd
 from multiprocessing import Pool
-import logging
-import logzero
 from logzero import logger
-from BITS.utils import run_command
+from BITS.utils import run_command, debug_mode
 from .load import load_dbdump, load_ladump, load_tr_intervals, load_alignments, load_paths
 from .core import calc_cover_set, calc_min_cover_set
 
@@ -302,11 +300,7 @@ def load_args():
         help=("Run in debug mode. [False]"))
 
     args = parser.parse_args()
-    if args.debug_mode:
-        logzero.loglevel(logging.DEBUG)
-    else:
-        logzero.loglevel(logging.INFO)
-    del args.debug_mode
+    debug_mode(args.debug_mode)
 
     return args
 
