@@ -4,35 +4,42 @@ from logzero import logger
 from BITS.utils import run_command, print_log
 
 
+def use_scheduler(config):
+    return ('USE_SCHEDULER' in config['JOB_SCHEDULER']
+            and config.getboolean('JOB_SCHEDULER', 'USE_SCHEDULER'))
+
+
 @print_log("datander")
-def run_datander(config, job_scheduler_options):
+def run_datander(config, scheduler_options):
     run_command(' '.join([f"datander.py",
                           f"-n {config.get('DATANDER', 'N_CORE')}",
-                          job_scheduler_options,
+                          scheduler_options,
                           f"{config.get('DAZZ_DB', 'DB_PREFIX')}"]))
 
 
 @print_log("datruf")
-def run_datruf(config, job_scheduler_options):
+def run_datruf(config, scheduler_options):
     run_command(' '.join([f"datruf.py",
-                          f"-n {config.get('DATANDER', 'N_CORE')}",
-                          job_scheduler_options,
-                          f"{config.get('DAZZ_DB', 'DB_PREFIX')}"]))
+                          f"-n {config.get('DATRUF', 'N_CORE')}",
+                          f"-p {config.get('DATRUF', 'N_DISTRIBUTE')}" if use_scheduler(config) else '',
+                          scheduler_options,
+                          f"{config.get('DAZZ_DB', 'DB_PREFIX')}.db",
+                          f"TAN.{config.get('DAZZ_DB', 'DB_PREFIX')}.las"]))
 
 
 @print_log("dacmaster")
-def run_dacmaster(config, job_scheduler_options):
+def run_dacmaster(config, scheduler_options):
     run_command(' '.join([f"dacmaster.py",
                           f"-n {config.get('DATANDER', 'N_CORE')}",
-                          job_scheduler_options,
+                          scheduler_options,
                           f"{config.get('DAZZ_DB', 'DB_PREFIX')}"]))
 
 
 @print_log("dalayout")
-def run_dalayout(config, job_scheduler_options):
+def run_dalayout(config, scheduler_options):
     run_command(' '.join([f"dalayout.py",
                           f"-n {config.get('DATANDER', 'N_CORE')}",
-                          job_scheduler_options,
+                          scheduler_options,
                           f"{config.get('DAZZ_DB', 'DB_PREFIX')}"]))
 
 
@@ -42,27 +49,32 @@ def main():
     config.read(args.config_fname)
 
     # Prepare options for job scheduler
-    job_scheduler_options = ""
-    if 'USE_SCHEDULER' in config['JOB_SCHEDULER'] and config.getboolean('JOB_SCHEDULER', 'USE_SCHEDULER'):
-        job_scheduler_options = [f"--job_scheduler {config.get('JOB_SCHEDULER', 'SCHEDULER_NAME')}",
-                                 f"--submit_command {config.get('JOB_SCHEDULER', 'SUBMIT_COMMAND')}"]
+    scheduler_options = ""
+    if use_scheduler(config):
+        assert 'SCHEDULER_NAME' in config['JOB_SCHEDULER'], "SCHEDULER_NAME must be specified"
+        assert 'SUBMIT_COMMAND' in config['JOB_SCHEDULER'], "SUBMIT_COMMAND must be specified"
+
+        scheduler_options = [f"--job_scheduler {config.get('JOB_SCHEDULER', 'SCHEDULER_NAME')}",
+                             f"--submit_command {config.get('JOB_SCHEDULER', 'SUBMIT_COMMAND')}"]
+
         if 'QUEUE_NAME' in config['JOB_SCHEDULER']:
-            job_scheduler_options.append(f"--queue_name {config.get('JOB_SCHEDULER', 'QUEUE_NAME')}")
+            scheduler_options.append(f"--queue_name {config.get('JOB_SCHEDULER', 'QUEUE_NAME')}")
         if 'TIME_LIMIT' in config['JOB_SCHEDULER']:
-            job_scheduler_options.append(f"--time_limit {config.get('JOB_SCHEDULER', 'TIME_LIMIT')}")
+            scheduler_options.append(f"--time_limit {config.get('JOB_SCHEDULER', 'TIME_LIMIT')}")
         if 'MEM_LIMIT' in config['JOB_SCHEDULER']:
-            job_scheduler_options.append(f"--mem_limit {config.get('JOB_SCHEDULER', 'MEM_LIMIT')}")
-        job_scheduler_options = ' '.join(job_scheduler_options)
+            scheduler_options.append(f"--mem_limit {config.get('JOB_SCHEDULER', 'MEM_LIMIT')}")
+
+        scheduler_options = ' '.join(scheduler_options)
 
     # Run submodule(s)
     if args.task_name in ("datander", "all"):
-        run_datander(config, job_scheduler_options)
+        run_datander(config, scheduler_options)
     if args.task_name in ("datruf", "all"):
-        run_datruf(config, job_scheduler_options)
+        run_datruf(config, scheduler_options)
     if args.task_name in ("dacmaster", "all"):
-        run_dacmaster(config, job_scheduler_options)
+        run_dacmaster(config, scheduler_options)
     if args.task_name in ("dalayout", "all"):
-        run_dalayout(config, job_scheduler_options)
+        run_dalayout(config, scheduler_options)
 
 
 def load_args():
