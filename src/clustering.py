@@ -15,7 +15,7 @@ from BITS.utils import run_command, print_log, NoDaemonPool, save_pickle, load_p
 from BITS.plot import generate_layout, show_plot, generate_scatter
 from BITS.scheduler import Scheduler
 import consed
-from .dpmm import DPMM
+#from .dpmm import DPMM
 
 
 class Clustering:
@@ -412,9 +412,10 @@ class ClusteringNumeric(Clustering):
         Dirichlet Process (Multinomial) Mixture Model with concentration hyperparameter = 1.0
         """
 
-        dpmm = DPMM(self.data, verbose=True)   # TODO: store the data for plots?
-        dpmm.run_sampling(max_iteration)
-        return dpmm.max_s
+        pass
+        #dpmm = DPMM(self.data, verbose=True)   # TODO: store the data for plots?
+        #dpmm.run_sampling(max_iteration)
+        #return dpmm.max_s
 
     def _gmm_bic(self, n_clusters):
         gmm = GaussianMixture(n_components=n_clusters, covariance_type='full')

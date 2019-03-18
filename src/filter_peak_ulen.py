@@ -5,14 +5,16 @@ import pandas as pd
 from sklearn.neighbors import KernelDensity
 import plotly.offline as py
 import plotly.graph_objs as go
-from BITS.utils import run_command, save_pickle
+from BITS.utils import run_command
 
 
 def load_db(db_file, tr_read_ids):
     # NOTE: header must not contain tab
-    return {dbid: tuple(*line.split('\t'), tr_read_ids[dbid])   # header, sequence, peak_id
-            for dbid, line in enumerate(run_command(f"DBshow {db_file} | awk 'BEGIN {{first = 1}} {{if (substr($0, 1, 1) == \">\") {{if (first == 1) {{first = 0}} else {{printf(\"%s\\t%s\\n\", header, seq)}}; header = substr($0, 2); seq = "";}} else {{seq = seq $0}}}} END {{printf(\"%s\\t%s\\n\", header, seq)}}'").strip().split('\n'), start=1)
-            if dbid in tr_read_ids.keys()}
+    return pd.DataFrame.from_dict({dbid: (*line.split('\t'), tr_read_ids[dbid])   # header, sequence, peak_id
+                                   for dbid, line in enumerate(run_command(f"DBshow {db_file} | awk 'BEGIN {{first = 1}} {{if (substr($0, 1, 1) == \">\") {{if (first == 1) {{first = 0}} else {{printf(\"%s\\t%s\\n\", header, seq)}}; header = substr($0, 2); seq = \"\";}} else {{seq = seq $0}}}} END {{printf(\"%s\\t%s\\n\", header, seq)}}'").strip().split('\n'), start=1)
+                                   if dbid in tr_read_ids.keys()},
+                                  orient="index",
+                                  columns=("header", "sequence", "peak_id"))
 
 
 def find_peak_ulen(tr_file,   # output of datruf
@@ -31,7 +33,7 @@ def find_peak_ulen(tr_file,   # output of datruf
                           for read_id, df in trs.groupby("read_id")
                           if (df["end"] - df["start"]).sum() >= min_cover_rate * read_lengths[read_id]
                           for units in df["units"]
-                          for start, end in units
+                          for start, end in eval(units)
                           if min_ulen <= end - start <= max_ulen])
     dens = np.exp(KernelDensity(kernel='gaussian', bandwidth=band_width)
                   .fit(unit_lens.reshape(-1, 1))
@@ -62,11 +64,11 @@ def find_peak_ulen(tr_file,   # output of datruf
 
     # Filter reads for each peak interval
     # NOTE: every read can belong to at most 1 peak class if <min_coevr_rate> is bigger than 0.5
-    tr_read_ids = {peak_id: {read_id for read_id, df in trs.groupby("read_id")
-                             if df[df.apply(lambda d: d["mean_ulen"] in peak_intvl, axis=1)].apply(lambda d: d["end"] - d["start"], axis=1).sum() >= min_cover_rate * read_lengths[read_id]}
-                   for peak_id, peak_intvl in enumerate(peak_intvls, start=1)}
+    tr_read_ids = {peak_id: {read_id for read_id, df in trs[trs.apply(lambda df: df["mean_ulen"] in peak_intvl, axis=1)].groupby("read_id")
+                             if (df["end"] - df["start"]).sum() >= min_cover_rate * read_lengths[read_id]}
+                   for peak_id, peak_intvl in enumerate(peak_intvls.components, start=1)}
     tr_read_ids = {read_id: peak_id
                    for peak_id, read_ids in tr_read_ids.items()
                    for read_id in read_ids}
     tr_reads = load_db(db_file, tr_read_ids)
-    save_pickle(tr_reads, "tr_reads.pkl")
+    tr_reads.to_csv("tr_reads", sep='\t')
