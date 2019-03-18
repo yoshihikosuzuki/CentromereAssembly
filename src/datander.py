@@ -1,7 +1,7 @@
 import argparse
 from logzero import logger
 from BITS.scheduler import Scheduler
-from BITS.utils import run_command, debug_mode
+from BITS.utils import run_command
 from .scheduler_args import add_scheduler_args
 
 
@@ -45,13 +45,6 @@ def load_args():
                    default=1,
                    help="Degree of parallelization. [1]")
 
-    p.add_argument("-D",
-                   "--debug_mode",
-                   action="store_true",
-                   default=False,
-                   help="Show debug messages. [False]")
-
     add_scheduler_args(p)
     args = p.parse_args()
-    debug_mode(args.debug_mode)
     return args

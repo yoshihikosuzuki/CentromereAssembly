@@ -6,7 +6,7 @@ from interval import interval
 from logzero import logger
 from BITS.scheduler import Scheduler
 from BITS.interval import interval_len, subtract_interval
-from BITS.utils import run_command, debug_mode
+from BITS.utils import run_command
 from .scheduler_args import add_scheduler_args
 
 dir_name = "datruf"
@@ -30,7 +30,7 @@ def filter_alignments(tr_intervals, alignments, min_len=1000):
     return inners
 
 
-def load_paths(args, read_id, alignment_set):
+def load_paths(read_id, alignment_set, db_file, las_file):
     # NOTE: Since alignment path information is very large, load for each read on demand
 
     def find_boundary(aseq, bseq):
@@ -60,7 +60,7 @@ def load_paths(args, read_id, alignment_set):
     if len(alignment_set) == 0:
         return []
 
-    out = run_command(f"LAshow4pathplot -a {args.db_file} {args.las_file} {read_id} | sed 's/,//g' | awk 'BEGIN {{first = 1}} NF == 7 {{if (first == 1) {{first = 0}} else {{printf(\"%s\\n%s\\n%s\\n%s\\n\", header, aseq, bseq, symbol)}}; header = $0; aseq = \"\"; bseq = \"\"; symbol = \"\"; count = 0;}} NF < 7 {{if (count == 0) {{aseq = aseq $0}} else if (count == 1) {{symbol = symbol $0}} else {{bseq = bseq $0}}; count++; count %= 3;}} END {{printf(\"%s\\n%s\\n%s\\n%s\\n\", header, aseq, bseq, symbol)}}'").strip().split('\n')
+    out = run_command(f"LAshow4pathplot -a {db_file} {las_file} {read_id} | sed 's/,//g' | awk 'BEGIN {{first = 1}} NF == 7 {{if (first == 1) {{first = 0}} else {{printf(\"%s\\n%s\\n%s\\n%s\\n\", header, aseq, bseq, symbol)}}; header = $0; aseq = \"\"; bseq = \"\"; symbol = \"\"; count = 0;}} NF < 7 {{if (count == 0) {{aseq = aseq $0}} else if (count == 1) {{symbol = symbol $0}} else {{bseq = bseq $0}}; count++; count %= 3;}} END {{printf(\"%s\\n%s\\n%s\\n%s\\n\", header, aseq, bseq, symbol)}}'").strip().split('\n')
 
     ret = []   # [(ab, ae, bb, be, FlattenCigar), ...]
     for header, aseq, bseq, symbol in zip(*([iter(out)] * 4)):    # split every 4 lines (= single entry)
@@ -73,10 +73,6 @@ def load_paths(args, read_id, alignment_set):
 
 
 def split_tr(ab, bb, fcigar):
-    """
-    Split TR interval [bb, ae] into unit intervals.
-    """
-
     apos, bpos = ab, bb
     unit_intvls = [(bpos, apos)]
     # Iteratively find max{ax} such that bx == (last unit end)
@@ -90,9 +86,10 @@ def split_tr(ab, bb, fcigar):
     return unit_intvls
 
 
-def find_units_single(args, read_id, tr_intervals, alignments, max_cv=0.1):
+def find_units_single(read_id, tr_intervals, alignments, db_file, las_file, max_cv=0.1):
     ret = []
-    for ab, ae, bb, be, fcigar in load_paths(args, read_id, filter_alignments(tr_intervals, alignments)):
+    alignment_set = filter_alignments(tr_intervals, alignments)
+    for ab, ae, bb, be, fcigar in load_paths(read_id, alignment_set, db_file, las_file):
         unit_intvls = split_tr(ab, bb, fcigar)
         if len(unit_intvls) == 1:   # at least duplication
             continue
@@ -105,17 +102,12 @@ def find_units_single(args, read_id, tr_intervals, alignments, max_cv=0.1):
     return ret
 
 
-def find_units_mult(args, read_ids, tr_intervals_all, alignments_all):
-    return [find_units_single(args, read_id, tr_intervals_all[read_id], alignments_all[read_id])
-            for read_id in read_ids]
-
-
-def load_dumps(args):
+def load_dumps(start_dbid, end_dbid, db_file, las_file):
     # Extract data from DBdump's and LAdump's output
     return ({read_id: list(df.apply(lambda d: tuple(d[["start", "end"]]), axis=1))
              for read_id, df
              in (pd.DataFrame([list(map(int, x.split('\t')))
-                               for x in run_command(f"DBdump -rh -mtan {args.db_file} {args.start_dbid}-{args.end_dbid} | awk '$1 == \"R\" {{dbid = $2}} $1 == \"T0\" && $2 > 0 {{for (i = 1; i <= $2; i++) printf(\"%s\\t%s\\t%s\\n\", dbid, $(2 * i + 1), $(2 * i + 2))}}'").strip().split('\n')],
+                               for x in run_command(f"DBdump -rh -mtan {db_file} {start_dbid}-{end_dbid} | awk '$1 == \"R\" {{dbid = $2}} $1 == \"T0\" && $2 > 0 {{for (i = 1; i <= $2; i++) printf(\"%s\\t%s\\t%s\\n\", dbid, $(2 * i + 1), $(2 * i + 2))}}'").strip().split('\n')],
                               columns=("dbid", "start", "end")) \
                  .groupby("dbid"))},
             {read_id: list(df.sort_values(by="abpos", kind="mergesort") \
@@ -123,36 +115,39 @@ def load_dumps(args):
                            .apply(lambda d: tuple((*map(int, d[["abpos", "aepos", "bbpos", "bepos", "distance"]]), d["slope"])), axis=1))
              for read_id, df
              in (pd.DataFrame([list(map(int, x.split('\t')))
-                               for x in run_command(f"LAdump -c {args.db_file} {args.las_file} {args.start_dbid}-{args.end_dbid} | awk '$1 == \"P\" {{dbid = $2}} $1 == \"C\" {{printf(\"%s\\t%s\\t%s\\t%s\\t%s\\n\", dbid, $2, $3, $4, $5)}}'").strip().split('\n')],
+                               for x in run_command(f"LAdump -c {db_file} {las_file} {start_dbid}-{end_dbid} | awk '$1 == \"P\" {{dbid = $2}} $1 == \"C\" {{printf(\"%s\\t%s\\t%s\\t%s\\t%s\\n\", dbid, $2, $3, $4, $5)}}'").strip().split('\n')],
                               columns=("dbid", "abpos", "aepos", "bbpos", "bepos")) \
                  .assign(distance=lambda x: x["abpos"] - x["bbpos"]) \
                  .assign(slope=lambda x: ((x["aepos"] - x["abpos"]) / (x["bepos"] - x["bbpos"])).round(3)) \
                  .groupby("dbid"))})
 
 
-def find_units(args):
-    tr_intervals_all, alignments_all = load_dumps(args)
-    read_ids = sorted(tr_intervals_all.keys())
+def find_units_mult(start_dbid, end_dbid, db_file, las_file):
+    tr_intervals_all, alignments_all = load_dumps(start_dbid, end_dbid, db_file, las_file)
+    return [find_units_single(read_id, tr_intervals_all[read_id], alignments_all[read_id], db_file, las_file)
+            for read_id in sorted(tr_intervals_all.keys())]
 
+
+def find_units(start_dbid, end_dbid, db_file, las_file, n_core, out_file):
     results = {}
     index = 0
-    if args.n_core == 1:
-        logger.debug("single core")
-        ret = find_units_mult(args, read_ids, tr_intervals_all, alignments_all)
+    if n_core == 1:
+        logger.debug("Single core")
+        ret = find_units_mult(start_dbid, end_dbid, db_file, las_file)
         for r in ret:
             if len(r) != 0:
                 results[index] = r
                 index += 1
     else:
-        logger.debug("multi core")
+        logger.debug("Multi core")
         # split list
-        n_per_core = -(-len(read_ids) // args.n_core)
-        list_args = [(args,
-                      read_ids[i * n_per_core : (i + 1) * n_per_core],
-                      tr_intervals_all,
-                      alignments_all)
-                     for i in range(args.n_core)]
-        with Pool(args.n_core) as pool:
+        n_part = -(-(end_dbid - start_dbid + 1) // n_core)
+        list_args = [(start_dbid + i * n_part,
+                      min([start_dbid + (i + 1) * n_part - 1, end_dbid]),
+                      db_file,
+                      las_file)
+                     for i in range(n_core)]
+        with Pool(n_core) as pool:
             for rets in pool.starmap(find_units_mult, list_args):
                 for ret in rets:
                     for r in ret:
@@ -168,7 +163,7 @@ def find_units(args):
                                     "mean_ulen",
                                     "cv_ulen",
                                     "units")) \
-                .to_csv(out_fname if args.index is None else f"{dir_name}/{out_fname}.{args.index}", sep='\t')
+                .to_csv(out_file, sep='\t')
 
 
 def concat_df(dir_name, prefix, sep='\t', index_col=0):
@@ -185,7 +180,7 @@ def main():
 
     if args.job_scheduler is None:
         logger.debug("Without job scheduler")
-        find_units(args)
+        find_units(args.start_dbid, args.end_dbid, args.db_file, args.las_file, args.n_core, out_fname)
     else:
         logger.debug("With job scheduler")
         # Split tasks and submit jobs
@@ -196,14 +191,7 @@ def main():
                       args.submit_command,
                       args.queue_name,
                       f"{dir_name}/log")
-        jids = [s.submit(' '.join([f"python -m dacembler.datruf",
-                                   f"-s {args.start_dbid + i * n_part}",
-                                   f"-e {min([args.start_dbid + (i + 1) * n_part - 1, args.end_dbid])}",
-                                   f"-n {args.n_core}",
-                                   f"{'-D' if args.debug_mode else ''}",
-                                   f"--index {index}",
-                                   f"{args.db_file}",
-                                   f"{args.las_file}"]),
+        jids = [s.submit(f"python -c 'from dacembler.datruf import find_units; find_units({args.start_dbid + i * n_part}, {min([args.start_dbid + (i + 1) * n_part - 1, args.end_dbid])}, \"{args.db_file}\", \"{args.las_file}\", {args.n_core}, \"{dir_name}/{out_fname}.{index}\")'",
                          f"{dir_name}/run.sh.{index}",
                          job_name="datruf_distribute",
                          n_core=args.n_core)
@@ -217,10 +205,6 @@ def main():
                  depend=jids,
                  wait=True)
         concat_df(dir_name, out_fname).round(3).to_csv(out_fname, sep='\t')
-
-
-def main_distribute():
-    find_units(load_args())
 
 
 def load_args():
@@ -256,25 +240,9 @@ def load_args():
                    default=1,
                    help="Degree of parallelization. [1]")
 
-    p.add_argument("-D",
-                   "--debug_mode",
-                   action="store_true",
-                   default=False,
-                   help="Show debug messages. [False]")
-
-    p.add_argument("--index",
-                   type=str,
-                   default=None,
-                   help="Internally used for distributed computation.")
-
     add_scheduler_args(p)
     args = p.parse_args()
-    debug_mode(args.debug_mode)
     if args.n_distribute > 1:
         assert args.job_scheduler is not None, "--job_scheduler must be specified"
         assert args.submit_command is not None, "--submit_command must be specified"
     return args
-
-
-if __name__ == "__main__":
-    main_distribute()
