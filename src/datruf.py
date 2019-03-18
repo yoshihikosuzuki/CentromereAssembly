@@ -122,7 +122,7 @@ def load_dumps(start_dbid, end_dbid, db_file, las_file):
                  .groupby("dbid"))})
 
 
-def find_units_mult(start_dbid, end_dbid, db_file, las_file):
+def find_units_multi(start_dbid, end_dbid, db_file, las_file):
     tr_intervals_all, alignments_all = load_dumps(start_dbid, end_dbid, db_file, las_file)
     return [find_units_single(read_id, tr_intervals_all[read_id], alignments_all[read_id], db_file, las_file)
             for read_id in sorted(tr_intervals_all.keys())]
@@ -133,7 +133,7 @@ def find_units(start_dbid, end_dbid, db_file, las_file, n_core, out_file):
     index = 0
     if n_core == 1:
         logger.debug("Single core")
-        ret = find_units_mult(start_dbid, end_dbid, db_file, las_file)
+        ret = find_units_multi(start_dbid, end_dbid, db_file, las_file)
         for r in ret:
             if len(r) != 0:
                 results[index] = r
@@ -148,7 +148,7 @@ def find_units(start_dbid, end_dbid, db_file, las_file, n_core, out_file):
                       las_file)
                      for i in range(n_core)]
         with Pool(n_core) as pool:
-            for rets in pool.starmap(find_units_mult, list_args):
+            for rets in pool.starmap(find_units_multi, list_args):
                 for ret in rets:
                     for r in ret:
                         if len(r) != 0:

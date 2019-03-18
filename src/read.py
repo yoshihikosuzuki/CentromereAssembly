@@ -24,7 +24,7 @@ def load_db(db_file):
     # NOTE: header must not contain tab
     return {dbid: Read(dbid, *line.split('\t'))
             for dbid, line
-            in enumerate(run_command(f"DBshow {db_file} | awk 'BEGIN {{first = 1}} {{if (substr($0, 1, 1) == \">\") {{if (first == 1) {{first = 0}} else {{printf(\"%s\\t%s\\n\", header, seq)}}; header = substr($0, 2); seq = "";}} else {{seq = seq $0}}}} END {{printf(\"%s\\t%s\\n\", header, seq)}}'").strip().split('\n'))}
+            in enumerate(run_command(f"DBshow {db_file} | awk 'BEGIN {{first = 1}} {{if (substr($0, 1, 1) == \">\") {{if (first == 1) {{first = 0}} else {{printf(\"%s\\t%s\\n\", header, seq)}}; header = substr($0, 2); seq = "";}} else {{seq = seq $0}}}} END {{printf(\"%s\\t%s\\n\", header, seq)}}'").strip().split('\n'), start=1)}
 
 
 @dataclass
