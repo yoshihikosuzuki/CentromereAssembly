@@ -30,10 +30,13 @@ class Clustering:
     must be set when the distance matrix is computed.
     """
 
-    def __init__(self, data, names):
+    def __init__(self, data, names=None):
         self.data = data
         self.N = data.shape[0]   # num of data. NOTE: Each row in <data> must be each datum
-        self.names = names   # name for each datum. used for plots
+        if names is None:
+            self.names = list(range(self.N))
+        else:
+            self.names = names   # name for each datum. used for plots
         self.assignment = np.full(self.N, -1, dtype='int8')   # cluster assignment for each data
         self.precomputed = {}   # used to avoid re-calculation of clustering results
 
@@ -120,7 +123,7 @@ class Clustering:
         Draw a heatmap of the (squared) distance matrix.
         """
 
-        assert self.N <= 100, "Too many data to plot"
+        #assert self.N <= 100, "Too many data to plot"
 
         trace = go.Heatmap(z=self.s_dist_mat,
                            colorscale="YlGnBu",
@@ -184,7 +187,7 @@ class ClusteringSeqs(Clustering):
     Run <self.cluster_greedy> for former, and <self.cluster_hierarchical> for latter.
     """
 
-    def __init__(self, data, names, cyclic=True, rc=True):
+    def __init__(self, data, names=None, cyclic=True, rc=True):
         super().__init__(data, names)
         self.cyclic = cyclic   # do cyclic alignment between two sequences
         self.rc = rc   # allow reverse complement when taking alignment
@@ -449,9 +452,9 @@ class ClusteringVarMat(ClusteringNumeric):
        self.assignment[i] = Cluster index to which unit i belongs
     """
 
-    def __init__(self, vmatrix_fname, names):
+    def __init__(self, vmatrix_fname, names=None):
         data = self.load_vmatrix(vmatrix_fname)
-        super().__init__(data, list(range(data.shape[0])))
+        super().__init__(data, names)
 
     def load_vmatrix(self, in_fname):
         N = int(run_command(f"awk 'NR == 1 {{print length($1)}}' {in_fname}"))

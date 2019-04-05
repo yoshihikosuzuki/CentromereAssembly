@@ -53,7 +53,7 @@ Datruf consists of three parts:
 
 * **Plotter** requires results of datruf and/or other software for tandem repeat analysis (TRF, mTR, etc.) and draws figures useful for comparison of these results.
 
-See [Jupyter notebook]() for how to use.
+See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/docs/datruf%20usage.ipynb) for how to use.
 
 ## dacmaster
 
