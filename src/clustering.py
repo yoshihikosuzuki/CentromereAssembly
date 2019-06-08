@@ -118,7 +118,7 @@ class Clustering:
         plt.hist(list(cluster_size.values()), bins=bins)
         plt.show()
 
-    def plot_dist_mat(self, width=500, height=500, title=None, out_fname=None):
+    def plot_dist_mat(self, show_scale=False, zmin=0, zmax=1, width=500, height=500, title=None, out_fname=None):
         """
         Draw a heatmap of the (squared) distance matrix.
         """
@@ -127,9 +127,9 @@ class Clustering:
 
         trace = go.Heatmap(z=self.s_dist_mat,
                            colorscale="YlGnBu",
-                           zmin=0,
-                           zmax=1,
-                           showscale=False)
+                           zmin=zmin,
+                           zmax=zmax,
+                           showscale=show_scale)
         layout = generate_layout(width, height, title=title)
         layout["yaxis"] = dict(autorange="reversed")
         show_plot([trace], layout, out_fname=out_fname)

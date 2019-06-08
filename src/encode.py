@@ -125,7 +125,7 @@ def encode(read_id, units, read_seq, hc=False, plot=False):
                        rc=False)
     c.calc_dist_mat()
     if plot:
-        c.plot_dist_mat(title="global sequence similarity")
+        c.plot_dist_mat(zmin=None, zmax=None, show_scale=True, title="global sequence similarity")
         #c.plot_tsne()
     # Remove units which came from minor, different source
     c.cluster_hierarchical()
@@ -172,12 +172,12 @@ def encode(read_id, units, read_seq, hc=False, plot=False):
                 units.append((start, end, cons_id, cc.data[index]))
             if plot:
                 cc.calc_dist_mat()
-                cc.plot_dist_mat(title="units correlation")
+                cc.plot_dist_mat(zmin=None, zmax=None, show_scale=True, title="units correlation")
                 #cc.plot_tsne(title="units")
                 # Compute correlation among variants
                 cc.data = cc.data.T
                 cc.calc_dist_mat()
-                cc.plot_dist_mat(title="variants correlation")
+                cc.plot_dist_mat(zmin=None, zmax=None, show_scale=True, title="variants correlation")
                 #cc.plot_tsne(title="variants")
         #run_command(f"rm {prefix}.*")
     units = sorted(units)
