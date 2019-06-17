@@ -20,6 +20,32 @@ $ python setup.py install
 
 ## How to run
 
+The command to run VCA is simple:
+
+```bash
+[paste vca's help here]
+```
+
+although you have to prepare a config file (`config` by default; template exists in the root directory) to specify input data files, parameters, etc. The most essential configurations are, for example:
+
+```
+[config example here]
+```
+
+For detail, please see [Notebook or document](). Instead of `all` mode, you can execute each of the submodules individually. The submodules consisting of VCA are as follows:
+
+* [list of submodules here]
+
+For detailed description of each module, please read [Notebook]() or paper.
+
+
+
+
+
+--- (Information below is obsolete [June 17, 2019]) ---
+
+## How to run
+
 The simplest way is to use `dacembler.sh` with a config file which can be prepared by modifying `config.template` in this repository root. You need to specify your environment-specific parameters, the number of cores, etc., in the config file. Once you complete it (here we call it as `config_file`), you can run dacembler by:
 
 ```bash
