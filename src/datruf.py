@@ -4,10 +4,8 @@ import pandas as pd
 from multiprocessing import Pool
 from interval import interval
 from logzero import logger
-from BITS.util.scheduler import Scheduler
 from BITS.util.interval import intvl_len, subtract_intvl
 from BITS.util.proc import run_command
-from .scheduler_args import add_scheduler_args
 
 dir_name = "datruf"
 out_fname = "datruf_result"
@@ -172,77 +170,55 @@ def concat_df(dir_name, prefix, sep='\t', index_col=0):
              .reset_index(drop=True)
 
 
-def main():
-    args = load_args()
-    if args.end_dbid <= 0:   # Set <end_dbid> as the last read if not specified
-        args.end_dbid = int(run_command(f"DBdump {args.db_file} | awk 'NR == 1 {{print $3}}'").strip())
+def run_datruf(db_fname, las_fname, n_core=1, n_distribute=1, scheduler=None):
     run_command(f"mkdir -p {dir_name}; rm -f {dir_name}/*")
 
-    if args.job_scheduler is None:
-        logger.debug("Without job scheduler")
-        find_units(args.start_dbid, args.end_dbid, args.db_file, args.las_file, args.n_core, out_fname)
+    n_reads = int(run_command(f"DBdump {db_fname} | awk 'NR == 1 {{print $3}}'").strip())
+    if scheduler is None:
+        find_units(1, n_reads, db_fname, las_fname, n_core, out_fname)
     else:
-        logger.debug("With job scheduler")
-        # Split tasks and submit jobs
-        n_part = -(-(args.end_dbid - args.start_dbid + 1) // args.n_distribute)
-        indices = [str(i + 1).zfill(int(np.log10(args.n_distribute) + 1))
-                   for i in range(args.n_distribute)]
-        s = Scheduler(args.job_scheduler,
-                      args.submit_command,
-                      args.queue_name,
-                      f"{dir_name}/log")
-        jids = [s.submit(f"python -c 'from dacembler.datruf import find_units; find_units({args.start_dbid + i * n_part}, {min([args.start_dbid + (i + 1) * n_part - 1, args.end_dbid])}, \"{args.db_file}\", \"{args.las_file}\", {args.n_core}, \"{dir_name}/{out_fname}.{index}\")'",
-                         f"{dir_name}/run.sh.{index}",
-                         job_name="datruf_distribute",
-                         n_core=args.n_core)
-                for i, index in enumerate(indices)]
+        jids = []
+        unit_n = -(-n_reads // n_distribute)
+        for i in range(n_distribute):
+            index = str(i + 1).zfill(int(np.log10(n_distribute) + 1))
+            start = 1 + i * unit_n
+            end = min([1 + (i + 1) * unit_n - 1, n_reads])
+            out_fname_part = f"{dir_name}/{out_fname}.{index}"
+            script = (f"python -m VCA.datruf {db_fname} {las_fname} {out_fname_part} "
+                      f"{start} {end} {n_core}")
 
+            jids.append(scheduler.submit(script,
+                                         f"{dir_name}/run_datruf.sh.{index}",
+                                         job_name="datruf",
+                                         log_fname=f"{dir_name}/log",
+                                         n_core=n_core))
+    
         # Merge the results
         logger.info("Waiting for all distributed jobs to be finished...")
-        s.submit("sleep 1s",
-                 f"{dir_name}/gather.sh",
-                 job_name="datruf_gather",
-                 depend=jids,
-                 wait=True)
+        scheduler.submit("sleep 1s",
+                         f"{dir_name}/gather.sh",
+                         job_name="datruf_gather",
+                         depend=jids,
+                         wait=True)
         concat_df(dir_name, out_fname).round(3).to_csv(out_fname, sep='\t')
 
 
+def main():
+    args = load_args()
+    find_units(args.start_dbid, args.end_dbid, args.db_fname, args.las_fname, args.n_core, args.out_fname)
+
+
 def load_args():
-    p = argparse.ArgumentParser(description="Find tandem repeat units from PacBio reads.")
+    p = argparse.ArgumentParser()
+    p.add_argument("db_fname", type=str)
+    p.add_argument("las_fname", type=str)
+    p.add_argument("out_fname", type=str)
+    p.add_argument("start_dbid", type=int)
+    p.add_argument("end_dbid", type=int)
+    p.add_argument("n_core", type=int)
+    return p.parse_args()
 
-    p.add_argument("db_file",
-                   help="DAZZ_DB file.")
 
-    p.add_argument("las_file",
-                   help="Output of TANmask of the modified DAMASTER package.")
-
-    p.add_argument("-s",
-                   "--start_dbid",
-                   type=int,
-                   default=1,
-                   help="Read ID of DAZZ_DB from which datruf's computation starts. [1]")
-
-    p.add_argument("-e",
-                   "--end_dbid",
-                   type=int,
-                   default=-1,
-                   help="Read ID of DAZZ_DB at which datruf's computation ends. -1 means the last read. [-1]")
-
-    p.add_argument("-n",
-                   "--n_core",
-                   type=int,
-                   default=1,
-                   help="Degree of parallelization. [1]")
-
-    p.add_argument("-p",
-                   "--n_distribute",
-                   type=int,
-                   default=1,
-                   help="Degree of parallelization. [1]")
-
-    add_scheduler_args(p)
-    args = p.parse_args()
-    if args.n_distribute > 1:
-        assert args.job_scheduler is not None, "--job_scheduler must be specified"
-        assert args.submit_command is not None, "--submit_command must be specified"
-    return args
+if __name__ == "__main__":
+    """Only for internal usage by run_datruf."""
+    main()

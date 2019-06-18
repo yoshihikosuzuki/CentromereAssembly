@@ -8,6 +8,7 @@ from BITS.util.proc import run_command
 from BITS.util.scheduler import Scheduler
 from BITS.util.log import print_log
 from .datander import run_datander
+from .datruf import run_datruf
 
 tasks = ["all", "datander", "datruf", "dacmaster", "dalayout"]
 
@@ -50,11 +51,11 @@ class VCA:
 
     @print_log("datruf")
     def _run_datruf(self):
-        run_command(' '.join([f"datruf.py",
-                              f"-n {config.get('DATRUF', 'N_CORE')}",
-                              f"-p {config.get('DATRUF', 'N_DISTRIBUTE')}" if use_scheduler(config) else '',
-                              f"{config.get('DAZZ_DB', 'DB_PREFIX')}.db",
-                              f"TAN.{config.get('DAZZ_DB', 'DB_PREFIX')}.las"]))
+        run_datruf(f"{self.config['DAZZ_DB']['DB_PREFIX']}.db",
+                   f"{self.config['DAZZ_DB']['DB_PREFIX']}.las",
+                   self.config['DATRUF']['N_CORE'],
+                   self.config['DATRUF']['N_DISTRIBUTE'],
+                   self.scheduler)
 
     @print_log("dacmaster")
     def _run_dacmaster(self):
