@@ -22,7 +22,7 @@ $ python setup.py install
 
 The command to run VCA is simple:
 
-```bash
+```
 usage: vca [-h] [-c CONFIG_FNAME] [task_name]
 
 VCA: Vertebrate Centromere Assembler.
