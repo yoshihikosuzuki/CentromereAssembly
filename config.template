@@ -3,20 +3,18 @@
 # Comment out or set as false if you do not want to use a job scheduler
 USE_SCHEDULER = true
 
-## All options below in this section are valid only when USE_SCHEDULER exists or is true:
+## If USE_SCHEDULER is true, specify the following variables (SGE or SLURM)
+## QUEUE_NAME is optional [= queue name (SGE) or partition name (SLURM)]
 
-# Choose one of two
+# For SGE
 SCHEDULER_NAME = sge
-#SCHEDULER_NAME = slurm
-
-# Choose one of two
 SUBMIT_COMMAND = qsub
-#SUBMIT_JOB = sbatch
-
-# [Opt-in] QUEUE_NAME is queue name (SGE) or partition name (SLURM)
 #QUEUE_NAME = 
-#TIME_LIMIT = 
-#MEM_LIMIT = 
+
+# For SLURM
+#SCHEDULER_NAME = slurm
+#SUBMIT_JOB = sbatch
+#QUEUE_NAME = 
 
 
 [DAZZ_DB]

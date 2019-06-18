@@ -2,20 +2,19 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.image as img
 import matplotlib.cm as cm
 from matplotlib.colors import rgb2hex
 import seaborn as sns
 import plotly.offline as py
 import plotly.graph_objs as go
 from logzero import logger
-from BITS.seq import DotPlot
-from BITS.plot import make_line, generate_scatter
-from BITS.utils import run_command
+from BITS.seq.plot import DotPlot
+from BITS.plot.plotly import make_line, make_scatter
+from BITS.util.proc import run_command
 from .datruf import load_dumps, filter_alignments
 
 
-@dataclass(eq=False)
+@dataclass(repr=False, eq=False)
 class Viewer:
     db_file: str
     las_file: str
@@ -82,13 +81,13 @@ class Viewer:
                             mode='text',
                             name="alignment #")
 
-        trace2 = generate_scatter([x[0] for x in alignments],   # ab
-                                  [x[2] for x in alignments],   # bb
-                                  name="start")
-
-        trace3 = generate_scatter([x[1] for x in alignments],   # ae
-                                  [x[3] for x in alignments],   # be
-                                  name="end")
+        trace2 = make_scatter([x[0] for x in alignments],   # ab
+                              [x[2] for x in alignments],   # bb
+                              name="start")
+        
+        trace3 = make_scatter([x[1] for x in alignments],   # ae
+                              [x[3] for x in alignments],   # be
+                              name="end")
 
         trace4 = go.Scatter(x=[x[0] for x in tr_intervals],
                             y=[x[0] for x in tr_intervals],

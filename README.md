@@ -23,10 +23,21 @@ $ python setup.py install
 The command to run VCA is simple:
 
 ```bash
-[paste vca's help here]
+usage: vca [-h] [-c CONFIG_FNAME] [task_name]
+
+VCA: Vertebrate Centromere Assembler.
+
+positional arguments:
+  task_name             Task name. This must be one of {'all', 'datruf',
+                        'dacmaster', 'dalayout'}. [all]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -c CONFIG_FNAME, --config_fname CONFIG_FNAME
+                        Config file name. [config]
 ```
 
-although you have to prepare a config file (`config` by default; template exists in the root directory) to specify input data files, parameters, etc. The most essential configurations are, for example:
+although you have to prepare a config file (`config` by default; template `config.template` exists in the root directory) to specify input data files, parameters, etc. The most essential configurations are, for example:
 
 ```
 [config example here]

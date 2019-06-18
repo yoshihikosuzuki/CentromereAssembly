@@ -4,9 +4,9 @@ import pandas as pd
 from multiprocessing import Pool
 from interval import interval
 from logzero import logger
-from BITS.scheduler import Scheduler
-from BITS.interval import interval_len, subtract_interval
-from BITS.utils import run_command
+from BITS.util.scheduler import Scheduler
+from BITS.util.interval import intvl_len, subtract_intvl
+from BITS.util.proc import run_command
 from .scheduler_args import add_scheduler_args
 
 dir_name = "datruf"
@@ -18,11 +18,11 @@ def filter_alignments(tr_intervals, alignments, min_len=1000):
     uncovered = interval(*tr_intervals)
     inners = set()
     for ab, ae, bb, be, distance, slope in alignments:   # in order of distance
-        if interval_len(uncovered) < min_len:
+        if intvl_len(uncovered) < min_len:
             break
         intersect = uncovered & interval[bb, ae]
-        uncovered = subtract_interval(uncovered, interval[bb, ae])
-        if (interval_len(intersect) >= min_len
+        uncovered = subtract_intvl(uncovered, interval[bb, ae])
+        if (intvl_len(intersect) >= min_len
             and 0.95 <= slope <= 1.05   # eliminate abnornal slope
             and ab <= be):   # at least duplication
             inners.add((ab, ae, bb, be))   # TODO: add only intersection is better?
