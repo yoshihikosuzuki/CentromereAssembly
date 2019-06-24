@@ -1,2 +1,2 @@
 from .main import VCA
-from .viewer import Viewer
+from .read_viewer import ReadViewer

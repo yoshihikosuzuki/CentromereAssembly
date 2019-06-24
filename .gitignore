@@ -1,9 +1,7 @@
 develop/
 consed/
 consed_python/
-.snakemake/
 *.ipynb
-*.seqs
 *consed*
 src.old/
 

@@ -184,7 +184,7 @@ def run_datruf(db_fname, las_fname, n_core=1, n_distribute=1, scheduler=None):
             start = 1 + i * unit_n
             end = min([1 + (i + 1) * unit_n - 1, n_reads])
             out_fname_part = f"{dir_name}/{out_fname}.{index}"
-            script = (f"python -m VCA.datruf {db_fname} {las_fname} {out_fname_part} "
+            script = (f"python -m vca.datruf {db_fname} {las_fname} {out_fname_part} "
                       f"{start} {end} {n_core}")
 
             jids.append(scheduler.submit(script,
@@ -198,17 +198,14 @@ def run_datruf(db_fname, las_fname, n_core=1, n_distribute=1, scheduler=None):
         scheduler.submit("sleep 1s",
                          f"{dir_name}/gather.sh",
                          job_name="datruf_gather",
+                         log_fname=f"{dir_name}/log",
                          depend=jids,
                          wait=True)
         concat_df(dir_name, out_fname).round(3).to_csv(out_fname, sep='\t')
 
 
-def main():
-    args = load_args()
-    find_units(args.start_dbid, args.end_dbid, args.db_fname, args.las_fname, args.n_core, args.out_fname)
-
-
-def load_args():
+if __name__ == "__main__":
+    """Only for internal usage by run_datruf."""
     p = argparse.ArgumentParser()
     p.add_argument("db_fname", type=str)
     p.add_argument("las_fname", type=str)
@@ -216,9 +213,6 @@ def load_args():
     p.add_argument("start_dbid", type=int)
     p.add_argument("end_dbid", type=int)
     p.add_argument("n_core", type=int)
-    return p.parse_args()
+    args = p.parse_args()
 
-
-if __name__ == "__main__":
-    """Only for internal usage by run_datruf."""
-    main()
+    find_units(args.start_dbid, args.end_dbid, args.db_fname, args.las_fname, args.n_core, args.out_fname)

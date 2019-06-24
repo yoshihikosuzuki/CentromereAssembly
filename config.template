@@ -1,49 +1,36 @@
-[JOB_SCHEDULER]
+# Config file must be TOML-formatted [https://github.com/toml-lang/toml].
 
-# Comment out or set as false if you do not want to use a job scheduler
-USE_SCHEDULER = true
+db_prefix = "DMEL"   # <db_prefix>.db and its related files must exist in the execution firectory
 
-## If USE_SCHEDULER is true, specify the following variables (SGE or SLURM)
-## QUEUE_NAME is optional [= queue name (SGE) or partition name (SLURM)]
+[job_scheduler]
 
-# For SGE
-SCHEDULER_NAME = sge
-SUBMIT_COMMAND = qsub
-#QUEUE_NAME = 
+enabled = false   # Use a job scheduler if true
 
-# For SLURM
-#SCHEDULER_NAME = slurm
-#SUBMIT_JOB = sbatch
-#QUEUE_NAME = 
+  [job_scheduler.params]
 
+  scheduler_name = "sge"   # Only "sge" or "slurm"; Name of job scheduler
+  submit_command = "qsub"  # e.g. "qsub" for SGE and "sbatch" for SLURM
+  #queue_name     =        # You can specify the queue name (for SGE) or partition name (for SLURM)
 
-[DAZZ_DB]
+[datander]
 
-DB_PREFIX = DMEL
+n_core = 8
 
+[datruf]
 
-[DATANDER]
+n_distribute = 4
+n_core = 8
 
-N_CORE = 8
+[dacmaster]
 
+min_n_units = 10
+n_core = 8
 
-[DATRUF]
+[dalayout]
 
-N_DISTRIBUTE = 4
-N_CORE = 8
-
-
-[DACMASTER]
-
-MIN_N_UNITS = 10
-N_CORE = 8
-
-
-[DALAYOUT]
-
-N_INDEX = 2
-VARIANT_FRAC = 0.15
-N_CORE_ENCODE = 24
-VCALL_HC = true
-N_DISTRIBUTE_DALAYOUT = 12
-N_CORE_DALAYOUT = 6
+n_index = 2
+variant_frac = 0.15
+n_core_encode = 24
+vcall_hc = true
+n_distribute_layout = 12
+n_core_layout = 6
