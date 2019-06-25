@@ -13,7 +13,7 @@ class ReadViewer:
     gepard: str
 
     def __post_init__(self):
-        run_command(f"mkdir -p {self.out_dir}")
+        run_command(f'mkdir -p {self.out_dir}')
 
     def show(self, read, dot_plot=False, alignment_plot=True, size=1000, out_html=None):
         if dot_plot:
@@ -42,32 +42,32 @@ class ReadViewer:
 
         traces = [make_scatter([x[0] for x in alignments],   # ab
                                [x[2] for x in alignments],   # bb
-                               name="start"),
+                               name='start'),
                   make_scatter([x[1] for x in alignments],   # ae
                                [x[3] for x in alignments],   # be
-                               name="end"),
+                               name='end'),
                   make_scatter([x[0] for x in tr_intervals],
                                [x[0] for x in tr_intervals],
                                text=list(range(1, len(tr_intervals) + 1)),
-                               text_pos="top right", text_size=10, text_col="grey", mode="text",
-                               name="TR interval")]
+                               text_pos='top right', text_size=10, text_col='grey', mode='text',
+                               name='TR interval')]
 
-        if hasattr(read, "units"):
-            shapes += [make_line(unit.start, unit.start, unit.end, unit.end, "black", 5)
+        if hasattr(read, 'units'):
+            shapes += [make_line(unit.start, unit.start, unit.end, unit.end, 'black', 5)
                        for unit in read.units]
             traces += [make_scatter([unit.start for unit in read.units],
                                     [unit.start for unit in read.units],
-                                    text=[f"{i} " for i in range(len(list(read.units)))],
-                                    text_pos="bottom left", text_size=10, text_col="black", mode="text",
-                                    name="TR unit"),
+                                    text=[f'{i} ' for i in range(len(list(read.units)))],
+                                    text_pos='bottom left', text_size=10, text_col='black', mode='text',
+                                    name='TR unit'),
                        make_scatter([unit.start for unit in read.units],
                                     [unit.start for unit in read.units],
-                                    text=[f"unit {i}<br>{unit.start}:{unit.end}"
+                                    text=[f'unit {i}<br>{unit.start}:{unit.end}'
                                           for i, unit in enumerate(read.units)],
-                                    col="black",
+                                    col='black',
                                     show_legend=False)]
 
-        layout = make_layout(size, size, title=f"{read.id}",
+        layout = make_layout(size, size, title=f'{read.id}',
                              x_range=[-read_len * 0.05, read_len + 100],
                              y_range=[0, read_len],
                              x_grid=False, y_grid=False, y_reversed=True, shapes=shapes)
@@ -75,6 +75,6 @@ class ReadViewer:
         show_plot(traces, layout, out_html)
 
     def _dot_plot(self, read):
-        out_fasta = f"{self.out_dir}/{read.id}.fasta"
-        run_command(f"DBshow {self.db_file} {read.id} > {out_fasta}")
+        out_fasta = f'{self.out_dir}/{read.id}.fasta'
+        run_command(f'DBshow {self.db_file} {read.id} > {out_fasta}')
         DotPlot(self.gepard, self.out_dir).plot_fasta(out_fasta, out_fasta)

@@ -7,8 +7,8 @@ from logzero import logger
 from BITS.util.interval import intvl_len, subtract_intvl
 from BITS.util.proc import run_command
 
-dir_name = "datruf"
-out_fname = "datruf_result"
+dir_name = 'datruf'
+out_fname = 'datruf_result'
 
 
 def filter_alignments(tr_intervals, alignments, min_len=1000):
@@ -24,7 +24,7 @@ def filter_alignments(tr_intervals, alignments, min_len=1000):
             and 0.95 <= slope <= 1.05   # eliminate abnornal slope
             and ab <= be):   # at least duplication
             inners.add((ab, ae, bb, be))   # TODO: add only intersection is better?
-    logger.debug(f"inners: {inners}")
+    logger.debug(f'inners: {inners}')
     return inners
 
 
@@ -58,7 +58,7 @@ def load_paths(read_id, alignment_set, db_file, las_file):
     if len(alignment_set) == 0:
         return []
 
-    out = run_command(f"LAshow4pathplot -a {db_file} {las_file} {read_id} | sed 's/,//g' | awk 'BEGIN {{first = 1}} NF == 7 {{if (first == 1) {{first = 0}} else {{printf(\"%s\\n%s\\n%s\\n%s\\n\", header, aseq, bseq, symbol)}}; header = $0; aseq = \"\"; bseq = \"\"; symbol = \"\"; count = 0;}} NF < 7 {{if (count == 0) {{aseq = aseq $0}} else if (count == 1) {{symbol = symbol $0}} else {{bseq = bseq $0}}; count++; count %= 3;}} END {{printf(\"%s\\n%s\\n%s\\n%s\\n\", header, aseq, bseq, symbol)}}'").strip().split('\n')
+    out = run_command(f'LAshow4pathplot -a {db_file} {las_file} {read_id} | sed "s/,//g" | awk "BEGIN {{first = 1}} NF == 7 {{if (first == 1) {{first = 0}} else {{printf(\'%s\\n%s\\n%s\\n%s\\n\', header, aseq, bseq, symbol)}}; header = $0; aseq = \'\'; bseq = \'\'; symbol = \'\'; count = 0;}} NF < 7 {{if (count == 0) {{aseq = aseq $0}} else if (count == 1) {{symbol = symbol $0}} else {{bseq = bseq $0}}; count++; count %= 3;}} END {{printf(\'%s\\n%s\\n%s\\n%s\\n\', header, aseq, bseq, symbol)}}"').strip().split('\n')
 
     ret = []   # [(ab, ae, bb, be, FlattenCigar), ...]
     for header, aseq, bseq, symbol in zip(*([iter(out)] * 4)):    # split every 4 lines (= single entry)
@@ -66,7 +66,7 @@ def load_paths(read_id, alignment_set, db_file, las_file):
         if alignment in alignment_set:
             ret.append((*alignment, convert_symbol(*map(lambda x: x[slice(*find_boundary(aseq, bseq))],
                                                         [aseq, bseq, symbol]))))
-    logger.debug(f"read {read_id}: {len(ret)} paths loaded")
+    logger.debug(f'read {read_id}: {len(ret)} paths loaded')
     return sorted(ret, key=lambda x: x[2])   # sort by bb
 
 
@@ -102,22 +102,22 @@ def find_units_single(read_id, tr_intervals, alignments, db_file, las_file, max_
 
 def load_dumps(start_dbid, end_dbid, db_file, las_file):
     # Extract data from DBdump's and LAdump's output
-    return ({read_id: list(df.apply(lambda d: tuple(d[["start", "end"]]), axis=1))
+    return ({read_id: list(df.apply(lambda d: tuple(d[['start', 'end']]), axis=1))
              for read_id, df
              in (pd.DataFrame([list(map(int, x.split('\t')))
-                               for x in run_command(f"DBdump -rh -mtan {db_file} {start_dbid}-{end_dbid} | awk '$1 == \"R\" {{dbid = $2}} $1 == \"T0\" && $2 > 0 {{for (i = 1; i <= $2; i++) printf(\"%s\\t%s\\t%s\\n\", dbid, $(2 * i + 1), $(2 * i + 2))}}'").strip().split('\n')],
-                              columns=("dbid", "start", "end")) \
-                 .groupby("dbid"))},
-            {read_id: list(df.sort_values(by="abpos", kind="mergesort") \
-                           .sort_values(by="distance", kind="mergesort") \
-                           .apply(lambda d: tuple((*map(int, d[["abpos", "aepos", "bbpos", "bepos", "distance"]]), d["slope"])), axis=1))
+                               for x in run_command(f'DBdump -rh -mtan {db_file} {start_dbid}-{end_dbid} | awk "$1 == \'R\' {{dbid = $2}} $1 == \'T0\' && $2 > 0 {{for (i = 1; i <= $2; i++) printf(\'%s\\t%s\\t%s\\n\', dbid, $(2 * i + 1), $(2 * i + 2))}}"').strip().split('\n')],
+                              columns=('dbid', 'start', 'end')) \
+                 .groupby('dbid'))},
+            {read_id: list(df.sort_values(by='abpos', kind='mergesort') \
+                           .sort_values(by='distance', kind='mergesort') \
+                           .apply(lambda d: tuple((*map(int, d[['abpos', 'aepos', 'bbpos', 'bepos', 'distance']]), d['slope'])), axis=1))
              for read_id, df
              in (pd.DataFrame([list(map(int, x.split('\t')))
-                               for x in run_command(f"LAdump -c {db_file} {las_file} {start_dbid}-{end_dbid} | awk '$1 == \"P\" {{dbid = $2}} $1 == \"C\" {{printf(\"%s\\t%s\\t%s\\t%s\\t%s\\n\", dbid, $2, $3, $4, $5)}}'").strip().split('\n')],
-                              columns=("dbid", "abpos", "aepos", "bbpos", "bepos")) \
-                 .assign(distance=lambda x: x["abpos"] - x["bbpos"]) \
-                 .assign(slope=lambda x: ((x["aepos"] - x["abpos"]) / (x["bepos"] - x["bbpos"])).round(3)) \
-                 .groupby("dbid"))})
+                               for x in run_command(f'LAdump -c {db_file} {las_file} {start_dbid}-{end_dbid} | awk "$1 == \'P\' {{dbid = $2}} $1 == \'C\' {{printf(\'%s\\t%s\\t%s\\t%s\\t%s\\n\', dbid, $2, $3, $4, $5)}}"').strip().split('\n')],
+                              columns=('dbid', 'abpos', 'aepos', 'bbpos', 'bepos')) \
+                 .assign(distance=lambda x: x['abpos'] - x['bbpos']) \
+                 .assign(slope=lambda x: ((x['aepos'] - x['abpos']) / (x['bepos'] - x['bbpos'])).round(3)) \
+                 .groupby('dbid'))})
 
 
 def find_units_multi(start_dbid, end_dbid, db_file, las_file):
@@ -130,14 +130,14 @@ def find_units(start_dbid, end_dbid, db_file, las_file, n_core, out_file):
     results = {}
     index = 0
     if n_core == 1:
-        logger.debug("Single core")
+        logger.debug('Single core')
         ret = find_units_multi(start_dbid, end_dbid, db_file, las_file)
         for r in ret:
             if len(r) != 0:
                 results[index] = r
                 index += 1
     else:
-        logger.debug("Multi core")
+        logger.debug('Multi core')
         # split list
         n_part = -(-(end_dbid - start_dbid + 1) // n_core)
         list_args = [(start_dbid + i * n_part,
@@ -154,26 +154,26 @@ def find_units(start_dbid, end_dbid, db_file, las_file, n_core, out_file):
                             index += 1
 
     pd.DataFrame.from_dict(results,
-                           orient="index",
-                           columns=("read_id",
-                                    "start",
-                                    "end",
-                                    "mean_ulen",
-                                    "cv_ulen",
-                                    "units")) \
+                           orient='index',
+                           columns=('read_id',
+                                    'start',
+                                    'end',
+                                    'mean_ulen',
+                                    'cv_ulen',
+                                    'units')) \
                 .to_csv(out_file, sep='\t')
 
 
 def concat_df(dir_name, prefix, sep='\t', index_col=0):
     return pd.concat([pd.read_csv(fname, sep='\t', index_col=index_col)
-                      for fname in run_command(f"find {dir_name} -name '{prefix}.*' | sort").strip().split('\n')]) \
+                      for fname in run_command(f'find {dir_name} -name "{prefix}.*" | sort').strip().split('\n')]) \
              .reset_index(drop=True)
 
 
 def run_datruf(db_fname, las_fname, n_core=1, n_distribute=1, scheduler=None):
-    run_command(f"mkdir -p {dir_name}; rm -f {dir_name}/*")
+    run_command(f'mkdir -p {dir_name}; rm -f {dir_name}/*')
 
-    n_reads = int(run_command(f"DBdump {db_fname} | awk 'NR == 1 {{print $3}}'").strip())
+    n_reads = int(run_command(f'DBdump {db_fname} | awk 'NR == 1 {{print $3}}'').strip())
     if scheduler is None:
         find_units(1, n_reads, db_fname, las_fname, n_core, out_fname)
     else:
@@ -183,36 +183,36 @@ def run_datruf(db_fname, las_fname, n_core=1, n_distribute=1, scheduler=None):
             index = str(i + 1).zfill(int(np.log10(n_distribute) + 1))
             start = 1 + i * unit_n
             end = min([1 + (i + 1) * unit_n - 1, n_reads])
-            out_fname_part = f"{dir_name}/{out_fname}.{index}"
-            script = (f"python -m vca.datruf {db_fname} {las_fname} {out_fname_part} "
-                      f"{start} {end} {n_core}")
+            out_fname_part = f'{dir_name}/{out_fname}.{index}'
+            script = (f'python -m vca.datruf {db_fname} {las_fname} {out_fname_part} '
+                      f'{start} {end} {n_core}')
 
             jids.append(scheduler.submit(script,
-                                         f"{dir_name}/run_datruf.sh.{index}",
-                                         job_name="datruf",
-                                         log_fname=f"{dir_name}/log",
+                                         f'{dir_name}/run_datruf.sh.{index}',
+                                         job_name='datruf',
+                                         log_fname=f'{dir_name}/log',
                                          n_core=n_core))
     
         # Merge the results
-        logger.info("Waiting for all distributed jobs to be finished...")
-        scheduler.submit("sleep 1s",
-                         f"{dir_name}/gather.sh",
-                         job_name="datruf_gather",
-                         log_fname=f"{dir_name}/log",
+        logger.info('Waiting for all distributed jobs to be finished...')
+        scheduler.submit('sleep 1s',
+                         f'{dir_name}/gather.sh',
+                         job_name='datruf_gather',
+                         log_fname=f'{dir_name}/log',
                          depend=jids,
                          wait=True)
         concat_df(dir_name, out_fname).round(3).to_csv(out_fname, sep='\t')
 
 
-if __name__ == "__main__":
-    """Only for internal usage by run_datruf."""
+if __name__ == '__main__':
+    '''Only for internal usage by run_datruf.'''
     p = argparse.ArgumentParser()
-    p.add_argument("db_fname", type=str)
-    p.add_argument("las_fname", type=str)
-    p.add_argument("out_fname", type=str)
-    p.add_argument("start_dbid", type=int)
-    p.add_argument("end_dbid", type=int)
-    p.add_argument("n_core", type=int)
+    p.add_argument('db_fname', type=str)
+    p.add_argument('las_fname', type=str)
+    p.add_argument('out_fname', type=str)
+    p.add_argument('start_dbid', type=int)
+    p.add_argument('end_dbid', type=int)
+    p.add_argument('n_core', type=int)
     args = p.parse_args()
 
     find_units(args.start_dbid, args.end_dbid, args.db_fname, args.las_fname, args.n_core, args.out_fname)
