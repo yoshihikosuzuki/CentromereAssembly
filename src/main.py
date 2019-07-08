@@ -66,9 +66,9 @@ class VCA:
 
 def load_args():
     p = argparse.ArgumentParser(description="VCA: Vertebrate Centromere Assembler.")
-    p.add_argument("task_name", type=str, default="all",
+    p.add_argument("task_name", type=str, nargs="?", default="all",
                    help=f"Task name. {{{', '.join(tasks)}}} [all]")
-    p.add_argument("config_fname", type=str, default="config",
+    p.add_argument("config_fname", type=str, nargs="?", default="config",
                    help="TOML-formatted config file. [config]")
     return p.parse_args()
 

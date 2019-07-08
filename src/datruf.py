@@ -127,40 +127,32 @@ def find_units_multi(start_dbid, end_dbid, db_file, las_file):
 
 
 def find_units(start_dbid, end_dbid, db_file, las_file, n_core, out_file):
+    """Split the tasks ranging from <start_dbid> and <end_dbid> into <n_core> sub-tasks.
+    Each splitted sub-task is then parallely executed, and output into a file.
+    A function named "find_units_single" above is actually the core function.
+    """
+    if n_core == 1:
+        rets = find_units_multi(start_dbid, end_dbid, db_file, las_file)
+    else:
+        unit_n = -(-(end_dbid - start_dbid + 1) // n_core)
+        args = [(start_dbid + i * unit_n,   # start_dbid
+                 min([start_dbid + (i + 1) * unit_n - 1, end_dbid]),   # end_dbid
+                 db_file, las_file)
+                for i in range(n_core)]
+
+        with Pool(n_core) as pool:
+            rets = [ret for rets in pool.starmap(find_units_multi, args) for ret in rets]
+
+    # Aggregate results into pd.DF
     results = {}
     index = 0
-    if n_core == 1:
-        logger.debug("Single core")
-        ret = find_units_multi(start_dbid, end_dbid, db_file, las_file)
-        for r in ret:
-            if len(r) != 0:
+    for ret in rets:
+        if len(ret) != 0:
+            for r in ret:
                 results[index] = r
                 index += 1
-    else:
-        logger.debug("Multi core")
-        # split list
-        n_part = -(-(end_dbid - start_dbid + 1) // n_core)
-        list_args = [(start_dbid + i * n_part,
-                      min([start_dbid + (i + 1) * n_part - 1, end_dbid]),
-                      db_file,
-                      las_file)
-                     for i in range(n_core)]
-        with Pool(n_core) as pool:
-            for rets in pool.starmap(find_units_multi, list_args):
-                for ret in rets:
-                    for r in ret:
-                        if len(r) != 0:
-                            results[index] = r
-                            index += 1
-
-    pd.DataFrame.from_dict(results,
-                           orient="index",
-                           columns=("read_id",
-                                    "start",
-                                    "end",
-                                    "mean_ulen",
-                                    "cv_ulen",
-                                    "units")) \
+    pd.DataFrame.from_dict(results, orient="index",
+                           columns=("read_id", "start", "end", "mean_ulen", "cv_ulen", "units")) \
                 .to_csv(out_file, sep="\t")
 
 
@@ -171,6 +163,10 @@ def concat_df(dir_name, prefix, sep="\t", index_col=0):
 
 
 def run_datruf(db_fname, las_fname, n_core=1, n_distribute=1, scheduler=None):
+    """Entry point of datruf.
+    Here the job is splitted into sub-jobs and submitted to the scheduler, if given.
+    In each job, "find_units" is applied to the data assigned to the job.
+    """
     run_command(f"mkdir -p {dir_name}; rm -f {dir_name}/*")
 
     n_reads = int(run_command(f"DBdump {db_fname} | awk 'NR == 1 {{print $3}}'").strip())
@@ -181,9 +177,9 @@ def run_datruf(db_fname, las_fname, n_core=1, n_distribute=1, scheduler=None):
         unit_n = -(-n_reads // n_distribute)
         for i in range(n_distribute):
             index = str(i + 1).zfill(int(np.log10(n_distribute) + 1))
+            out_fname_part = f"{dir_name}/{out_fname}.{index}"
             start = 1 + i * unit_n
             end = min([1 + (i + 1) * unit_n - 1, n_reads])
-            out_fname_part = f"{dir_name}/{out_fname}.{index}"
             script = (f"python -m vca.datruf {db_fname} {las_fname} {out_fname_part} "
                       f"{start} {end} {n_core}")
 
