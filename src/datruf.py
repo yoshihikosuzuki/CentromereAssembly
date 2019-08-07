@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import argparse
 import numpy as np
 import pandas as pd
@@ -6,9 +7,68 @@ from interval import interval
 from logzero import logger
 from BITS.util.interval import intvl_len, subtract_intvl
 from BITS.util.proc import run_command
+from BITS.util.scheduler import Scheduler
 
-dir_name = "datruf"
-out_fname = "datruf_result"
+dir_name     = "datruf"
+script_scatter_fname = f"{dir_name}/scatter.sh"
+script_gather_fname = f"{dir_name}/gather.sh"
+out_fname    = f"{dir_name}/datruf_result"
+log_fname    = f"{dir_name}/log"
+
+
+@dataclass(eq=False)
+class DatrufRunner:
+    """Entry point of datruf, which detects units of TRs using the result of datander.
+
+    Positional arguments:
+      - db_fname  <str> : DAZZ_DB file
+      - las_fname <str> : Output of datander. These files must be in CWD
+    
+    Optional arguments:
+      - n_core       <int>       [1]               : Number of cores used in a single job of datrud
+      - n_distribute <int>       [1]               : Number of jobs distributed in datruf
+      - scheduler    <Scheduler> [None]            : Scheduler object
+    """
+    db_fname     : str
+    las_fname    : str
+    n_core       : int       = 1
+    n_distribute : int       = 1
+    scheduler    : Scheduler = None
+
+    def __post_init__(self):
+        run_command(f"mkdir -p {dir_name}; rm -f {dir_name}/*")
+
+    def run(self):
+        n_reads = int(run_command(f"DBdump {self.db_fname} | awk 'NR == 1 {{print $3}}'").strip())
+
+        if self.scheduler is None:
+            find_units(1, n_reads, self.db_fname, self.las_fname, self.n_core, out_fname)
+        else:
+            jids = []
+            unit_n = -(-n_reads // self.n_distribute)
+            for i in range(self.n_distribute):
+                index = str(i + 1).zfill(int(np.log10(self.n_distribute) + 1))
+                start = 1 + i * unit_n
+                end = min([1 + (i + 1) * unit_n - 1, n_reads])
+                script = (f"python -m vca.datruf {self.db_fname} {self.las_fname} {out_fname}.{index} "
+                          f"{start} {end} {self.n_core}")
+                
+                jids.append(self.scheduler.submit(script,
+                                                  f"{script_scatter_fname}.{index}",
+                                                  job_name="datruf_scatter",
+                                                  log_fname=log_fname,
+                                                  n_core=self.n_core))
+                
+            # Merge the results
+            logger.info("Waiting for all distributed jobs to be finished...")
+            self.scheduler.submit("sleep 1s",
+                                  script_gather_fname,
+                                  job_name="datruf_gather",
+                                  log_fname=log_fname,
+                                  depend=jids,
+                                  wait=True)
+            concat_df(dir_name, out_fname).round(3).to_csv(out_fname, sep="\t")
+            
 
 
 def filter_alignments(tr_intervals, alignments, min_len=1000):
@@ -147,10 +207,9 @@ def find_units(start_dbid, end_dbid, db_file, las_file, n_core, out_file):
     results = {}
     index = 0
     for ret in rets:
-        if len(ret) != 0:
-            for r in ret:
-                results[index] = r
-                index += 1
+        for r in ret:
+            results[index] = r
+            index += 1
     pd.DataFrame.from_dict(results, orient="index",
                            columns=("read_id", "start", "end", "mean_ulen", "cv_ulen", "units")) \
                 .to_csv(out_file, sep="\t")
@@ -160,44 +219,6 @@ def concat_df(dir_name, prefix, sep="\t", index_col=0):
     return pd.concat([pd.read_csv(fname, sep="\t", index_col=index_col)
                       for fname in run_command(f"find {dir_name} -name '{prefix}.*' | sort").strip().split("\n")]) \
              .reset_index(drop=True)
-
-
-def run_datruf(db_fname, las_fname, n_core=1, n_distribute=1, scheduler=None):
-    """Entry point of datruf.
-    Here the job is splitted into sub-jobs and submitted to the scheduler, if given.
-    In each job, "find_units" is applied to the data assigned to the job.
-    """
-    run_command(f"mkdir -p {dir_name}; rm -f {dir_name}/*")
-
-    n_reads = int(run_command(f"DBdump {db_fname} | awk 'NR == 1 {{print $3}}'").strip())
-    if scheduler is None:
-        find_units(1, n_reads, db_fname, las_fname, n_core, out_fname)
-    else:
-        jids = []
-        unit_n = -(-n_reads // n_distribute)
-        for i in range(n_distribute):
-            index = str(i + 1).zfill(int(np.log10(n_distribute) + 1))
-            out_fname_part = f"{dir_name}/{out_fname}.{index}"
-            start = 1 + i * unit_n
-            end = min([1 + (i + 1) * unit_n - 1, n_reads])
-            script = (f"python -m vca.datruf {db_fname} {las_fname} {out_fname_part} "
-                      f"{start} {end} {n_core}")
-
-            jids.append(scheduler.submit(script,
-                                         f"{dir_name}/run_datruf.sh.{index}",
-                                         job_name="datruf",
-                                         log_fname=f"{dir_name}/log",
-                                         n_core=n_core))
-    
-        # Merge the results
-        logger.info("Waiting for all distributed jobs to be finished...")
-        scheduler.submit("sleep 1s",
-                         f"{dir_name}/gather.sh",
-                         job_name="datruf_gather",
-                         log_fname=f"{dir_name}/log",
-                         depend=jids,
-                         wait=True)
-        concat_df(dir_name, out_fname).round(3).to_csv(out_fname, sep="\t")
 
 
 if __name__ == "__main__":
