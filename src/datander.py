@@ -1,8 +1,11 @@
-from os.path import join
 from dataclasses import dataclass
 from logzero import logger
 from BITS.util.proc import run_command
 from BITS.util.scheduler import Scheduler
+
+dir_name     = "datander"
+script_fname = f"{dir_name}/run_datander.sh"
+log_fname    = f"{dir_name}/log"
 
 
 @dataclass(eq=False)
@@ -16,23 +19,14 @@ class DatanderRunner:
     Optional arguments:
       - n_core       <int>       [1]                 : Number of cores used in datader
       - scheduler    <Scheduler> [None]              : Scheduler object
-      - dir_name     <str>       ["datander"]        : Directory name to which results will be output
-      - script_fname <str>       ["run_datander.sh"] : File name of the script used for executing HPC.TANmask
-      - log_fname    <str>       ["log"]             : Log file name
     """
     db_prefix    : str
     n_core       : int       = 1
     scheduler    : Scheduler = None
-    dir_name     : str       = "datander"
-    script_fname : str       = "run_datander.sh"
-    log_fname    : str       = "log"
 
     def __post_init__(self):
-        self.script_fname = join(self.dir_name, self.script_fname)
-        self.log_fname = join(self.dir_name, self.log_fname)
-
         run_command(f"rm -f .{self.db_prefix}.*.tan.* .{self.db_prefix}.tan.* TAN.*")
-        run_command(f"mkdir -p {self.dir_name}; rm -f {self.dir_name}/*")
+        run_command(f"mkdir -p {dir_name}; rm -f {dir_name}/*")
 
     def run(self):
         # Prepare a script to run datander
@@ -43,14 +37,14 @@ class DatanderRunner:
 
         # Run the script
         if self.scheduler is None:
-            with open(self.script_fname, "w") as f:
+            with open(script_fname, "w") as f:
                 f.write(f"{script}\n")
-                run_command(f"bash {self.script_fname} > {self.log_fname} 2>&1")
+            run_command(f"bash {script_fname} > {log_fname} 2>&1")
         else:
             self.scheduler.submit(script,
-                                  self.script_fname,
-                                  job_name=self.dir_name,
-                                  log_fname=self.log_fname,
+                                  script_fname,
+                                  job_name="datander",
+                                  log_fname=log_fname,
                                   n_core=self.n_core,
                                   wait=True)
 

@@ -4,8 +4,8 @@ from os.path import isfile
 import toml
 from BITS.util.scheduler import Scheduler
 from BITS.util.log import print_log
-from .datander import run_datander
-from .datruf import run_datruf
+from .datander import DatanderRunner
+from .datruf import DatrufRunner
 
 tasks = ["all", "datander", "datruf", "dacmaster", "dalayout"]
 
@@ -13,12 +13,13 @@ tasks = ["all", "datander", "datruf", "dacmaster", "dalayout"]
 @dataclass(repr=False, eq=False)
 class VCA:
     """Config file must be TOML-formatted.
-    A simple example from REPL is:
+
+    A simple example from REPL:
       > from vca import VCA
       > v = VCA("all", "/path/to/config")
       > v.run()
     """
-    task_name    : str   # TODO: in the end only "all" would be needed, so delete this
+    task_name    : str
     config_fname : InitVar[str]
     config       : dict         = field(init=False)
     scheduler    : Scheduler    = field(init=False, default=None)
@@ -44,16 +45,16 @@ class VCA:
 
     @print_log("datander")
     def _run_datander(self):
-        run_datander(self.config["db_prefix"],
-                     **self.config.get("datander", {}),
-                     scheduler=self.scheduler)
+        DatanderRunner(self.config["db_prefix"],
+                       **self.config.get("datander", {}),
+                       scheduler=self.scheduler).run()
 
     @print_log("datruf")
     def _run_datruf(self):
-        run_datruf(f"{self.config['db_prefix']}.db",
-                   f"TAN.{self.config['db_prefix']}.las",
-                   **self.config.get("datruf", {}),
-                   scheduler=self.scheduler)
+        DatrufRunner(f"{self.config['db_prefix']}.db",
+                     f"TAN.{self.config['db_prefix']}.las",
+                     **self.config.get("datruf", {}),
+                     scheduler=self.scheduler).run()
 
     @print_log("dacmaster")
     def _run_dacmaster(self):

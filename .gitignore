@@ -5,6 +5,7 @@ consed_python/
 *.ipynb
 *consed*
 src.old/
+result/
 
 
 .DS_Store
