@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List, Dict
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,10 @@ class TRUnit:
     type  : str = None   # "complete" or "partial"
     id    : int = None   # for clustering of units   # TODO: change name based on the clustering method
 
+    @property
+    def length(self):
+        return self.end - self.start
+
 
 @dataclass(eq=False)
 class TR:
@@ -33,6 +38,11 @@ class TR:
     start: int
     end: int
     units: List[TRUnit] = None
+
+    @property
+    def cv_ulen(self):
+        ulens = [unit.length for unit in self.units]
+        return round(np.std(ulens, ddof=1) / np.mean(ulens), 3)
 
 
 @dataclass(eq=False)
