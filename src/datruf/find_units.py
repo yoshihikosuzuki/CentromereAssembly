@@ -1,10 +1,11 @@
 from multiprocessing import Pool
+import numpy as np
 from interval import interval
 from logzero import logger
 from BITS.util.io import save_pickle
 from BITS.util.interval import intvl_len, subtract_intvl
 from .io import load_dumps, load_paths
-from ..types import TR, TRUnit, TRRead
+from ..types import TRUnit, TRRead
 
 
 def find_units(start_dbid, end_dbid, n_core, db_fname, las_fname, out_fname):
@@ -31,60 +32,67 @@ def find_units(start_dbid, end_dbid, n_core, db_fname, las_fname, out_fname):
 def find_units_multi(start_dbid, end_dbid, db_fname, las_fname):
     """Call <find_units_single> for each read whose id is in [<start_dbid>:<end_dbid> + 1]."""
     # Load TR reads with data of TR intervals and all self alignments
-    tr_reads_dump = load_dumps(start_dbid, end_dbid, db_fname, las_fname)
+    read_dumps = load_dumps(start_dbid, end_dbid, db_fname, las_fname)
 
     # For each read, calculate the unit intervals
     tr_reads = []
-    for tr_read_dump in tr_reads_dump:
-        tr_read = find_units_single(tr_read_dump, db_fname, las_fname)
+    for read_dump in read_dumps:
+        tr_read = find_units_single(read_dump, db_fname, las_fname)
         if tr_read is not None:
             tr_reads.append(tr_read)
     return tr_reads
 
 
-def find_units_single(tr_read_dump, db_fname, las_fname, max_cv=0.1):
+def find_units_single(read_dump, db_fname, las_fname, max_cv=0.1):
     """Core function of datruf.
     Find the best set of self alignments and split the TR intervals induced by the alignments into units."""
-    trs = []
-    inner_alignments = find_inner_alignments(tr_read_dump)
-    inner_paths = load_paths(tr_read_dump, inner_alignments, db_fname, las_fname)
-    for alignment, fcigar in sorted(inner_paths.items(), key=lambda x: x[0].bbpos):
-        tr_units = split_tr(alignment.abpos, alignment.bbpos, fcigar)
-        if len(tr_units) == 1:   # at least duplication is required
+    all_units = []
+    # Determine a set of self alignments from which units are cut out
+    inner_alignments = find_inner_alignments(read_dump)
+    # Load flattten CIGAR strings of the selected alignments
+    inner_paths = load_paths(read_dump, inner_alignments, db_fname, las_fname)
+
+    for alignment, fcigar in inner_paths.items():
+        # Compute unit intervals based on the reflecting snake
+        # between the read and the self alignment
+        units = split_tr(alignment.ab, alignment.bb, fcigar)
+        if len(units) == 1:   # at least duplication is required
             continue
 
-        tr = TR(start=alignment.bbpos, end=alignment.aepos, units=tr_units)
-        if tr.cv_ulen >= max_cv:   # probably unit length is too short
+        # Exclude TRs with abnormal CV (probably due to short unit length)
+        # and then add the units
+        ulens = [unit.length for unit in units]
+        cv_ulen = round(np.std(ulens, ddof=1) / np.mean(ulens), 3)
+        if cv_ulen >= max_cv:
             continue
-        
-        trs.append(tr)
+        all_units += units
 
-    return TRRead(id=tr_read_dump.id, trs=trs) if len(trs) > 0 else None
+    return TRRead(id=read_dump.id, units=all_units) if len(all_units) > 0 else None
 
 
-def find_inner_alignments(tr_read_dump, min_len=1000):
+def find_inner_alignments(read_dump, min_len=1000):
     """Extract a set of non-overlapping most inner self alignments.
     <min_len> defines the required overlap length with yet uncovered TR region."""
-    uncovered = interval(*[(tr.start, tr.end) for tr in tr_read_dump.trs])
+    uncovered = interval(*[(tr.start, tr.end) for tr in read_dump.trs])
     inner_alignments = set()
-    for alignment in tr_read_dump.alignments:   # in order of distance
+    for alignment in read_dump.alignments:   # in order of distance
         if intvl_len(uncovered) < min_len:
             break
-        intersect = uncovered & interval[alignment.bbpos, alignment.aepos]
-        uncovered = subtract_intvl(uncovered, interval[alignment.bbpos, alignment.aepos])
+        intersect = uncovered & interval[alignment.bb, alignment.ae]
+        uncovered = subtract_intvl(uncovered, interval[alignment.bb, alignment.ae])
         if (intvl_len(intersect) >= min_len
             and 0.95 <= alignment.slope <= 1.05   # eliminate abnornal slope
-            and alignment.abpos <= alignment.bepos):   # at least duplication
+            and alignment.ab <= alignment.be):   # at least duplication
             inner_alignments.add(alignment)   # TODO: add only intersection is better?
     logger.debug(f"inners: {inner_alignments}")
     return inner_alignments
 
 
-def split_tr(abpos, bbpos, fcigar):
-    # Split TR interval into unit intervals given <fcigar> specifying self alignment
-    # <abpos> corresponds to the start position of the first unit
-    # <bbpos> does the second
-    apos, bpos = abpos, bbpos
+def split_tr(ab, bb, fcigar):
+    """Split TR interval into unit intervals given <fcigar> specifying self alignment
+    <ab> corresponds to the start position of the first unit
+    <bb> does the second"""
+    apos, bpos = ab, bb
     tr_units = [TRUnit(start=bpos, end=apos)]
     # Iteratively find max{ax} such that bx == (last unit end)
     for i, c in enumerate(fcigar):

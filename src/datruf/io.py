@@ -1,7 +1,7 @@
 from collections import defaultdict
 from logzero import logger
 from BITS.util.proc import run_command
-from ..types import SelfAlignment, TR, TRRead
+from ..types import SelfAlignment, TR, ReadDump
 
 
 def load_dumps(start_dbid, end_dbid, db_fname, las_fname):
@@ -23,22 +23,22 @@ def load_dumps(start_dbid, end_dbid, db_fname, las_fname):
     
     ladumps = defaultdict(list)
     for line in run_command(ladump_command).strip().split('\n'):
-        read_id, abpos, aepos, bbpos, bepos = map(int, line.split('\t'))
-        ladumps[read_id].append(SelfAlignment(abpos, aepos, bbpos, bepos))
+        read_id, ab, ae, bb, be = map(int, line.split('\t'))
+        ladumps[read_id].append(SelfAlignment(ab, ae, bb, be))
 
     # Merge the data into List[TRRead]
     read_ids = sorted(dbdumps.keys())
-    tr_reads = [TRRead(id=read_id,
-                       trs=dbdumps[read_id],
-                       alignments=sorted(sorted(ladumps[read_id],
-                                                key=lambda x: x.abpos),
-                                         key=lambda x: x.distance))
-                for read_id in read_ids]
+    read_dumps = [ReadDump(id=read_id,
+                           trs=dbdumps[read_id],
+                           alignments=sorted(sorted(ladumps[read_id],
+                                                    key=lambda x: x.ab),
+                                             key=lambda x: x.distance))
+                  for read_id in read_ids]
 
-    return tr_reads
+    return read_dumps
 
 
-def load_paths(tr_read_dump, inner_alignments, db_fname, las_fname):
+def load_paths(read_dump, inner_alignments, db_fname, las_fname):
     # NOTE: Since alignment path information is very large, load for a single read on demand
 
     def find_boundary(aseq, bseq):
@@ -65,11 +65,11 @@ def load_paths(tr_read_dump, inner_alignments, db_fname, las_fname):
                         else 'X'
                         for i, c in enumerate(symbol)])
 
-    if len(tr_read_dump.alignments) == 0:
+    if len(read_dump.alignments) == 0:
         return {}
 
     # Load pairwise alignment information
-    command = (f"LAshow4pathplot -a {db_fname} {las_fname} {tr_read_dump.id} | "
+    command = (f"LAshow4pathplot -a {db_fname} {las_fname} {read_dump.id} | "
                f"sed 's/,//g' | "
                f"awk 'BEGIN {{first = 1}} "
                f"NF == 7 {{if (first == 1) {{first = 0}} "
@@ -83,8 +83,8 @@ def load_paths(tr_read_dump, inner_alignments, db_fname, las_fname):
 
     inner_paths = {}
     for header, aseq, bseq, symbol in zip(*([iter(out)] * 4)):    # split every 4 lines (= single entry)
-        _, _, abpos, aepos, bbpos, bepos, _ = map(int, header.replace(' ', '').split('\t'))
-        alignment = SelfAlignment(abpos, aepos, bbpos, bepos)
+        _, _, ab, ae, bb, be, _ = map(int, header.replace(' ', '').split('\t'))
+        alignment = SelfAlignment(ab, ae, bb, be)
         if alignment in inner_alignments:
             # Cut out the flanking regions in aseq, bseq, symbol outside the self alignment,
             # and then convert |, * in symbol into CIGAR characters
