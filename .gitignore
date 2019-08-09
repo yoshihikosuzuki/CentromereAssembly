@@ -6,6 +6,8 @@ consed_python/
 *consed*
 src.old/
 result/
+develop.old/
+src/datruf.old/
 
 
 .DS_Store
