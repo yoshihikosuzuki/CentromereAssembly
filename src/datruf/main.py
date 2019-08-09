@@ -68,7 +68,7 @@ class DatrufRunner:
                                   wait=True)
 
             merged = []
-            for i in range(self.n_distribute):
+            for index in range(1, self.n_distribute + 1):
                 merged += load_pickle(f"{dir_name}/{out_fname}.{index}")
             save_pickle(merged, out_fname)
 

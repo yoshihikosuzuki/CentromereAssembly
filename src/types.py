@@ -22,10 +22,10 @@ class SelfAlignment:
 @dataclass(eq=False)
 class TRUnit:
     """Normally used as an instance in a Read or TR object."""
-    start : int
-    end   : int
-    type  : str = None   # "complete" or "partial"
-    id    : int = None   # for clustering of units   # TODO: change name based on the clustering method
+    start    : int
+    end      : int
+    complete : bool = True
+    id       : int  = None   # for clustering of units   # TODO: change name based on the clustering method
 
     @property
     def length(self):

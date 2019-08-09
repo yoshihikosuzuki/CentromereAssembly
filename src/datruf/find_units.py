@@ -65,7 +65,7 @@ def find_units_single(tr_read_dump, db_fname, las_fname, max_cv=0.1):
 def find_inner_alignments(tr_read_dump, min_len=1000):
     """Extract a set of non-overlapping most inner self alignments.
     <min_len> defines the required overlap length with yet uncovered TR region."""
-    uncovered = interval(*tr_read_dump.trs)
+    uncovered = interval(*[(tr.start, tr.end) for tr in tr_read_dump.trs])
     inner_alignments = set()
     for alignment in tr_read_dump.alignments:   # in order of distance
         if intvl_len(uncovered) < min_len:
@@ -92,6 +92,6 @@ def split_tr(abpos, bbpos, fcigar):
             apos += 1
         if c != 'D':
             bpos += 1
-        if bpos == tr_units[-1][1] and (i == len(fcigar) - 1 or fcigar[i + 1] != 'D'):
-            tr_units.append(TRUnit(start=tr_units[-1][1], end=apos))
+        if bpos == tr_units[-1].end and (i == len(fcigar) - 1 or fcigar[i + 1] != 'D'):
+            tr_units.append(TRUnit(start=tr_units[-1].end, end=apos))
     return tr_units
