@@ -1,12 +1,9 @@
-filtered_reads.pkl
-develop/
-consed/
-consed_python/
+*.pkl
 *.ipynb
-*consed*
+consed*/
 src.old/
+develop*/
 result/
-develop.old/
 
 
 .DS_Store

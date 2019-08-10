@@ -68,8 +68,9 @@ class DatrufRunner:
                                   wait=True)
 
             merged = []
-            for index in range(1, self.n_distribute + 1):
-                merged += load_pickle(f"{dir_name}/{out_fname}.{index}")
+            fnames = run_command(f"find {dir_name} -name '{out_fname}.*' | sort").strip().split('\n')
+            for fname in fnames:
+                merged += load_pickle(fname)
             save_pickle(merged, out_fname)
 
 

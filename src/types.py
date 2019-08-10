@@ -49,8 +49,9 @@ class Read:
 
 
 @dataclass(repr=False, eq=False)
-class ReadDump(Read):
-    """Class for a read plus dump data. Used in datruf."""
+class ReadDump:
+    """Class for a read ID plus dump data. Used in datruf."""
+    id: int
     trs: List[ReadInterval]
     alignments: List[SelfAlignment]
 

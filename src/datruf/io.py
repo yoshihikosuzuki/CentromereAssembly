@@ -1,7 +1,7 @@
 from collections import defaultdict
 from logzero import logger
 from BITS.util.proc import run_command
-from ..types import SelfAlignment, TR, ReadDump
+from ..types import SelfAlignment, ReadInterval, ReadDump
 
 
 def load_dumps(start_dbid, end_dbid, db_fname, las_fname):
@@ -14,7 +14,7 @@ def load_dumps(start_dbid, end_dbid, db_fname, las_fname):
     dbdumps = defaultdict(list)
     for line in run_command(dbdump_command).strip().split('\n'):
         read_id, start, end = map(int, line.split('\t'))
-        dbdumps[read_id].append(TR(start, end))
+        dbdumps[read_id].append(ReadInterval(start, end))
 
     # Extract data from LAdump's output
     ladump_command = (f"LAdump -c {db_fname} {las_fname} {start_dbid}-{end_dbid} | "
@@ -26,7 +26,7 @@ def load_dumps(start_dbid, end_dbid, db_fname, las_fname):
         read_id, ab, ae, bb, be = map(int, line.split('\t'))
         ladumps[read_id].append(SelfAlignment(ab, ae, bb, be))
 
-    # Merge the data into List[TRRead]
+    # Merge the data into List[ReadDump]
     read_ids = sorted(dbdumps.keys())
     read_dumps = [ReadDump(id=read_id,
                            trs=dbdumps[read_id],

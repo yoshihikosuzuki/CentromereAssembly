@@ -3,7 +3,8 @@ from dataclasses import dataclass
 from BITS.seq.plot import DotPlot
 from BITS.plot.plotly import make_line, make_scatter, make_layout, show_plot
 from BITS.util.proc import run_command
-from .datruf.io import load_dumps, find_inner_alignments
+from .datruf.io import load_dumps
+from .datruf.find_units import find_inner_alignments
 from .types import TRRead
 
 
@@ -11,30 +12,37 @@ from .types import TRRead
 class ReadViewer:
     db_fname  : str
     las_fname : str
-    gepard    : str
+    gepard    : str = None
     out_dir   : str = "tmp"
-    plot_size : int = 1000
 
     def __post_init__(self):
         run_command(f"mkdir -p {self.out_dir}")
 
-    def show(self, in_read, dot_plot=False, alignment_plot=True, out_html=None):
-        """<read> must be ID of a read in <db_fname> or TRRead object instance."""
-        assert isinstance(in_read, (int, TRRead)), "Unsupported read type"
-        read = deepcopy(in_read) if isinstance(TRRead) else TRRead(id=in_read)
-        assert read.id is not None, "Read ID must be set"
+    def show(self, read_id=None, read=None,
+             dot_plot=False, alignment_plot=True, plot_size=800, out_html=None):
+        """Exactly one of the <read_id> (DAZZ_DB read ID) or <read_obj> (TRRead instance)
+        must be given."""
+        assert (read_id is None) ^ (read is None), "Specify one of <read_id> [int] or <read> [TRRead]"
+
+        # If <read_id> is specified, create a TRRead object using that.
+        if read_id is not None:
+            assert isinstance(read_id, int), "<read_id> must be int"
+            read = TRRead(id=read_id)
+        else:
+            assert isinstance(read, TRRead) and read.id is not None, "<read>.id must not be None"
 
         if dot_plot:
+            assert self.gepard is not None, "<gepard> command string must be given"
             self._dot_plot(read)
         if alignment_plot:
-            self._alignment_plot(read, out_html)
+            self._alignment_plot(read, plot_size, out_html)
 
     def _dot_plot(self, read):
         out_fasta = f"{self.out_dir}/{read.id}.fasta"
-        run_command(f"DBshow {self.db_file} {read.id} > {out_fasta}")
+        run_command(f"DBshow {self.db_fname} {read.id} > {out_fasta}")
         DotPlot(self.gepard, self.out_dir).plot_fasta(out_fasta, out_fasta)
 
-    def _alignment_plot(self, read, out_html):
+    def _alignment_plot(self, read, plot_size, out_html):
         read_len = calc_read_len(read.id, self.db_fname)   # read length
 
         # Load information of TR intervals and self alignments
@@ -84,7 +92,7 @@ class ReadViewer:
             traces += [trace_unit, trace_info]
 
         # Show plot
-        layout = make_layout(self.plot_size, self.plot_size, title=f"{read.id}",
+        layout = make_layout(plot_size, plot_size, title=f"{read.id}",
                              x_range=[-read_len * 0.05, read_len + 100],
                              y_range=[0, read_len],
                              x_grid=False, y_grid=False, y_reversed=True, shapes=shapes)
