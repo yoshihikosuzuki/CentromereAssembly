@@ -1,3 +1,6 @@
 [submodule "DAMASKER"]
 	path = DAMASKER
 	url = https://gitlab.com/yoshihikosuzuki/DAMASKER
+[submodule "wiki"]
+	path = wiki
+	url = git@gitlab.com:yoshihikosuzuki/CentromereAssembly.wiki.git
