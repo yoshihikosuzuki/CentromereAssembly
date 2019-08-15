@@ -4,8 +4,8 @@ from interval import interval
 from logzero import logger
 from BITS.util.io import save_pickle
 from BITS.util.interval import intvl_len, subtract_intvl
-from .io import load_dumps, load_paths
-from ..types import TRUnit, TRRead
+from .io import load_tr_reads, load_paths
+from ..types import TRUnit
 
 
 def find_units(start_dbid, end_dbid, n_core, db_fname, las_fname, out_fname):
@@ -32,25 +32,24 @@ def find_units(start_dbid, end_dbid, n_core, db_fname, las_fname, out_fname):
 def find_units_multi(start_dbid, end_dbid, db_fname, las_fname):
     """Call <find_units_single> for each read whose id is in [<start_dbid>:<end_dbid> + 1]."""
     # Load TR reads with data of TR intervals and all self alignments
-    read_dumps = load_dumps(start_dbid, end_dbid, db_fname, las_fname)
+    reads = load_tr_reads(start_dbid, end_dbid, db_fname, las_fname)
 
     # For each read, calculate the unit intervals
-    tr_reads = []
-    for read_dump in read_dumps:
-        tr_read = find_units_single(read_dump, db_fname, las_fname)
-        if tr_read is not None:
-            tr_reads.append(tr_read)
-    return tr_reads
+    # NOTE: <read.units> can be empty list (i.e. TRs are detected but alignments are noisy or too short)
+    for read in reads:
+        read.units = find_units_single(read, db_fname, las_fname)
+
+    return reads
 
 
-def find_units_single(read_dump, db_fname, las_fname, max_cv=0.1):
+def find_units_single(read, db_fname, las_fname, max_cv=0.1):
     """Core function of datruf.
     Find the best set of self alignments and split the TR intervals induced by the alignments into units."""
     all_units = []
     # Determine a set of self alignments from which units are cut out
-    inner_alignments = find_inner_alignments(read_dump)
+    inner_alignments = find_inner_alignments(read)
     # Load flattten CIGAR strings of the selected alignments
-    inner_paths = load_paths(read_dump, inner_alignments, db_fname, las_fname)
+    inner_paths = load_paths(read, inner_alignments, db_fname, las_fname)
 
     for alignment, fcigar in inner_paths.items():
         # Compute unit intervals based on the reflecting snake
@@ -67,15 +66,16 @@ def find_units_single(read_dump, db_fname, las_fname, max_cv=0.1):
             continue
         all_units += units
 
-    return TRRead(id=read_dump.id, units=all_units) if len(all_units) > 0 else None
+    # TODO: remove "contained units"
+    return all_units
 
 
-def find_inner_alignments(read_dump, min_len=1000):
+def find_inner_alignments(read, min_len=1000):
     """Extract a set of non-overlapping most inner self alignments.
     <min_len> defines the required overlap length with yet uncovered TR region."""
-    uncovered = interval(*[(tr.start, tr.end) for tr in read_dump.trs])
+    uncovered = interval(*[(tr.start, tr.end) for tr in read.trs])
     inner_alignments = set()
-    for alignment in read_dump.alignments:   # in order of distance
+    for alignment in read.alignments:   # in order of distance
         if intvl_len(uncovered) < min_len:
             break
         intersect = uncovered & interval[alignment.bb, alignment.ae]

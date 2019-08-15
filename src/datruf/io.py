@@ -1,10 +1,26 @@
 from collections import defaultdict
 from logzero import logger
 from BITS.util.proc import run_command
-from ..types import SelfAlignment, ReadInterval, ReadDump
+from ..types import SelfAlignment, ReadInterval, TRRead
 
 
-def load_dumps(start_dbid, end_dbid, db_fname, las_fname):
+def load_db(start_dbid, end_dbid, db_fname):
+    """Load reads from a DAZZ_DB file as {id: (header, seq)}. Headers must not contain tab."""
+    command = (f"DBshow {db_fname} {start_dbid}-{end_dbid} | "
+               f"awk 'BEGIN {{first = 1}} "
+               f"{{if (substr($0, 1, 1) == \">\") "
+               f"{{if (first == 1) {{first = 0}} else {{printf(\"%s\\t%s\\n\", header, seq)}}; "
+               f"header = substr($0, 2); seq = \"\";}} "
+               f"else {{seq = seq $0}}}} "
+               f"END {{printf(\"%s\\t%s\\n\", header, seq)}}'")
+    return {int(dbid): tuple(line.split('\t'))
+            for dbid, line in enumerate(run_command(command).strip().split('\n'), start=start_dbid)}
+
+
+def load_tr_reads(start_dbid, end_dbid, db_fname, las_fname):
+    # Load all reads within the ID range
+    all_reads = load_db(start_dbid, end_dbid, db_fname)
+
     # Extract data from DBdump's output
     dbdump_command = (f"DBdump -rh -mtan {db_fname} {start_dbid}-{end_dbid} | "
                       f"awk '$1 == \"R\" {{dbid = $2}} "
@@ -26,19 +42,21 @@ def load_dumps(start_dbid, end_dbid, db_fname, las_fname):
         read_id, ab, ae, bb, be = map(int, line.split('\t'))
         ladumps[read_id].append(SelfAlignment(ab, ae, bb, be))
 
-    # Merge the data into List[ReadDump]
+    # Merge the data into List[TRRead]
     read_ids = sorted(dbdumps.keys())
-    read_dumps = [ReadDump(id=read_id,
-                           trs=dbdumps[read_id],
-                           alignments=sorted(sorted(ladumps[read_id],
-                                                    key=lambda x: x.ab),
-                                             key=lambda x: x.distance))
-                  for read_id in read_ids]
+    reads = [TRRead(seq=all_reads[read_id][1],
+                    id=read_id,
+                    name=all_reads[read_id][0],
+                    trs=dbdumps[read_id],
+                    alignments=sorted(sorted(ladumps[read_id],
+                                             key=lambda x: x.ab),
+                                      key=lambda x: x.distance))
+             for read_id in read_ids]
+    
+    return reads
 
-    return read_dumps
 
-
-def load_paths(read_dump, inner_alignments, db_fname, las_fname):
+def load_paths(read, inner_alignments, db_fname, las_fname):
     # NOTE: Since alignment path information is very large, load for a single read on demand
 
     def find_boundary(aseq, bseq):
@@ -65,11 +83,11 @@ def load_paths(read_dump, inner_alignments, db_fname, las_fname):
                         else 'X'
                         for i, c in enumerate(symbol)])
 
-    if len(read_dump.alignments) == 0:
+    if len(read.alignments) == 0:
         return {}
 
     # Load pairwise alignment information
-    command = (f"LAshow4pathplot -a {db_fname} {las_fname} {read_dump.id} | "
+    command = (f"LAshow4pathplot -a {db_fname} {las_fname} {read.id} | "
                f"sed 's/,//g' | "
                f"awk 'BEGIN {{first = 1}} "
                f"NF == 7 {{if (first == 1) {{first = 0}} "

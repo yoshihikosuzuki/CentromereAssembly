@@ -8,7 +8,7 @@ from BITS.util.scheduler import Scheduler
 from .find_units import find_units
 
 dir_name     = "datruf"
-out_fname    = "datruf_result.pkl"
+out_fname    = "tr_reads.pkl"
 script_scatter_fname = f"{dir_name}/scatter.sh"
 script_gather_fname = f"{dir_name}/gather.sh"
 log_fname    = f"{dir_name}/log"

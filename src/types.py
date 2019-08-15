@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from typing import List, Dict
-import numpy as np
 
 
 @dataclass(frozen=True)
@@ -43,21 +42,20 @@ class TRUnit(ReadInterval):
 @dataclass(eq=False)
 class Read:
     """Class for a read."""
-    seq  : str = None   # can be None (abstract read)
-    id   : int = None   # for DAZZ_DB
-    name : str = None   # for fasta
+    seq    : str
+    id     : int = None   # for DAZZ_DB
+    name   : str = None   # for fasta
 
-
-@dataclass(repr=False, eq=False)
-class ReadDump:
-    """Class for a read ID plus dump data. Used in datruf."""
-    id: int
-    trs: List[ReadInterval]
-    alignments: List[SelfAlignment]
+    @property
+    def length(self):
+        assert self.seq is not None, "Sequence is not set"
+        return len(self.seq)
 
 
 @dataclass(eq=False)
 class TRRead(Read):
     """Class for a read with TRs. Multiple TRs in a read are not distinguished here."""
-    units      : List[TRUnit]   = None
-    repr_units : Dict[int, str] = None   # {cluster_id: str}
+    alignments : List[SelfAlignment] = None
+    trs        : List[ReadInterval]  = None
+    units      : List[TRUnit]        = None
+    repr_units : Dict[int, str]      = None   # {cluster_id: str}
