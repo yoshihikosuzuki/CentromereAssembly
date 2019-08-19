@@ -30,7 +30,9 @@ def find_units(start_dbid, end_dbid, n_core, db_fname, las_fname, out_fname):
 
 
 def find_units_multi(start_dbid, end_dbid, db_fname, las_fname):
-    """Call <find_units_single> for each read whose id is in [<start_dbid>:<end_dbid> + 1]."""
+    """Call <find_units_single> for each read whose id is in [<start_dbid>:<end_dbid> + 1].
+    This returns all the TR reads even when CV of the unit lengths is large although units are not determined.
+    """
     # Load TR reads with data of TR intervals and all self alignments
     reads = load_tr_reads(start_dbid, end_dbid, db_fname, las_fname)
 
@@ -44,7 +46,8 @@ def find_units_multi(start_dbid, end_dbid, db_fname, las_fname):
 
 def find_units_single(read, db_fname, las_fname, max_cv=0.1):
     """Core function of datruf.
-    Find the best set of self alignments and split the TR intervals induced by the alignments into units."""
+    Find the best set of self alignments and split the TR intervals induced by the alignments into units.
+    """
     all_units = []
     # Determine a set of self alignments from which units are cut out
     inner_alignments = find_inner_alignments(read)
