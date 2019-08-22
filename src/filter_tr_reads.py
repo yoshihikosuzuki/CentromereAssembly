@@ -35,6 +35,7 @@ class TRReadFilter:
         
         # Extract reads covered by units around the peak lengths, which would come from centromere
         centromere_reads = filter_reads(self.tr_reads, peak_intvls, self.min_cover_rate)
+        logger.info(f"{len(self.tr_reads)} TR reads -> {len(centromere_reads)} centromere reads")
         save_pickle(centromere_reads, "centromere_reads.pkl")
 
     def find_peaks(self):
@@ -44,7 +45,7 @@ class TRReadFilter:
         if self.show_plot:
             # Show length histogram of all units
             all_ulens = [tr_unit.length for tr_read in self.tr_reads for tr_unit in tr_read.units]
-            show_plot([make_hist(all_ulens, bin_size=1)],
+            show_plot([make_hist(all_ulens, start=self.min_ulen, end=self.max_ulen, bin_size=1)],
                       make_layout(x_title="Unit length [All]", y_title="Frequency"))
 
         # Extract reads covered by units whose lengths are within the range
@@ -69,7 +70,7 @@ class TRReadFilter:
                                                     for start, end in peak_intvl]))
 
         if self.show_plot:
-            peak_rects = [make_rect(start, 0, end, 1, yref="paper")
+            peak_rects = [make_rect(start, 0, end, 1, yref="paper", layer="above")
                           for peak_intvl in peak_intvls.components for start, end in peak_intvl]
             # Before smoothing
             show_plot([make_hist(ulens, start=self.min_ulen, end=self.max_ulen, bin_size=1)],
