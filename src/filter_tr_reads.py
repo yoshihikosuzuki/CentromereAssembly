@@ -76,11 +76,11 @@ class TRReadFilter:
             # After smoothing
             show_plot([make_scatter(np.arange(self.min_ulen, self.max_ulen + 1), ulen_dens,
                                     mode="lines", show_legend=False)],
-                      make_layout(x_title="Unit length", y_title="Density"))
+                      make_layout(x_title="Unit length [Filtered]", y_title="Density by KDE"))
 
         return peak_intvls
 
-    def extract_centromeric_reads(self, peak_intvls):
+    def extract_centromere_reads(self, peak_intvls):
         """Again filter the TR reads using the peak intervals."""
         centromere_reads = filter_reads(self.tr_reads, peak_intvls, self.min_cover_rate)
         logger.info(f"{len(self.tr_reads)} TR reads -> {len(centromere_reads)} centromere reads")

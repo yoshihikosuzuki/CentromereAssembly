@@ -90,7 +90,9 @@ class ReadViewer:
         # Add shapes and traces of TR units if exist
         if read.units is not None:
             shapes += [make_line(unit.start, unit.start, unit.end, unit.end,
-                                 rgb2hex(cm.jet(unit.diff * 3)) if hasattr(unit, "diff") and unit.diff is not None else "black",
+                                 rgb2hex(cm.jet(unit.diff * 3)) if (hasattr(unit, "diff")
+                                                                    and unit.diff is not None)
+                                 else "black",
                                  5)
                        for unit in read.units]   # on diagonal
             trace_unit = make_scatter([unit.start for unit in read.units],
@@ -101,7 +103,7 @@ class ReadViewer:
                                       name="TR unit")
             trace_info = make_scatter([unit.start for unit in read.units],
                                       [unit.start for unit in read.units],
-                                      text=[f"unit {i}<br>{unit.start}:{unit.end}"
+                                      text=[f"unit {i}<br>[{unit.start}:{unit.end}] ({unit.length} bp)"
                                             for i, unit in enumerate(read.units)],
                                       # TODO: after encoding, f"{df.name} ({df['peak_id']}:{df['master_id']}:{df['repr_id']}{'+' if df['strand'] == 0 else '-'})<br>[{df['start']}, {df['end']}] ({df['length']} bp)<br>diff = {df['diff']}"
                                       col="black",
