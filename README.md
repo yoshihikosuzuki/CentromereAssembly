@@ -2,13 +2,17 @@
 
 A bundle of modules for centromere assembly only with PacBio long reads.
 
+
+
 ## Requirements
 
-* Python version must be 3
+* Python3
 * [`DAZZ_DB`](https://github.com/thegenemyers/DAZZ_DB) and [`DALIGNER`](https://github.com/thegenemyers/DALIGNER)
-* Git submodule [`DAMASKER`](https://github.com/yoshihikosuzuki/DAMASKER) in this repository
-* Python library [`cython`](https://cython.readthedocs.io/en/latest/src/quickstart/install.html)
-* (Other Python libraries required are automatically installed during the installation described below)
+* [`DAMASKER`](https://github.com/yoshihikosuzuki/DAMASKER) (submodule of this Git repository)
+* Python package [`cython`](https://cython.readthedocs.io/en/latest/src/quickstart/install.html)
+  * Other Python packages required will be automatically installed
+
+
 
 ## Installation
 
@@ -18,11 +22,13 @@ After you satisfy all the requirements above, the typical installation by `setup
 $ python setup.py install
 ```
 
+
+
 ## How to run
 
-The command to run VCA is simple:
+The command to run VCA is:
 
-```
+```bash
 usage: vca [-h] [-c CONFIG_FNAME] [task_name]
 
 VCA: Vertebrate Centromere Assembler.
@@ -37,17 +43,55 @@ optional arguments:
                         Config file name. [config]
 ```
 
-although you have to prepare a config file (`config` by default; template `config.template` exists in the root directory) to specify input data files, parameters, etc. The most essential configurations are, for example:
 
+
+### DAZZ_DB file
+
+As input data, a `.db` file of your sequence data is required. See [DAZZ_DB](https://github.com/thegenemyers/DAZZ_DB) for details.
+
+
+
+### Config file
+
+To prepare the config file required by VCA, first copy `config.template` in the root directory of this repository while renaming as `config`. The template is written in TOML format as follows:
+
+```ini
+# Config file must be TOML-formatted [https://github.com/toml-lang/toml].
+
+db_prefix = "DMEL"   # <db_prefix>.db and its related files must exist in the execution firectory
+
+[job_scheduler]
+
+enabled = false   # Use a job scheduler if true
+
+  [job_scheduler.params]
+
+  scheduler_name = "sge"   # Only "sge" or "slurm"; Name of job scheduler
+  submit_command = "qsub"  # e.g. "qsub" for SGE and "sbatch" for SLURM
+  #queue_name     =        # You can specify the queue name (for SGE) or partition name (for SLURM)
+
+...
 ```
-[config example here]
-```
 
-For detail, please see [Notebook or document](). Instead of `all` mode, you can execute each of the submodules individually. The submodules consisting of VCA are as follows:
+And then edit `config` according to your data and environment.
 
-* [list of submodules here]
 
-For detailed description of each module, please read [Notebook]() or paper.
+
+### What is `task_name`?
+
+The `all` mode (default) will execute all tasks, and the other task names are mainly for development and debug. You can also run VCA with Jupyter Notebook. For details, see the sections below.
+
+
+
+## Modules and their usage
+
+Every module of VCA can be used separatedly in a more exploratory and customizable manner.
+
+
+
+* [TODO: Links to Jupyter NBs here]
+
+
 
 
 
@@ -72,9 +116,13 @@ Actually `dacembler.sh` just calls `datander.sh`, `datruf.sh`, `dacmaster.sh`, a
 
 Every module offers some visualization functions (examples will be shown here).
 
+
+
 ## datander
 
 Datander has been developed by Gene Myers as a program in his module named [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER).
+
+
 
 ## datruf
 
@@ -92,6 +140,8 @@ Datruf consists of three parts:
 
 See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/docs/datruf%20usage.ipynb) for how to use.
 
+
+
 ## dacmaster
 
 * infers centromeric satellite repeat units (monomers) from all the tandem repeat units
@@ -106,6 +156,8 @@ Dacmaster recieves the fasta file of the units reported by datruf, and determine
 4. Adjusting start positions of all monomers by the most similar representative monomer
 
 See [Jupyter notebook]().
+
+
 
 ## dalayout
 
