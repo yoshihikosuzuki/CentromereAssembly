@@ -23,7 +23,7 @@ class TRReadFilter:
     min_cover_rate : float = 0.8     # of read by all TRs
     band_width     : int   = 5       # for KDE
     min_density    : float = 0.005   # of peaks in KDE
-    deviation      : float = 0.08    # <peak_ulen> * (1 +- <deviation>) will be each peak interval
+    deviation      : float = 0.1    # <peak_ulen> * (1 +- <deviation>) will be each peak interval
     show_plot      : bool  = False
 
     def __post_init__(self):
@@ -34,9 +34,7 @@ class TRReadFilter:
         peak_intvls = self.find_peaks()
         
         # Extract reads covered by units around the peak lengths, which would come from centromere
-        centromere_reads = filter_reads(self.tr_reads, peak_intvls, self.min_cover_rate)
-        logger.info(f"{len(self.tr_reads)} TR reads -> {len(centromere_reads)} centromere reads")
-        save_pickle(centromere_reads, "centromere_reads.pkl")
+        save_pickle(self.extract_centromere_reads(peak_intvls), "centromere_reads.pkl")
 
     def find_peaks(self):
         """Filter TR reads and units by peak unit lengths,
@@ -81,6 +79,12 @@ class TRReadFilter:
                       make_layout(x_title="Unit length", y_title="Density"))
 
         return peak_intvls
+
+    def extract_centromeric_reads(self, peak_intvls):
+        """Again filter the TR reads using the peak intervals."""
+        centromere_reads = filter_reads(self.tr_reads, peak_intvls, self.min_cover_rate)
+        logger.info(f"{len(self.tr_reads)} TR reads -> {len(centromere_reads)} centromere reads")
+        return centromere_reads
 
 
 def filter_reads(tr_reads, intvl, min_cover_rate):
