@@ -1,9 +1,8 @@
-*.pkl
-*.ipynb
 consed*/
 src.old/
 develop*/
 result/
+ipynbs/
 
 
 .DS_Store
