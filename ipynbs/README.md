@@ -1,3 +1,5 @@
 nbviewer links to each Notebook:
 
-* [Step by step results.ipynb](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/Step%20by%20step%20results.ipynb)
+* [1. datander and datruf](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/1.%20datander%20and%20datruf.ipynb)
+* [2. TRReadFilter](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/2.%20TRReadFilter.ipynb)
+* [3. ReadViewer](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/3.%20ReadViewer.ipynb)
