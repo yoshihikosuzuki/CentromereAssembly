@@ -99,7 +99,7 @@ Every module of VCA can be used separatedly in a more exploratory and customizab
 
 ### datander
 
-Datander has been developed by Gene Myers as a program in his module named [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER).
+Datander has been developed by Dr. Gene Myers as a program in his module named [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER).
 
 
 
