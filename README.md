@@ -79,15 +79,17 @@ And then edit `config` according to your data and environment.
 
 ### What is `task_name`?
 
-The `all` mode (default) will execute all tasks, and the other task names are mainly for development and debug. You can also run VCA with Jupyter Notebook. For details, see the sections below.
+The `all` mode (default) will execute all tasks, and the other task names are mainly for development and debug. You can also run VCA with Jupyter Notebook. For details, see the section just below.
 
 
 
 ## Modules and their usage
 
-Every module of VCA can be used separatedly in a more exploratory and customizable manner.
+Every module of VCA can be used separatedly in a more exploratory and customizable manner. Here are links to Jupyter Notebooks about usage and results with *Drosophila* data for each module offered in VCA:
 
-
+- [1. datander and datruf](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/1.%20datander%20and%20datruf.ipynb)
+- [2. TRReadFilter](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/2.%20TRReadFilter.ipynb)
+- [3. ReadViewer](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/3.%20ReadViewer.ipynb)
 
 * [TODO: Links to Jupyter NBs here]
 
@@ -95,70 +97,13 @@ Every module of VCA can be used separatedly in a more exploratory and customizab
 
 
 
-
-
---- (Information below is obsolete [June 17, 2019]) ---
-
-## How to run
-
-The simplest way is to use `dacembler.sh` with a config file which can be prepared by modifying `config.template` in this repository root. You need to specify your environment-specific parameters, the number of cores, etc., in the config file. Once you complete it (here we call it as `config_file`), you can run dacembler by:
-
-```bash
-$ dacembler.sh config_file
-```
-
-Actually `dacembler.sh` just calls `datander.sh`, `datruf.sh`, `dacmaster.sh`, and `dalayout.sh` in this order with `config_file`. And they further execute python scripts.
-
-
-## Overview of the modules
-
-(TBA: a picture of the entire workflow of dacembler)
-
-Every module offers some visualization functions (examples will be shown here).
-
-
-
-## datander
+### datander
 
 Datander has been developed by Gene Myers as a program in his module named [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER).
 
 
 
-## datruf
+### datruf
 
-detects tandem repeat regions (with datander by Gene Myers) and tandem repeat units
+Datruf detects tandem repeat units with the output of datander. Minimum required unit length to be accurately inferred by datruf is approximately >50 bp due to the resolution of long-read alignment on which datander relies. The size of centromeric tandem repeat units is, however, known to be generally longer than it (e.g. ~120 bp and ~360 bp in *Drosophila*).
 
-Datruf detects tandem repeats and unit sequences within them only from PacBio raw reads and without any other external information. Before using datruf, you must run the `HPC.TANmask` program of [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER) originally developed by Gene Myers and slightly modified for datruf, and must have `.db` file and `.las` file.  The minimum length of tandem repeat units accurately infered by datruf is relatively long (approximately >50 bp) due to the resolution of long-read alignment on which datander relies. However, datruf is developed mainly for (core) centromere assembly, whose unit size is known to be long in general (e.g. 171 bp alpha-satellite sequence of human).
-
-Datruf consists of three parts:
-
-* **Runner** applies core algorithm of datruf to arbitrary number of reads without visualization and output the results (read ID, start/end position of tandem repeat, estimated unit length, borders of units, consensus unit sequence) into a file.
-
-* **Viewer** receives one read ID and draw figures that are not told by Runner but help to understand the sequence structure of the read.
-
-* **Plotter** requires results of datruf and/or other software for tandem repeat analysis (TRF, mTR, etc.) and draws figures useful for comparison of these results.
-
-See [Jupyter notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/docs/datruf%20usage.ipynb) for how to use.
-
-
-
-## dacmaster
-
-* infers centromeric satellite repeat units (monomers) from all the tandem repeat units
-* performs clustering of the monomers at multiple, stage-specific resolusions
-* assigns each monomer in the reads to a representative (consensus) of the clusters
-
-Dacmaster recieves the fasta file of the units reported by datruf, and determine a set of representative centromeric monomers from it. This task is done by
-
-1. Detecting peaks in tandem repeat unit length (which are considered as those of centromeric monomers),
-2. Collecting units around each peak
-3. Clustering units which are the first units of the first tandem repeats not starting from the end point of each read
-4. Adjusting start positions of all monomers by the most similar representative monomer
-
-See [Jupyter notebook]().
-
-
-
-## dalayout
-
-layouts the reads encoded with the representative monomers
