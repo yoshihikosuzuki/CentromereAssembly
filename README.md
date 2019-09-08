@@ -24,7 +24,7 @@ $ python setup.py install
 
 
 
-## How to run
+## Command-line execution
 
 The command to run VCA is:
 
@@ -79,20 +79,19 @@ And then edit `config` according to your data and environment.
 
 ### What is `task_name`?
 
-The `all` mode (default) will execute all tasks, and the other task names are mainly for development and debug. You can also run VCA with Jupyter Notebook. For details, see the section just below.
+The `all` mode (default) will execute all tasks, and the other task names are mainly for development and debug.
 
 
 
-## Modules and their usage
 
-Every module of VCA can be used separatedly in a more exploratory and customizable manner. Here are links to Jupyter Notebooks about usage and results with *Drosophila* data for each module offered in VCA:
+
+## Jupyter Notebook execution
+
+Instead of command-line execution, you can also run VCA in Jupyter Notebook. Every module of VCA can be used separatedly in a more exploratory and customizable manner through some visualizations. Here are links to Jupyter Notebooks about usage and results with *Drosophila* data for each module offered in VCA:
 
 - [1. datander and datruf](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/1.%20datander%20and%20datruf.ipynb)
 - [2. TRReadFilter](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/2.%20TRReadFilter.ipynb)
 - [3. ReadViewer](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/3.%20ReadViewer.ipynb)
-
-* [TODO: Links to Jupyter NBs here]
-
 
 
 
