@@ -11,20 +11,23 @@ from BITS.util.interval import intvl_len
 @dataclass(eq=False)
 class TRReadFilter:
     """Class for filtering List[TRRead] into centromeric TR reads by finding peaks of unit lengths,
-    which would be components of centromere.
+    which should be a sign of centromeric TR units.
 
-    TR reads [reads w/ TR(s) of any unit length & any copy number]
-    => TR-contained reads [reads contained in TR(s)]
-    => Centromeric reads [reads contained in TR(s) with peak unit length]
+    The flow of the filtering is as follows:
+      - Given: TR reads (= reads w/ TR(s) of any unit length & any copy number)
+            => TR-contained reads (= reads contained within TR(s))
+            => Centromeric reads (= reads contained within TR(s) and having units of peak lengths)
+
+    Before executing run(), It is recomended to adjust the parameters through looking at histograms
+    of unit length using hist_all_units() and hist_filtered_units() methods inside Jupyter Notebook.
     """
-    tr_reads_fname : str             # output of datruf
-    min_ulen       : int   = 50      # units of length in [<min_ulen>..<max_ulen>] will be used
-    max_ulen       : int   = 500
-    min_cover_rate : float = 0.8     # of read by all TRs
-    band_width     : int   = 5       # for KDE
-    min_density    : float = 0.005   # of peaks in KDE
-    deviation      : float = 0.1    # <peak_ulen> * (1 +- <deviation>) will be each peak interval
-    show_plot      : bool  = False
+    tr_reads_fname : str                # output of datruf
+    min_ulen       : int      = 50      # units of length in [<min_ulen>..<max_ulen>] will be used
+    max_ulen       : int      = 500
+    min_cover_rate : float    = 0.8     # of read by all TRs
+    band_width     : int      = 5       # for KDE
+    min_density    : float    = 0.005   # of peaks in KDE
+    deviation      : float    = 0.1     # <peak_ulen> * (1 +- <deviation>) will be each peak interval
 
     def __post_init__(self):
         self.tr_reads = load_pickle(self.tr_reads_fname)
@@ -32,20 +35,16 @@ class TRReadFilter:
     def run(self):
         # Find peak lengths and intervals of TR untis from TR-contained reads
         peak_intvls = self.find_peaks()
-        
-        # Extract reads covered by units around the peak lengths, which would come from centromere
-        save_pickle(self.extract_centromere_reads(peak_intvls), "centromere_reads.pkl")
 
-    def find_peaks(self):
+        # Again filter the TR reads using the peak intervals
+        centromere_reads = filter_reads(self.tr_reads, peak_intvls, self.min_cover_rate)
+        logger.info(f"{len(self.tr_reads)} TR reads -> {len(centromere_reads)} centromere reads")
+        save_pickle(centromere_reads, "centromere_reads.pkl")
+
+    def find_peaks(self, plot=False):
         """Filter TR reads and units by peak unit lengths,
         based on the assumption that centromere is the major source of TRs.
         """
-        if self.show_plot:
-            # Show length histogram of all units
-            all_ulens = [tr_unit.length for tr_read in self.tr_reads for tr_unit in tr_read.units]
-            show_plot([make_hist(all_ulens, start=self.min_ulen, end=self.max_ulen, bin_size=1)],
-                      make_layout(x_title="Unit length [All]", y_title="Frequency"))
-
         # Extract reads covered by units whose lengths are within the range
         filtered_reads = filter_reads(self.tr_reads,
                                       interval([self.min_ulen, self.max_ulen]),
@@ -67,7 +66,7 @@ class TRReadFilter:
                                                     for peak_intvl in peak_intvls.components
                                                     for start, end in peak_intvl]))
 
-        if self.show_plot:
+        if plot:
             peak_rects = [make_rect(start, 0, end, 1, yref="paper", layer="above")
                           for peak_intvl in peak_intvls.components for start, end in peak_intvl]
             # Before smoothing
@@ -80,11 +79,15 @@ class TRReadFilter:
 
         return peak_intvls
 
-    def extract_centromere_reads(self, peak_intvls):
-        """Again filter the TR reads using the peak intervals."""
-        centromere_reads = filter_reads(self.tr_reads, peak_intvls, self.min_cover_rate)
-        logger.info(f"{len(self.tr_reads)} TR reads -> {len(centromere_reads)} centromere reads")
-        return centromere_reads
+    def hist_all_units(self):
+        """Show unit length histogram with all units."""
+        all_ulens = [tr_unit.length for tr_read in self.tr_reads for tr_unit in tr_read.units]
+        show_plot([make_hist(all_ulens, start=self.min_ulen, end=self.max_ulen, bin_size=1)],
+                  make_layout(x_title="Unit length [All]", y_title="Frequency"))
+
+    def hist_filtered_units(self):
+        """Show unit length histogram with filtered units. Units inside the shades will be output."""
+        self.find_peaks(plot=True)
 
 
 def filter_reads(tr_reads, intvl, min_cover_rate):

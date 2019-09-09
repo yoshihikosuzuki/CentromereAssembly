@@ -17,20 +17,24 @@ class DatanderRunner:
       - db_prefix <str> : Prefix of the DB file created with DAZZ_DB. DB file must be in CWD
 
     Optional arguments:
-      - n_core       <int>       [1]                 : Number of cores used in datader
-      - scheduler    <Scheduler> [None]              : Scheduler object
+      - read_type    <str>       ["CLR"] : Input read type. Must be one of {"CLR", "CCS"}.
+      - n_core       <int>       [1]     : Number of cores used in datader
+      - scheduler    <Scheduler> [None]  : Scheduler object
     """
     db_prefix    : str
+    read_type    : str       = "CLR"
     n_core       : int       = 1
     scheduler    : Scheduler = None
 
     def __post_init__(self):
+        assert self.read_type in ("CLR", "CCS"), "Invalid read type"
         run_command(f"rm -f .{self.db_prefix}.*.tan.* .{self.db_prefix}.tan.* TAN.*")
         run_command(f"mkdir -p {dir_name}; rm -f {dir_name}/*")
 
     def run(self):
         # Prepare a script to run datander
-        script = run_command(f"HPC.TANmask -T{self.n_core} {self.db_prefix}.db")
+        options = "" if self.read_type == "CLR" else "-k25 -w5 -h60 -e.95 -s500"
+        script = run_command(f"HPC.TANmask {options} -T{self.n_core} {self.db_prefix}.db")
         if calc_n_blocks(f"{self.db_prefix}.db") > 1:
             script += '\n'.join([f"Catrack -v {self.db_prefix} tan",
                                  f"rm .{self.db_prefix}.*.tan.*"])
