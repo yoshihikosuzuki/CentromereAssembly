@@ -75,14 +75,14 @@ The `all` mode (default) will execute all the tasks of VCA, and the other task n
 
 Instead of command-line execution, you can import functions/classes of VCA submodules and run them inside REPL or Jupyter Notebook. Every module of VCA can be used separatedly in a more exploratory and customizable manner through some visualizations. Details of each VCA submodule along with Jupyter Notebook examples are described below.
 
-### datander ([Jupyter Notebook]())
+### datander ([Jupyter Notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/notebooks/usage/1.%20datander.ipynb))
 
 Datander has been developed by Dr. Gene Myers as a program in his module named [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER).
 
-### datruf ([Jupyter Notebook]())
+### datruf ([Jupyter Notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/notebooks/usage/2.%20%20datruf.ipynb))
 
 Datruf detects tandem repeat units with the output of datander. Minimum required unit length to be accurately inferred by datruf is approximately >50 bp due to the resolution of long-read alignment on which datander relies. The size of centromeric tandem repeat units is, however, known to be generally longer than it (e.g. ~120 bp and ~360 bp in *Drosophila*).
 
-### ReadViewer ([Jupyter Notebook]())
+### ReadViewer ([Jupyter Notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/notebooks/usage/3.%20ReadViewer.ipynb))
 
 This submodule offers a class for visualizing reads with tandem repeats found by datander and units by datruf.
