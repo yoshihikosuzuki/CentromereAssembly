@@ -1,6 +1,8 @@
 consed*/
 data/
 develop/
+work*
+work*/
 
 
 .DS_Store

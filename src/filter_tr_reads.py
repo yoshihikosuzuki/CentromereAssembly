@@ -67,22 +67,29 @@ class TRReadFilter:
                                                     for start, end in peak_intvl]))
 
         if plot:
-            peak_rects = [make_rect(start, 0, end, 1, yref="paper", layer="above")
+            peak_rects = [make_rect(start, 0, end, 1, fill_col="gray", opacity=0.3, yref="paper", layer="above")
                           for peak_intvl in peak_intvls.components for start, end in peak_intvl]
             # Before smoothing
-            show_plot([make_hist(ulens, start=self.min_ulen, end=self.max_ulen, bin_size=1)],
-                      make_layout(x_title="Unit length [Filtered]", y_title="Frequency", shapes=peak_rects))
+            show_plot([self._make_hist_all_units(name="All", show_legend=True),
+                       make_hist(ulens, start=self.min_ulen, end=self.max_ulen,
+                                 bin_size=1, name="Filtered by cover rate")],
+                      make_layout(x_range=(self.min_ulen, self.max_ulen),
+                                  x_title="Unit length", y_title="Frequency", shapes=peak_rects))
             # After smoothing
             show_plot([make_scatter(np.arange(self.min_ulen, self.max_ulen + 1), ulen_dens,
                                     mode="lines", show_legend=False)],
-                      make_layout(x_title="Unit length [Filtered]", y_title="Density by KDE"))
+                      make_layout(x_title="Unit length", y_title="Density by KDE [Filtered]"))
 
         return peak_intvls
 
+    def _make_hist_all_units(self, name=None, show_legend=False):
+        all_ulens = [tr_unit.length for tr_read in self.tr_reads for tr_unit in tr_read.units]
+        return make_hist(all_ulens, start=self.min_ulen, end=self.max_ulen,
+                         bin_size=1, name=name, show_legend=show_legend)
+
     def hist_all_units(self):
         """Show unit length histogram with all units."""
-        all_ulens = [tr_unit.length for tr_read in self.tr_reads for tr_unit in tr_read.units]
-        show_plot([make_hist(all_ulens, start=self.min_ulen, end=self.max_ulen, bin_size=1)],
+        show_plot([self._make_hist_all_units()],
                   make_layout(x_title="Unit length [All]", y_title="Frequency"))
 
     def hist_filtered_units(self):
