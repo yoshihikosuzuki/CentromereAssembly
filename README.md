@@ -2,17 +2,13 @@
 
 A bundle of modules for centromere assembly only with PacBio long reads.
 
-
-
 ## Requirements
 
 * Python3
 * [`DAZZ_DB`](https://github.com/thegenemyers/DAZZ_DB) and [`DALIGNER`](https://github.com/thegenemyers/DALIGNER)
 * [`DAMASKER`](https://github.com/yoshihikosuzuki/DAMASKER) (submodule of this Git repository)
 * Python package [`cython`](https://cython.readthedocs.io/en/latest/src/quickstart/install.html)
-  * Other Python packages required will be automatically installed
-
-
+   * Other Python packages required will be automatically installed
 
 ## Installation
 
@@ -22,7 +18,7 @@ After you satisfy all the requirements above, the typical installation by `setup
 $ python setup.py install
 ```
 
-
+VCA offers two ways of executions: 1) via command-line or 2) as python modules (I recommend using Jupyter Notebook).
 
 ## Command-line execution
 
@@ -43,13 +39,9 @@ optional arguments:
                         Config file name. [config]
 ```
 
-
-
 ### DAZZ_DB file
 
 As input data, a `.db` file of your sequence data is required. See [DAZZ_DB](https://github.com/thegenemyers/DAZZ_DB) for details.
-
-
 
 ### Config file
 
@@ -75,34 +67,22 @@ enabled = false   # Use a job scheduler if true
 
 And then edit `config` according to your data and environment.
 
-
-
 ### What is `task_name`?
 
-The `all` mode (default) will execute all tasks, and the other task names are mainly for development and debug.
-
-
-
-
+The `all` mode (default) will execute all the tasks of VCA, and the other task names are mainly for development and debug.
 
 ## Jupyter Notebook execution
 
-Instead of command-line execution, you can also run VCA in Jupyter Notebook. Every module of VCA can be used separatedly in a more exploratory and customizable manner through some visualizations. Here are links to Jupyter Notebooks about usage and results with *Drosophila* data for each module offered in VCA:
+Instead of command-line execution, you can import functions/classes of VCA submodules and run them inside REPL or Jupyter Notebook. Every module of VCA can be used separatedly in a more exploratory and customizable manner through some visualizations. Details of each VCA submodule along with Jupyter Notebook examples are described below.
 
-- [1. datander and datruf](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/1.%20datander%20and%20datruf.ipynb)
-- [2. TRReadFilter](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/2.%20TRReadFilter.ipynb)
-- [3. ReadViewer](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/ipynbs/3.%20ReadViewer.ipynb)
-
-
-
-
-### datander
+### datander ([Jupyter Notebook]())
 
 Datander has been developed by Dr. Gene Myers as a program in his module named [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER).
 
-
-
-### datruf
+### datruf ([Jupyter Notebook]())
 
 Datruf detects tandem repeat units with the output of datander. Minimum required unit length to be accurately inferred by datruf is approximately >50 bp due to the resolution of long-read alignment on which datander relies. The size of centromeric tandem repeat units is, however, known to be generally longer than it (e.g. ~120 bp and ~360 bp in *Drosophila*).
 
+### ReadViewer ([Jupyter Notebook]())
+
+This submodule offers a class for visualizing reads with tandem repeats found by datander and units by datruf.
