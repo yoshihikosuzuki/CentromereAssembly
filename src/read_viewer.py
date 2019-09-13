@@ -1,8 +1,10 @@
 from dataclasses import dataclass
+import numpy as np
 import matplotlib.cm as cm
 from matplotlib.colors import rgb2hex
+from BITS.clustering.seq import ClusteringSeq
 from BITS.seq.plot import DotPlot
-from BITS.plot.plotly import make_line, make_scatter, make_layout, show_plot
+from BITS.plot.plotly import make_line, make_rect, make_scatter, make_layout, show_plot
 from BITS.util.proc import run_command
 from .datruf.io import load_tr_reads
 from .datruf.find_units import find_inner_alignments
@@ -89,12 +91,33 @@ class ReadViewer:
 
         # Add shapes and traces of TR units if exist
         if read.units is not None:
+            # Global sequence dissimilarity
+            c = ClusteringSeq([read.seq[unit.start:unit.end] for unit in read.units],
+                              revcomp=False, cyclic=True)
+            c.calc_dist_mat()
+            shapes += [make_rect(read.units[i].start, read.units[j].start,
+                                 read.units[i].end, read.units[j].end,
+                                 fill_col=rgb2hex(cm.YlGnBu(c.s_dist_mat[i][j] * (1 / np.max(c.s_dist_mat)))),
+                                 opacity=1.)
+                       for i in range(len(read.units)) for j in range(i + 1, len(read.units))]
+
+            traces += [make_scatter([((read.units[i].start + read.units[i].end) / 2)
+                                     for i in range(len(read.units)) for j in range(i + 1, len(read.units))],
+                                    [((read.units[j].start + read.units[j].end) / 2)
+                                     for i in range(len(read.units)) for j in range(i + 1, len(read.units))],
+                                    text=[f"unit {i} vs {j} ({round(c.s_dist_mat[i][j] * 100, 2)}% diff)"
+                                          for i in range(len(read.units)) for j in range(i + 1, len(read.units))],
+                                    col=[rgb2hex(cm.YlGnBu(c.s_dist_mat[i][j] * (1 / np.max(c.s_dist_mat))))
+                                         for i in range(len(read.units)) for j in range(i + 1, len(read.units))],
+                                    marker_size=3, show_scale=True, show_legend=False)]
+            
+            # Units on diagonal
             shapes += [make_line(unit.start, unit.start, unit.end, unit.end,
                                  rgb2hex(cm.jet(unit.diff * 3)) if (hasattr(unit, "diff")
                                                                     and unit.diff is not None)
                                  else "black",
                                  5)
-                       for unit in read.units]   # on diagonal
+                       for unit in read.units]
             trace_unit = make_scatter([unit.start for unit in read.units],
                                       [unit.start for unit in read.units],
                                       text=[f"{i} " for i in range(len(read.units))],
