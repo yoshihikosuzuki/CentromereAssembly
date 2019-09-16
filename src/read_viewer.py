@@ -93,7 +93,7 @@ class ReadViewer:
         if read.units is not None:
             # Global sequence dissimilarity
             c = ClusteringSeq([read.seq[unit.start:unit.end] for unit in read.units],
-                              revcomp=False, cyclic=True)
+                              revcomp=False, cyclic=False if read.synchronized else True)
             c.calc_dist_mat()
             shapes += [make_rect(read.units[i].start, read.units[j].start,
                                  read.units[i].end, read.units[j].end,
@@ -121,15 +121,13 @@ class ReadViewer:
             trace_unit = make_scatter([unit.start for unit in read.units],
                                       [unit.start for unit in read.units],
                                       text=[f"{i} " for i in range(len(read.units))],
-                                      # TODO: after encoding, f"{df['peak_id']}:{df['master_id']}:{df['repr_id']}{'+' if df['strand'] == 0 else '-'} "
                                       text_pos="bottom left", text_size=10, text_col="black", mode="text",
                                       name="TR unit")
             trace_info = make_scatter([unit.start for unit in read.units],
                                       [unit.start for unit in read.units],
                                       text=[f"unit {i}<br>[{unit.start}:{unit.end}] ({unit.length} bp)"
                                             for i, unit in enumerate(read.units)],
-                                      # TODO: after encoding, f"{df.name} ({df['peak_id']}:{df['master_id']}:{df['repr_id']}{'+' if df['strand'] == 0 else '-'})<br>[{df['start']}, {df['end']}] ({df['length']} bp)<br>diff = {df['diff']}"
-                                      col="black",
+                                      col=[unit.id for unit in read.units] if read.synchronized else "black",
                                       show_legend=False)
             traces += [trace_unit, trace_info]
 

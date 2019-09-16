@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Dict
 
 
@@ -35,8 +35,7 @@ class ReadInterval:
 class TRUnit(ReadInterval):
     """Class for a tandem repeat unit. Equal to ReadInterval with some properties.
     Normally used as instance variable of TRRead."""
-    complete : bool = True
-    id       : int  = None   # for clustering of units   # TODO: change name based on the clustering method
+    id       : int  = None   # for clustering of units
 
 
 @dataclass(eq=False)
@@ -55,7 +54,8 @@ class Read:
 @dataclass(eq=False)
 class TRRead(Read):
     """Class for a read with TRs. Multiple TRs in a read are not distinguished here."""
-    alignments : List[SelfAlignment] = None
-    trs        : List[ReadInterval]  = None
-    units      : List[TRUnit]        = None
-    repr_units : Dict[int, str]      = None   # {cluster_id: str}
+    alignments   : List[SelfAlignment] = None
+    trs          : List[ReadInterval]  = None
+    units        : List[TRUnit]        = None
+    synchronized : bool                = False   # whether or not <units> are
+    repr_units   : Dict[int, str]      = None    # {cluster_id: str}
