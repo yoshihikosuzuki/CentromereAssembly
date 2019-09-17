@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import numpy as np
 import matplotlib.cm as cm
 from matplotlib.colors import rgb2hex
+import colorlover as cl
 from BITS.clustering.seq import ClusteringSeq
 from BITS.seq.plot import DotPlot
 from BITS.plot.plotly import make_line, make_rect, make_scatter, make_layout, show_plot
@@ -112,10 +113,17 @@ class ReadViewer:
                                     marker_size=3, show_scale=True, show_legend=False)]
             
             # Units on diagonal
+            if read.synchronized:
+                unique_ids = set([unit.id for unit in read.units])
+                if len(unique_ids) <= 2:
+                    cols = ["black", "grey"][:len(unique_ids)]
+                else:
+                    cols = cl.scales[f'{len(unique_ids)}']['qual']['Paired']
+                id_to_col = {}   # map actual IDs to range(#IDs)
+                for i, unit_id in enumerate(sorted(unique_ids)):
+                    id_to_col[unit_id] = cols[i]
             shapes += [make_line(unit.start, unit.start, unit.end, unit.end,
-                                 rgb2hex(cm.jet(unit.diff * 3)) if (hasattr(unit, "diff")
-                                                                    and unit.diff is not None)
-                                 else "black",
+                                 id_to_col[unit.id] if read.synchronized else "black",
                                  5)
                        for unit in read.units]
             trace_unit = make_scatter([unit.start for unit in read.units],
@@ -127,7 +135,8 @@ class ReadViewer:
                                       [unit.start for unit in read.units],
                                       text=[f"unit {i}<br>[{unit.start}:{unit.end}] ({unit.length} bp)"
                                             for i, unit in enumerate(read.units)],
-                                      col=[unit.id for unit in read.units] if read.synchronized else "black",
+                                      col=([id_to_col[unit.id] for unit in read.units] if read.synchronized
+                                           else "black"),
                                       show_legend=False)
             traces += [trace_unit, trace_info]
 
