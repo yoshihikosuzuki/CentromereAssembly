@@ -14,6 +14,7 @@ from BITS.util.proc import NoDaemonPool
 class SyncPhase:
     """Class for synchronizing phase of the units for each read."""
     centromere_reads_fname: str = "centromere_reads.pkl"
+    out_fname: str = "centromere_reads_sync.pkl"
     n_core: int = 10
 
     def __post_init__(self):
@@ -23,10 +24,10 @@ class SyncPhase:
         with NoDaemonPool(self.n_core) as pool:
             sync_reads = pool.map(sync_units, self.centromere_reads)
 
-        save_pickle(sync_reads, "centromere_reads_sync.pkl")
+        save_pickle(sync_reads, self.out_fname)
 
 
-def sync_units(read, ward_threshold=0.15, map_threshold=0.1):
+def sync_units(read, ward_threshold=0.15, map_threshold=0.1):   # TODO: current code is for single read. separate components and make that for all reads
     """Given TRRead object, synchronize the units inside it.
     <ward_threshold> is for generating representative units. 0.75 for CLR and 0.15 for CCS are recommended.
     <map_threshold> is for mapping of the representative units. 0.3 for CLR and 0.1 for CCS are recommended.

@@ -22,12 +22,13 @@ class TRReadFilter:
     of unit length using hist_all_units() and hist_filtered_units() methods inside Jupyter Notebook.
     """
     tr_reads_fname : str                # output of datruf
-    min_ulen       : int      = 50      # units of length in [<min_ulen>..<max_ulen>] will be used
-    max_ulen       : int      = 500
-    min_cover_rate : float    = 0.8     # of read by all TRs
-    band_width     : int      = 5       # for KDE
-    min_density    : float    = 0.005   # of peaks in KDE
-    deviation      : float    = 0.1     # <peak_ulen> * (1 +- <deviation>) will be each peak interval
+    out_fname      : str   = "centromere_reads.pkl"
+    min_ulen       : int   = 50      # units of length in [<min_ulen>..<max_ulen>] will be used
+    max_ulen       : int   = 500
+    min_cover_rate : float = 0.8     # of read by all TRs
+    band_width     : int   = 5       # for KDE
+    min_density    : float = 0.005   # of peaks in KDE
+    deviation      : float = 0.1     # <peak_ulen> * (1 +- <deviation>) will be each peak interval
 
     def __post_init__(self):
         self.tr_reads = load_pickle(self.tr_reads_fname)
@@ -39,7 +40,7 @@ class TRReadFilter:
         # Again filter the TR reads using the peak intervals
         centromere_reads = filter_reads(self.tr_reads, peak_intvls, self.min_cover_rate)
         logger.info(f"{len(self.tr_reads)} TR reads -> {len(centromere_reads)} centromere reads")
-        save_pickle(centromere_reads, "centromere_reads.pkl")
+        save_pickle(centromere_reads, self.out_fname)
 
     def find_peaks(self, plot=False):
         """Filter TR reads and units by peak unit lengths,

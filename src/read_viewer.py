@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 import numpy as np
 import matplotlib.cm as cm
-from matplotlib.colors import rgb2hex
-import colorlover as cl
+from matplotlib.colors import rgb2hex, XKCD_COLORS
 from BITS.clustering.seq import ClusteringSeq
 from BITS.seq.plot import DotPlot
 from BITS.plot.plotly import make_line, make_rect, make_scatter, make_layout, show_plot
@@ -103,25 +102,25 @@ class ReadViewer:
                        for i in range(len(read.units)) for j in range(i + 1, len(read.units))]
 
             traces += [make_scatter([((read.units[i].start + read.units[i].end) / 2)
-                                     for i in range(len(read.units)) for j in range(i + 1, len(read.units))],
+                                     for i in range(len(read.units))
+                                     for j in range(i + 1, len(read.units))],
                                     [((read.units[j].start + read.units[j].end) / 2)
-                                     for i in range(len(read.units)) for j in range(i + 1, len(read.units))],
-                                    text=[f"unit {i} vs {j} ({round(c.s_dist_mat[i][j] * 100, 2)}% diff)"
-                                          for i in range(len(read.units)) for j in range(i + 1, len(read.units))],
+                                     for i in range(len(read.units))
+                                     for j in range(i + 1, len(read.units))],
+                                    text=[f"unit {i}(id={read.units[i].id if read.synchronized else ''}) "
+                                          f"vs {j}(id={read.units[j].id if read.synchronized else ''}) "
+                                          f"({round(c.s_dist_mat[i][j] * 100, 2)}% diff)"
+                                          for i in range(len(read.units))
+                                          for j in range(i + 1, len(read.units))],
                                     col=[rgb2hex(cm.YlGnBu(c.s_dist_mat[i][j] * (1 / np.max(c.s_dist_mat))))
-                                         for i in range(len(read.units)) for j in range(i + 1, len(read.units))],
+                                         for i in range(len(read.units))
+                                         for j in range(i + 1, len(read.units))],
                                     marker_size=3, show_scale=True, show_legend=False)]
             
             # Units on diagonal
-            if read.synchronized:
-                unique_ids = set([unit.id for unit in read.units])
-                if len(unique_ids) <= 2:
-                    cols = ["black", "grey"][:len(unique_ids)]
-                else:
-                    cols = cl.scales[f'{len(unique_ids)}']['qual']['Paired']
-                id_to_col = {}   # map actual IDs to range(#IDs)
-                for i, unit_id in enumerate(sorted(unique_ids)):
-                    id_to_col[unit_id] = cols[i]
+            id_to_col = {}
+            for i, col in enumerate(XKCD_COLORS.values()):   # NOTE: up to ~1000 cols
+                id_to_col[i] = col
             shapes += [make_line(unit.start, unit.start, unit.end, unit.end,
                                  id_to_col[unit.id] if read.synchronized else "black",
                                  5)
@@ -133,10 +132,11 @@ class ReadViewer:
                                       name="TR unit")
             trace_info = make_scatter([unit.start for unit in read.units],
                                       [unit.start for unit in read.units],
-                                      text=[f"unit {i}<br>[{unit.start}:{unit.end}] ({unit.length} bp)"
+                                      text=[f"unit {i} (id={unit.id if read.synchronized else ''})<br>"
+                                            f"[{unit.start}:{unit.end}] ({unit.length} bp)"
                                             for i, unit in enumerate(read.units)],
-                                      col=([id_to_col[unit.id] for unit in read.units] if read.synchronized
-                                           else "black"),
+                                      col=([id_to_col[unit.id] for unit in read.units]
+                                           if read.synchronized else "black"),
                                       show_legend=False)
             traces += [trace_unit, trace_info]
 
