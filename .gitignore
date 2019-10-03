@@ -3,7 +3,7 @@ data/
 develop/
 work*
 work*/
-1.\ datander\ -\ TRReadFilter.ipynb
+*.ipynb
 
 
 .DS_Store

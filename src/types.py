@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import List
 
 
 @dataclass(frozen=True)
@@ -20,9 +20,9 @@ class SelfAlignment:
 
 
 @dataclass(eq=False)
-class ReadInterval:
-    """Class for an abstract interval of a read.
-    A tandem repeat (not unit) is represented using this."""
+class SeqInterval:
+    """Class for an abstract interval of a seqeunce including read.
+    A tandem repeat (not unit) is represented by this class."""
     start: int
     end: int
 
@@ -32,30 +32,32 @@ class ReadInterval:
 
 
 @dataclass(eq=False)
-class TRUnit(ReadInterval):
-    """Class for a tandem repeat unit. Equal to ReadInterval with some properties.
+class TRUnit(SeqInterval):
+    """Class for a tandem repeat unit. Equal to SeqInterval with some properties.
     Normally used as instance variable of TRRead."""
-    id       : int  = None   # for clustering of units
+    repr_id : int = None   # ID of representative unit to which this TRUnit belongs
 
 
 @dataclass(eq=False)
-class Read:
-    """Class for a read."""
+class Sequence:
+    """Class for a sequence including read."""
     seq    : str
-    id     : int = None   # for DAZZ_DB
+    id     : int = None   # for DAZZ_DB (read) or cluster ID (TR representative unit)
     name   : str = None   # for fasta
 
     @property
     def length(self):
-        assert self.seq is not None, "Sequence is not set"
         return len(self.seq)
 
 
 @dataclass(eq=False)
-class TRRead(Read):
+class TRRead(Sequence):
     """Class for a read with TRs. Multiple TRs in a read are not distinguished here."""
     alignments   : List[SelfAlignment] = None
-    trs          : List[ReadInterval]  = None
+    trs          : List[SeqInterval]  = None
     units        : List[TRUnit]        = None
+    repr_units   : List[Sequence]      = None   # only forward sequences should be registered;
+                                                # that is, for the master units of all the reads you
+                                                # should register both forward and reverse complement
+                                                # of the master unit sequence with IDs like 0 and 1
     synchronized : bool                = False   # whether or not <units> are
-    repr_units   : Dict[int, str]      = None    # {cluster_id: str}

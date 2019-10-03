@@ -27,24 +27,18 @@ class SyncPhase:
         save_pickle(sync_reads, self.out_fname)
 
 
-def sync_units(read, ward_threshold=0.15, map_threshold=0.1):   # TODO: current code is for single read. separate components and make that for all reads
-    """Given TRRead object, synchronize the units inside it.
-    <ward_threshold> is for generating representative units. 0.75 for CLR and 0.15 for CCS are recommended.
-    <map_threshold> is for mapping of the representative units. 0.3 for CLR and 0.1 for CCS are recommended.
-    """
-    assert len(read.units) > 0, "No units"
-
-    logger.info(f"read {read.id}")
-
-    # Calculate representative units using hierarchical clustering
+def calc_repr_units(read, ward_threshold):
+    """Calculate representative units using hierarchical clustering."""
     c = ClusteringSeq([read.seq[unit.start:unit.end] for unit in read.units],
-                      revcomp=False, cyclic=True)
+                      revcomp=False, cyclic=True if not read.synchronized else False)
     c.calc_dist_mat()
     c.cluster_hierarchical(threshold=ward_threshold)
     c.generate_consensus()
-    read.repr_units ={df["cluster_id"]: df["sequence"] for i, df in c.cons_seqs.iterrows()}
+    return {df["cluster_id"]: df["sequence"] for i, df in c.cons_seqs.iterrows()}
 
-    # Map the representative units to the read iteratively
+
+def calc_sync_units(read, map_threshold):
+    """Compute synchronized units by mapping the representative units to the read iteratively."""
     er = EdlibRunner("glocal", revcomp=False, cyclic=False)
     sync_units = []
     read_seq = copy(read.seq)
@@ -60,7 +54,7 @@ def sync_units(read, ward_threshold=0.15, map_threshold=0.1):   # TODO: current 
         logger.debug(mapping, repr_id)
         logger.debug(flatten_cigar)
 
-        # Change all 'I' at the boundaries to 'X' so that variants can be captured
+        # Change all 'I' (= gap of a unit) at the boundaries to 'X' so that variants can be captured
         start, end = mapping.t_start, mapping.t_end
         assert flatten_cigar[0] != 'D' and flatten_cigar[-1] != 'D', "Boundary deletion happened"
         insert_len = 0   # start side
@@ -69,12 +63,14 @@ def sync_units(read, ward_threshold=0.15, map_threshold=0.1):   # TODO: current 
         while insert_len > 0 and start > 0:
             start -= 1
             insert_len -= 1
-            insert_len = 0   # end side
+        insert_len = 0   # end side
         while flatten_cigar[-1 - insert_len] == 'I':
             insert_len += 1
         while insert_len > 0 and end < read.length:
             end += 1
             insert_len -= 1
+
+        # TODO: remove boundary units by checking the partiality of the unit
 
         sync_units.append(TRUnit(start, end, id=repr_id))
 
@@ -120,6 +116,24 @@ def sync_units(read, ward_threshold=0.15, map_threshold=0.1):   # TODO: current 
             sync_units[i].end -= (overlap_len - x)
             sync_units[j].start += x
 
-    read.units = sync_units
+    return sync_units
+
+
+def sync_units(read, ward_threshold=0.15, map_threshold=0.1):
+    """Given TRRead object, synchronize the units inside it.
+    <ward_threshold> is for generating representative units. 0.75 for CLR and 0.15 for CCS are recommended.
+    <map_threshold> is for mapping of the representative units. 0.3 for CLR and 0.1 for CCS are recommended.
+    """
+    logger.info(f"read {read.id}")
+    if len(read.units) <= 1:
+        logger.info(f"Only <= 1 unit")
+        return read
+
+    # Compute representative units
+    read.repr_units = calc_repr_units(read, ward_threshold)
+
+    # Find all intervals similar to one of the representative units in the read
+    read.units = calc_sync_units(read, map_threshold)
     read.synchronized = True
+
     return read

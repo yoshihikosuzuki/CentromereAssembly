@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.cm as cm
 from matplotlib.colors import rgb2hex, XKCD_COLORS
 from BITS.clustering.seq import ClusteringSeq
+from BITS.seq.align import EdlibRunner
 from BITS.seq.plot import DotPlot
 from BITS.plot.plotly import make_line, make_rect, make_scatter, make_layout, show_plot
 from BITS.util.proc import run_command
@@ -130,10 +131,12 @@ class ReadViewer:
                                       text=[f"{i} " for i in range(len(read.units))],
                                       text_pos="bottom left", text_size=10, text_col="black", mode="text",
                                       name="TR unit")
+            er = EdlibRunner("global", revcomp=False, cyclic=False)
             trace_info = make_scatter([unit.start for unit in read.units],
                                       [unit.start for unit in read.units],
                                       text=[f"unit {i} (id={unit.id if read.synchronized else ''})<br>"
-                                            f"[{unit.start}:{unit.end}] ({unit.length} bp)"
+                                            f"[{unit.start}:{unit.end}] ({unit.length} bp; "
+                                            f"{er.align(read.repr_units[unit.id], read.seq[unit.start:unit.end]).diff}% diff)"
                                             for i, unit in enumerate(read.units)],
                                       col=([id_to_col[unit.id] for unit in read.units]
                                            if read.synchronized else "black"),
