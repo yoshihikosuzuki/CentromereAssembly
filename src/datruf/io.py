@@ -17,7 +17,10 @@ def load_db(start_dbid, end_dbid, db_fname):
             for dbid, line in enumerate(run_command(command).strip().split('\n'), start=start_dbid)}
 
 
-def load_tr_reads(start_dbid, end_dbid, db_fname, las_fname):
+def load_tr_reads(start_dbid, end_dbid, db_fname, las_fname, return_all=False):
+    """By default only reads containing TR intervals are returned, but if <return_all> is True,
+    return all the reads from <start_dbid>-<end_dbid>. It is used for ReadViewer.
+    """
     # Load all reads within the ID range
     all_reads = load_db(start_dbid, end_dbid, db_fname)
 
@@ -29,6 +32,8 @@ def load_tr_reads(start_dbid, end_dbid, db_fname, las_fname):
 
     dbdumps = defaultdict(list)
     for line in run_command(dbdump_command).strip().split('\n'):
+        if line == "":
+            continue
         read_id, start, end = map(int, line.split('\t'))
         dbdumps[read_id].append(ReadInterval(start, end))
 
@@ -39,11 +44,13 @@ def load_tr_reads(start_dbid, end_dbid, db_fname, las_fname):
     
     ladumps = defaultdict(list)
     for line in run_command(ladump_command).strip().split('\n'):
+        if line == "":
+            continue
         read_id, ab, ae, bb, be = map(int, line.split('\t'))
         ladumps[read_id].append(SelfAlignment(ab, ae, bb, be))
 
     # Merge the data into List[TRRead]
-    read_ids = sorted(dbdumps.keys())
+    read_ids = sorted(dbdumps.keys()) if not return_all else list(range(start_dbid, end_dbid + 1))
     reads = [TRRead(seq=all_reads[read_id][1],
                     id=read_id,
                     name=all_reads[read_id][0],

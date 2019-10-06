@@ -1,30 +1,47 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Dict
+import numpy as np
+from BITS.seq.utils import revcomp
+
+
+@dataclass(eq=False)
+class Read:
+    """Class for a read."""
+    seq : str
+    id  : int = None   # for DAZZ_DB (read) or cluster ID (TR representative unit)
+    name: str = None   # for fasta
+
+    @property
+    def length(self):
+        return len(self.seq)
 
 
 @dataclass(frozen=True)
 class SelfAlignment:
-    """Class for a self alignment. Used in datruf."""
+    """Class for a self alignment calculated by datander. Used in datruf."""
     ab: int
     ae: int
     bb: int
     be: int
-        
+
     @property
     def distance(self):
+        """From diagonal. Same as the length of the first unit."""
         return self.ab - self.bb
-        
+
     @property
     def slope(self):
+        """One metric on how the self alignment is noisy. Units are unreliable if the value is large,
+        although the TR interval [bb, ae] is still somewhat reliable."""
         return round((self.ae - self.ab) / (self.be - self.bb), 3)
 
 
 @dataclass(eq=False)
-class SeqInterval:
-    """Class for an abstract interval of a seqeunce including read.
+class ReadInterval:
+    """Class for an interval within a read.
     A tandem repeat (not unit) is represented by this class."""
     start: int
-    end: int
+    end  : int
 
     @property
     def length(self):
@@ -32,32 +49,61 @@ class SeqInterval:
 
 
 @dataclass(eq=False)
-class TRUnit(SeqInterval):
-    """Class for a tandem repeat unit. Equal to SeqInterval with some properties.
-    Normally used as instance variable of TRRead."""
-    repr_id : int = None   # ID of representative unit to which this TRUnit belongs
+class TRUnit(ReadInterval):
+    """Class for a tandem repeat unit. This class does not store the sequence and is used as an instance
+    variable of TRRead.
+
+    instance variables:
+      @ repr_id <repr_id> [None] : ID of representative unit which this unit belongs to
+      @ strand  <int>     [None] : 0 (forward) or 1 (revcomp)
+
+    <strand>(<TRRead.seq>[start:end]) aligns to <TRRead.repr_units>[<repr_id>].
+    Representative units and TR intervals are always defined in the forward direction.
+    """
+    repr_id: int = None
+    strand : int = None
 
 
 @dataclass(eq=False)
-class Sequence:
-    """Class for a sequence including read."""
-    seq    : str
-    id     : int = None   # for DAZZ_DB (read) or cluster ID (TR representative unit)
-    name   : str = None   # for fasta
+class TRRead(Read):
+    """Class for a read with TRs. Multiple TRs in a read are not distinguished here.
+
+    instance variables:
+      @ alignments   <List[SelfAlignment]> [None]  : outout of datander
+      @ trs          <List[ReadInterval]>  [None]  : output of datander
+      @ units        <List[TRUnit]>        [None]  : initially computed by datruf
+      @ repr_units   <Dict[int, str]>      [None]  : {repr_id: sequence}; only forward sequence is OK
+      @ synchronized <bool>                [False] : whether or not <units> are
+      @ quals        <np.ndarray>          [None]  : Positional QVs
+    """
+    alignments  : List[SelfAlignment] = None
+    trs         : List[ReadInterval]  = None
+    units       : List[TRUnit]        = None
+    repr_units  : Dict[int, str]      = None
+    synchronized: bool                = False
+    quals       : np.ndarray          = None
+
+    def _check_unit_strands(self):
+        """Check if all the unit strands are defined."""
+        for unit in self.units:
+            assert unit.strand is not None, "Unit strand is not defined."
 
     @property
-    def length(self):
-        return len(self.seq)
+    def unit_seqs(self, forward=False):
+        """Return TR unit sequences. If <forward> is True, the orientations of the units are modified 
+        so that these are same as those of <repr_units>."""
+        if forward:
+            self._check_unit_strands()
 
+        return [self.seq[unit.start:unit.end] if not forward or unit.strand == 0
+                else revcomp(self.seq[unit.start:unit.end])
+                for unit in self.units]
 
-@dataclass(eq=False)
-class TRRead(Sequence):
-    """Class for a read with TRs. Multiple TRs in a read are not distinguished here."""
-    alignments   : List[SelfAlignment] = None
-    trs          : List[SeqInterval]  = None
-    units        : List[TRUnit]        = None
-    repr_units   : List[Sequence]      = None   # only forward sequences should be registered;
-                                                # that is, for the master units of all the reads you
-                                                # should register both forward and reverse complement
-                                                # of the master unit sequence with IDs like 0 and 1
-    synchronized : bool                = False   # whether or not <units> are
+    @property
+    def unit_quals(self, forward=False):
+        if forward:
+            self._check_unit_strands()
+
+        return [self.quals[unit.start:unit.end] if not forward or unit.strand == 0
+                else np.flip(self.quals[unit.start:unit.end])
+                for unit in self.units]

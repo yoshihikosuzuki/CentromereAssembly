@@ -41,7 +41,7 @@ class ReadViewer:
         # If <read_id> is specified, create a TRRead object using that.
         if read_id is not None:
             assert isinstance(read_id, int), "<read_id> must be int"
-            read = load_tr_reads(read_id, read_id, self.db_fname, self.las_fname)[0]
+            read = load_tr_reads(read_id, read_id, self.db_fname, self.las_fname, return_all=True)[0]
         else:
             assert isinstance(read, TRRead), "<read> must be TRRead"
 
