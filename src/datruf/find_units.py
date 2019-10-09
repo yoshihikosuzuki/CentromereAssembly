@@ -59,6 +59,7 @@ def find_units_single(read, db_fname, las_fname, max_cv=0.1):
         # between the read and the self alignment
         units = split_tr(alignment.ab, alignment.bb, fcigar)
         if len(units) == 1:   # at least duplication is required
+            logger.debug(f"Read {read.id}: at least two units are required. Skip.")
             continue
 
         # Exclude TRs with abnormal CV (probably due to short unit length)
@@ -66,6 +67,7 @@ def find_units_single(read, db_fname, las_fname, max_cv=0.1):
         ulens = [unit.length for unit in units]
         cv_ulen = round(np.std(ulens, ddof=1) / np.mean(ulens), 3)
         if cv_ulen >= max_cv:
+            logger.debug(f"Read {read.id}: unit lengths are too diverged. Skip.")
             continue
         all_units += units
 
@@ -87,7 +89,7 @@ def find_inner_alignments(read, min_len=1000):
             and 0.95 <= alignment.slope <= 1.05   # eliminate abnornal slope
             and alignment.ab <= alignment.be):   # at least duplication
             inner_alignments.add(alignment)   # TODO: add only intersection is better?
-    logger.debug(f"inners: {inner_alignments}")
+    logger.debug(f"Read {read.id}: inners = {inner_alignments}")
     return inner_alignments
 
 

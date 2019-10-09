@@ -68,25 +68,31 @@ def load_paths(read, inner_alignments, db_fname, las_fname):
 
     def find_boundary(aseq, bseq):
         # NOTE: "[" and "]" are alignment boundary, "..." is read boundary
-        start = aseq.find("[") + 1
-        if start == 0:
-            while aseq[start] != "." and bseq[start] != ".":
-                start += 1
-            while aseq[start] == "." or bseq[start] == ".":
-                start += 1
-        end = aseq.rfind("]")
-        if end == -1:
-            end = len(aseq)
-            while aseq[end - 1] != "." and bseq[end - 1] != ".":
-                end -= 1
-            while aseq[end - 1] == "." or bseq[end - 1] == ".":
-                end -= 1
-        return start, end
+        assert len(aseq) == len(bseq), "Different sequence lengths"
+        assert aseq.count('[') <= 1, "Multiple ["
+        assert aseq.count(']') <= 1, "Multiple ]"
     
+        start = aseq.find('[') + 1
+        if start == 0:
+            # TODO: start must be 10?
+            assert aseq[0] == '.' or bseq[0] == '.', "Non-boundary read start"
+            while aseq[start] == '.' or bseq[start] == '.':
+                start += 1
+        end = aseq.find(']')
+        if end == -1:
+            # TODO: end must be len(aseq) - 10?
+            assert aseq[-1] == '.' or bseq[-1] == '.', "Non-boundary read end"
+            while aseq[end] == '.' or bseq[end] == '.':
+                end -= 1
+            end = len(aseq) + end + 1
+        return start, end
+
     def convert_symbol(aseq, bseq, symbol):
-        return ''.join(['=' if c == "|"
-                        else 'I' if aseq[i] == "-"
-                        else 'D' if bseq[i] == "-"
+        for x in (aseq, bseq, symbol):
+            assert ']' not in x and '[' not in x and '.' not in x, "Invalid character remains"
+        return ''.join(['=' if c == '|'
+                        else 'I' if aseq[i] == '-'
+                        else 'D' if bseq[i] == '-'
                         else 'X'
                         for i, c in enumerate(symbol)])
 

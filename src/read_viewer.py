@@ -4,6 +4,7 @@ import matplotlib.cm as cm
 from matplotlib.colors import rgb2hex, XKCD_COLORS
 from BITS.clustering.seq import ClusteringSeq
 from BITS.seq.align import EdlibRunner
+from BITS.seq.utils import revcomp
 from BITS.seq.plot import DotPlot
 from BITS.plot.plotly import make_line, make_rect, make_scatter, make_layout, show_plot
 from BITS.util.proc import run_command
@@ -108,8 +109,8 @@ class ReadViewer:
                                     [((read.units[j].start + read.units[j].end) / 2)
                                      for i in range(len(read.units))
                                      for j in range(i + 1, len(read.units))],
-                                    text=[f"unit {i}(id={read.units[i].id if read.synchronized else ''}) "
-                                          f"vs {j}(id={read.units[j].id if read.synchronized else ''}) "
+                                    text=[f"unit {i}(id={read.units[i].repr_id if read.synchronized else ''}) "
+                                          f"vs {j}(id={read.units[j].repr_id if read.synchronized else ''}) "
                                           f"({round(c.s_dist_mat[i][j] * 100, 2)}% diff)"
                                           for i in range(len(read.units))
                                           for j in range(i + 1, len(read.units))],
@@ -123,7 +124,7 @@ class ReadViewer:
             for i, col in enumerate(XKCD_COLORS.values()):   # NOTE: up to ~1000 cols
                 id_to_col[i] = col
             shapes += [make_line(unit.start, unit.start, unit.end, unit.end,
-                                 id_to_col[unit.id] if read.synchronized else "black",
+                                 id_to_col[unit.repr_id] if read.synchronized else "black",
                                  5)
                        for unit in read.units]
             trace_unit = make_scatter([unit.start for unit in read.units],
@@ -134,11 +135,11 @@ class ReadViewer:
             er = EdlibRunner("global", revcomp=False, cyclic=False)
             trace_info = make_scatter([unit.start for unit in read.units],
                                       [unit.start for unit in read.units],
-                                      text=[f"unit {i} (id={unit.id if read.synchronized else ''})<br>"
+                                      text=[f"unit {i} (id={unit.repr_id if read.synchronized else ''}; strand={unit.strand if read.synchronized else ''})<br>"
                                             f"[{unit.start}:{unit.end}] ({unit.length} bp; "
-                                            f"{er.align(read.repr_units[unit.id], read.seq[unit.start:unit.end]).diff}% diff)"
+                                            f"{(er.align(read.repr_units[unit.repr_id], read.seq[unit.start:unit.end] if unit.strand == 0 else revcomp(read.seq[unit.start:unit.end])).diff) if read.synchronized else '-'}% diff)"
                                             for i, unit in enumerate(read.units)],
-                                      col=([id_to_col[unit.id] for unit in read.units]
+                                      col=([id_to_col[unit.repr_id] for unit in read.units]
                                            if read.synchronized else "black"),
                                       show_legend=False)
             traces += [trace_unit, trace_info]
