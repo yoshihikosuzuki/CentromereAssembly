@@ -3,11 +3,11 @@ from collections import Counter
 from dataclasses import dataclass
 from logzero import logger
 import numpy as np
-from vca.types import TRUnit
 from BITS.clustering.seq import ClusteringSeq
 from BITS.seq.align import EdlibRunner
 from BITS.util.io import load_pickle, save_pickle
 from BITS.util.proc import NoDaemonPool
+from .types import TRUnit
 
 
 @dataclass(eq=False)

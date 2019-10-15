@@ -137,7 +137,7 @@ class ReadViewer:
                                       [unit.start for unit in read.units],
                                       text=[f"unit {i} (id={unit.repr_id if read.synchronized else ''}; strand={unit.strand if read.synchronized else ''})<br>"
                                             f"[{unit.start}:{unit.end}] ({unit.length} bp; "
-                                            f"{(er.align(read.repr_units[unit.repr_id], read.seq[unit.start:unit.end] if unit.strand == 0 else revcomp(read.seq[unit.start:unit.end])).diff) if read.synchronized else '-'}% diff)"
+                                            f"{round(100 * (er.align(read.repr_units[unit.repr_id], read.seq[unit.start:unit.end] if unit.strand == 0 else revcomp(read.seq[unit.start:unit.end])).diff), 2) if read.synchronized else '-'}% diff)"
                                             for i, unit in enumerate(read.units)],
                                       col=([id_to_col[unit.repr_id] for unit in read.units]
                                            if read.synchronized else "black"),
