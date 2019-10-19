@@ -1,9 +1,73 @@
+import argparse
+from dataclasses import dataclass
+import numpy as np
 from logzero import logger
 from BITS.seq.align import EdlibRunner
-from BITS.seq.utils import revcomp
+from BITS.seq.utils import revcomp, reverse_seq
 from BITS.util.io import save_pickle, load_pickle
-from BITS.util.proc import NoDaemonPool
+from BITS.util.proc import NoDaemonPool, run_command
+from BITS.util.scheduler import Scheduler
 from vca.types import TRUnit, TRRead
+
+out_dir        = "ava_unsync"
+out_prefix     = "ovlps"
+scatter_prefix = "run_ava_unsync"
+gather_fname   = f"{out_dir}/gather.sh"
+log_fname      = f"{out_dir}/log"
+
+
+@dataclass(eq=False)
+class UnsyncReadsOverlapper:
+    """Class for executing all-vs-all overlap between unsynchronized TR reads.
+
+    positional arguments:
+      @ n_distribute <int>       : Number of jobs
+      @ n_core       <int>       : Number of cores per job
+
+    optional arguments:
+      @ scheduler              <Scheduler> [Scheduler("sge", "qsub", "all.q")]
+                                 : Job scheduler
+      @ centromere_reads_fname <str>       ["centromere_reads.pkl"]
+                                 : File of centromere reads
+      @ out_fname              <str>       ["centromere_reads_unsync_overlaps.pkl"]
+                                 : Output file name
+    """
+    n_distribute          : int
+    n_core                : int
+    scheduler             : Scheduler = Scheduler("sge", "qsub", "all.q")
+    centromere_reads_fname: str       = "centromere_reads.pkl"
+    out_fname             : str       = "centromere_reads_unsync_overlaps.pkl"
+
+    def __post_init__(self):
+        run_command(f"mkdir -p {out_dir}; rm -f {out_dir}/*")
+
+    def run(self):
+        jids = []
+        for i in range(self.n_distribute):
+            index = str(i + 1).zfill(int(np.log10(self.n_distribute) + 1))
+            out_fname = f"{out_dir}/{out_prefix}.{index}.pkl"
+            script_fname = f"{out_dir}/{scatter_prefix}.{index}.sh"
+            script = (f"python -m vca.ava_unsync_reads {self.centromere_reads_fname} "
+                      f"{out_fname} {self.n_distribute} {self.n_core} {i}")
+            
+            jids.append(self.scheduler.submit(script,
+                                              script_fname,
+                                              job_name="ava_unsync",
+                                              log_fname=log_fname,
+                                              n_core=self.n_core))
+
+        self.scheduler.submit("sleep 1s",
+                              gather_fname,
+                              job_name="ava_unsync_gather",
+                              log_fname=log_fname,
+                              depend=jids,
+                              wait=True)
+
+        merged = []
+        fnames = run_command(f"find {out_dir} -name '{out_prefix}.*' | sort").strip().split('\n')
+        for fname in fnames:
+            merged += load_pickle(fname)
+        save_pickle(sorted(merged), self.out_fname)
 
 
 def seq_to_spectrum(seq, k=13):
@@ -43,10 +107,6 @@ def reads_to_boundary_k_monomers(reads, k=2, offset=1):
 er_global = EdlibRunner("global", revcomp=False, cyclic=False)
 er_glocal = EdlibRunner("glocal", revcomp=False, cyclic=False)
 er_prefix = EdlibRunner("local", revcomp=False, cyclic=False)
-
-
-def reverse_seq(seq):
-    return ''.join(list(reversed(seq)))
 
 
 def _calc_dovetail_alignment(a_read, b_read, a_index, b_index, k, max_init_diff=0.02):
@@ -139,23 +199,28 @@ def sva_overlap(a_read, centromere_reads_by_id, read_specs, boundary_k_units, k=
 
 
 if __name__ == "__main__":
-    import sys
-    i, n_distribute, n_core, out_fname = sys.argv[1:]
-    i, n_distribute, n_core = list(map(int, [i, n_distribute, n_core]))
+    """Only for internal usage."""
+    p = argparse.ArgumentParser()
+    p.add_argument("centromere_reads_fname", type=str)
+    p.add_argument("out_fname", type=str)
+    p.add_argument("n_distribute", type=int)
+    p.add_argument("n_core", type=int)
+    p.add_argument("index", type=int)
+    args = p.parse_args()
 
-    centromere_reads = load_pickle("centromere_reads.pkl")
+    centromere_reads = load_pickle(args.centromere_reads_fname)
     centromere_reads_by_id = {read.id: read for read in centromere_reads}
+    # K-mer spectrum of the reads
     read_specs = {read.id: seq_to_spectrum(read.seq) for read in centromere_reads}
-
     # Boundary units from all the reads
     boundary_k_units = reads_to_boundary_k_monomers(centromere_reads)
 
     overlaps = set()
-    unit_n = -(-len(centromere_reads) // n_distribute)
-    with NoDaemonPool(n_core) as pool:
+    unit_n = -(-len(centromere_reads) // args.n_distribute)
+    with NoDaemonPool(args.n_core) as pool:
         for ret in pool.starmap(sva_overlap,
                                 [(read, centromere_reads_by_id, read_specs, boundary_k_units)
-                                 for read in centromere_reads[i * unit_n:(i + 1) * unit_n]]):
+                                 for read in centromere_reads[args.index * unit_n:(args.index + 1) * unit_n]]):
             overlaps.update(ret)
 
-    save_pickle(overlaps, out_fname)
+    save_pickle(overlaps, args.out_fname)

@@ -1,0 +1,826 @@
+import argparse
+from dataclasses import dataclass
+from collections import Counter, defaultdict
+from typing import List
+import random
+from copy import copy, deepcopy
+import numpy as np
+from logzero import logger
+import consed
+from BITS.clustering.seq import ClusteringSeq
+from BITS.seq.align import EdlibRunner
+from BITS.seq.utils import revcomp
+from BITS.util.io import save_pickle, load_pickle
+from BITS.util.proc import run_command, NoDaemonPool
+from vca.types import TRUnit, TRRead
+from BITS.util.scheduler import Scheduler
+
+out_dir        = "smc_encode"
+out_prefix     = "labeled_reads"
+scatter_prefix = "run_smc"
+gather_fname   = f"{out_dir}/gather.sh"
+log_fname      = f"{out_dir}/log"
+
+
+@dataclass(eq=False)
+class SplitMergeClusteringOverlapper:
+    """Class for overlap filtering by split-merge clustering.
+    
+    positional arguments:
+      @ n_distribute <int>       : Number of jobs
+      @ n_core       <int>       : Number of cores per job
+
+    optional arguments:
+      @ scheduler              <Scheduler> [Scheduler("sge", "qsub", "all.q")]
+                                 : Job scheduler
+      @ centromere_reads_fname <str>       ["centromere_reads.pkl"]
+                                 : File of centromere reads
+      @ out_fname              <str>       ["labeled_reads.pkl"]
+                                 : Output file name
+    """
+    n_distribute          : int
+    n_core                : int
+    scheduler             : Scheduler = Scheduler("sge", "qsub", "all.q")
+    centromere_reads_fname: str       = "centromere_reads.pkl"
+    out_fname             : str       = "labeled_reads.pkl"
+
+    def __post_init__(self):
+        run_command(f"mkdir -p {out_dir}; rm -f {out_dir}/*")
+
+    def run(self):
+        jids = []
+        for i in range(self.n_distribute):
+            index = str(i + 1).zfill(int(np.log10(self.n_distribute) + 1))
+            out_fname = f"{out_dir}/{out_prefix}.{index}.pkl"
+            script_fname = f"{out_dir}/{scatter_prefix}.{index}.sh"
+            script = (f"python -m vca.split_merge_clustering_units {self.centromere_reads_fname} "
+                      f"{out_fname} {self.n_distribute} {self.n_core} {i}")
+        
+            jids.append(self.scheduler.submit(script,
+                                              script_fname,
+                                              job_name="smc",
+                                              log_fname=log_fname,
+                                              n_core=self.n_core))
+
+        self.scheduler.submit("sleep 1s",
+                              gather_fname,
+                              job_name="smc_merge",
+                              log_fname=log_fname,
+                              depend=jids,
+                              wait=True)
+
+        labeled_reads = {}
+        fnames = run_command("find {out_dir} -name '{out_prefix}.*.pkl' | sort").strip().split('\n')
+        for fname in fnames:
+            labeled_reads.update(load_pickle(fname))
+        save_pickle(labeled_reads, self.out_fname)
+
+
+def revcomp_read(read):
+    """Return reverse complement of <read> as a new object. <trs> and <alignments> are not copied."""
+    return TRRead(seq=revcomp(read.seq), id=read.id, name=read.name,
+                  units=[TRUnit(start=read.length - unit.end,
+                                end=read.length - unit.start,
+                                repr_id=unit.repr_id,
+                                strand=(None if unit.strand is None else 1 - unit.strand))
+                         for unit in reversed(read.units)],
+                  synchronized=read.synchronized, repr_units=read.repr_units,
+                  quals=np.flip(read.quals))
+
+
+def calc_repr_units(units, ward_threshold):
+    """Calculate representative units using hierarchical clustering."""
+    c = ClusteringSeq(units, revcomp=False, cyclic=True)
+    c.calc_dist_mat()
+    c.cluster_hierarchical(threshold=ward_threshold)
+    c.generate_consensus()
+    return {df["cluster_id"]: df["sequence"] for i, df in c.cons_seqs.iterrows()}
+
+
+def calc_sync_units(read, map_threshold):
+    """Compute synchronized units by mapping the representative units to the read iteratively."""
+    er = EdlibRunner("glocal", revcomp=False, cyclic=False)
+    sync_units = []
+    read_seq = copy(read.seq)
+    while True:
+        mappings = [(er.align(repr_unit, read_seq), repr_id)
+                    for repr_id, repr_unit in sorted(read.repr_units.items())]
+        diffs = [mapping.diff for mapping, repr_id in mappings]
+        if np.min(diffs) >= map_threshold:
+            break
+        mapping, repr_id = mappings[np.argmin(diffs)]
+
+        flatten_cigar = mapping.cigar.flatten().string
+        #logger.debug(mapping, repr_id)
+        #logger.debug(flatten_cigar)
+
+        start, end = mapping.t_start, mapping.t_end
+        
+        # remove boundary units
+        if not (start < 10 or read.length - end < 10):
+            # Change all 'I' (= gap of a unit) at the boundaries to 'X' so that variants can be captured
+            assert flatten_cigar[0] != 'D' and flatten_cigar[-1] != 'D', "Boundary deletion happened"
+            insert_len = 0   # start side
+            while flatten_cigar[insert_len] == 'I':
+                insert_len += 1
+            while insert_len > 0 and start > 0:
+                start -= 1
+                insert_len -= 1
+            insert_len = 0   # end side
+            while flatten_cigar[-1 - insert_len] == 'I':
+                insert_len += 1
+            while insert_len > 0 and end < read.length:
+                end += 1
+                insert_len -= 1
+
+            sync_units.append(TRUnit(start, end, repr_id=repr_id, strand=0))
+
+        # Mask middle half sequence of the mapped region
+        left = int(start + (end - start) / 4)
+        right = int(end - (end - start) / 4)
+        read_seq = read_seq[:left] + ('N' * (right - left)) + read_seq[right:]
+
+    sync_units.sort(key=lambda x: x.start)
+
+    # Resolve the conflict on the overlapping mapped regions
+    er = EdlibRunner("global", revcomp=False, cyclic=False)
+    for i in range(len(sync_units) - 1):
+        j = i + 1
+        if sync_units[i].end > sync_units[j].start:
+            overlap_len = sync_units[i].end - sync_units[j].start
+            logger.debug(f"conflict {sync_units[i]} and {sync_units[j]} ({overlap_len} bp)")
+
+            # Cut out the overlapping sequeces from both units
+            unit_seq = read.seq[sync_units[i].start:sync_units[i].end]
+            alignment = er.align(unit_seq, read.repr_units[sync_units[i].repr_id])
+            up_seq = alignment.cigar.flatten().string[-overlap_len:]   # from unit of upper side
+
+            unit_seq = read.seq[sync_units[j].start:sync_units[j].end]
+            alignment = er.align(unit_seq, read.repr_units[sync_units[j].repr_id])
+            down_seq = alignment.cigar.flatten().string[:overlap_len]   # from unit of down side
+
+            logger.debug(up_seq)
+            logger.debug(down_seq)
+
+            # Calculate the position where the total number of matches is maximized
+            max_pos = 0
+            max_score = 0
+            for x in range(overlap_len + 1):
+                score = Counter(up_seq[:x])['='] + Counter(down_seq[x:])['=']
+                logger.debug(f"pos {x}, score {score}")
+                if (max_score < score) or (max_score == score and up_seq[x - 1] > down_seq[x - 1]):
+                    max_score = score
+                    max_pos = x
+            logger.debug(f"max pos {max_pos}, max score {max_score}")
+
+            # Redefine the boundaries as the best position
+            sync_units[i].end -= (overlap_len - x)
+            sync_units[j].start += x
+
+    # Filter units after resolving conflict; because mapping is now changed
+    sync_units = list(filter(lambda unit: er.align(read.seq[unit.start:unit.end],
+                                                   read.repr_units[unit.repr_id]).diff < map_threshold,
+                             sync_units))
+
+    return sync_units
+
+
+def synchronize_reads(overlaps, target_read_id, centromere_reads_by_id):
+    # List up reads overlapping to <target_read_id>
+    filtered_overlaps = set()
+    filtered_overlaps.add((target_read_id, 'n'))
+    for overlap in overlaps:
+        q, t, strand = overlap[:3]
+        assert q != t, "Intra-read overlap must be filtered"
+        if q == target_read_id:
+            filtered_overlaps.add((t, strand))
+        elif t == target_read_id:
+            filtered_overlaps.add((q, strand))
+    logger.info(f"Reads: {filtered_overlaps}")
+
+    # Compute representative units (just for phase synchronization) within the overlap
+    reads = [deepcopy(centromere_reads_by_id[read_id] if strand == 'n'
+                      else revcomp_read(centromere_reads_by_id[read_id]))
+             for read_id, strand in filtered_overlaps]
+    units = [unit for read in reads for unit in read.unit_seqs]
+    repr_units = calc_repr_units(units, ward_threshold=0.15)
+    
+    # Synchronize the units involved in the overlap
+    for read in reads:
+        read.repr_units = repr_units
+        read.units = calc_sync_units(read, map_threshold=0.1)
+        read.synchronized = True
+        
+    strands = [strand for read_id, strand in filtered_overlaps]
+
+    return (reads, strands)
+
+
+class PairwiseAlignment:
+    def __init__(self, a_seq, b_seq):
+        er = EdlibRunner("global", revcomp=False, cyclic=False)
+        self.fcigar = er.align(b_seq.lower(), a_seq.lower()).cigar.flatten().string   # NOTE: b vs a; be careful!
+        self.source, self.target = '', ''
+        s_pos, t_pos = 0, 0
+        for c in self.fcigar:
+            if c == '=' or c == 'X':
+                self.source += a_seq[s_pos]
+                self.target += b_seq[t_pos]
+                s_pos += 1
+                t_pos += 1
+            elif c == 'I':
+                self.source += '-'
+                self.target += b_seq[t_pos]
+                t_pos += 1
+            else:
+                self.source += a_seq[s_pos]
+                self.target += '-'
+                s_pos += 1
+        
+    def show(self, by_cigar=False):
+        if by_cigar:   # standard alignment like BLAST
+            print(self.source)
+            print(self.fcigar)
+            print(self.target)
+        else:
+            print(''.join([' ' if c == '=' else self.source[i] for i, c in enumerate(self.fcigar)]))
+            print(''.join([self.source[i] if c == '=' else ' ' for i, c in enumerate(self.fcigar)]))
+            print(''.join([' ' if c == '=' else self.target[i] for i, c in enumerate(self.fcigar)]))
+
+
+def count_variants(cluster_cons_unit, cluster_units):
+    """Given a set of unit sequences <units> in a cluster, calculate the composition of
+    nucleotides including '-' (= distribution of each )
+    for each position on <cluster_cons_unit> as a seed.
+    from which <units> are generated, compute the variations (= nucleotides inconsistent between
+    <units> and <cluster_cons_unit> and their relative frequency).
+    Since a cluster should be homogeneous (i.e., mono-source), the relative frequencies are
+    expected to be not much larger than sequencing error.
+    """
+    assert cluster_cons_unit != "", "Empty strings are not allowed"
+    # TODO: how to decide "same variant?" especially for multiple variations on same position (but slightly different among units)?
+    variants = Counter()
+    for unit in cluster_units:
+        assert unit != "", "Empty strings are not allowed"
+        alignment = PairwiseAlignment(cluster_cons_unit, unit)   # alignment.fcigar(cluster_cons_unit) = unit
+        tpos = 0
+        var_index = 0   # positive values for continuous insertions
+        for i, c in enumerate(alignment.fcigar):
+            if c == '=':
+                var_index = 0
+            elif c == 'I':
+                var_index += 1
+            if c != '=':
+                variants[(tpos, var_index, c, alignment.target[i])] += 1   # TODO: multiple D on the same pos are aggregated
+            if c != 'I':
+                tpos += 1
+        assert tpos == len(cluster_cons_unit)
+    return variants
+
+
+def list_variations(template_unit, cluster_cons_unit):
+    """Single-vs-single version of count_variants().
+    That is, list up the differences between the (imaginary) template unit and the consensus unit
+    of a cluster (which should be a real instance).
+    The return value is [(position_on_template_unit, variant_type, base_on_cluster_cons_unit)].
+    """
+    assert template_unit != "" and cluster_cons_unit != "", "Empty strings are not allowed"
+    return list(count_variants(template_unit, [cluster_cons_unit]).keys())
+
+
+def phred_to_log_p_correct(phred):
+    return np.log10(1 - np.power(10, -phred / 10))
+
+
+def phred_to_log_p_error(phred):
+    return -phred / 10
+
+
+def log_prob_gen(cons_unit, obs_unit, obs_qual=None, p_non_match=0.01):
+    """Log likelihood of generating <obs_unit> from <cons_unit>.
+    <obs_qual> is positional QVs of <obs_unit> and if not given,
+    <p_non_match> is used as average error rate for every position.
+    """
+    if cons_unit == "":   # input sequences for <cons_unit> were empty; or, Consed did not return
+        return -np.inf
+
+    # Compute alignment
+    er = EdlibRunner("global", revcomp=False)
+    fcigar = er.align(cons_unit, obs_unit).cigar.flatten().string
+    #logger.debug(fcigar)
+    
+    # Calculate the sum of log probabilities for each position in the alignment
+    if obs_qual is None:
+        n_match = Counter(fcigar)['=']
+        n_non_match = len(fcigar) - n_match
+        return n_match * np.log10(1 - p_non_match) + n_non_match * np.log10(p_non_match)
+    else:
+        p = 0.
+        pos = 0
+        for c in fcigar:
+            p += (phred_to_log_p_correct(obs_qual[pos]) if c == '='
+                  else phred_to_log_p_error(obs_qual[pos]))
+            if c in ('=', 'X', 'D'):
+                pos += 1
+        assert pos == len(obs_unit) == len(obs_qual), "Invalid length"
+        return p
+
+
+def log_prob_align(unit_x, unit_y, qual_x=None, qual_y=None, p_error=0.01):
+    """Log likelihood of alignment between <unit_x> from <unit_y>.
+    <qual_*> is positional QVs of <unit_*> and if not given,
+    <p_error> is used as average error rate for every position of each read.
+    """
+    # Compute alignment
+    er = EdlibRunner("global", revcomp=False)
+    fcigar = er.align(unit_x, unit_y).cigar.flatten().string
+    #logger.debug(fcigar)
+    
+    # Calculate the sum of log probabilities for each position in the alignment
+    if qual_x is None and qual_y is None:
+        p_match = (1 - p_error) * (1 - p_error)
+        n_match = Counter(fcigar)['=']
+        n_non_match = len(fcigar) - n_match
+        return n_match * np.log10(p_match) + n_non_match * np.log10(1 - p_match)
+    else:
+        p = 0.
+        pos_x = pos_y = 0
+        for c in fcigar:   # fcigar(unit_y) = unit_x
+            p_match = phred_to_log_p_correct(qual_x[pos_x]) + phred_to_log_p_correct(qual_y[pos_y])
+            p += (p_match if c == '='
+                  else np.log10(1 - np.power(10, p_match)))
+            if c in ('=', 'X', 'I'):
+                pos_x += 1
+            if c in ('=', 'X', 'D'):
+                pos_y += 1
+        assert pos_x == len(unit_x) == len(qual_x) and pos_y == len(unit_y) == len(qual_y), "Invalid length"
+        return p
+    
+
+def log_factorial(n):
+    return np.sum([np.log10(i) for i in range(1, n + 1)])
+
+
+def log_prob_composition(cons_unit, obs_units, p_error=0.001):   # TODO: use positional QVs
+    """Log likelihood of composition of <obs_units> given <cons_unit> as a seed; i.e., probability of alignment pileup.
+    <p_error> is used for average sequencing error rate (= non-match rate in a single alignment).
+    Concretely, compute Multinomial(n_A, ..., n_-; p_A, ..., p_-) for each position, where p_X = 1 - p_error
+    if X is the base of <cons_unit>, otherwise p_X = p_error.
+    """
+    var_counts = count_variants(cons_unit, obs_units)
+    var_pos = [pos for pos, index, op, base in var_counts.keys()]
+    
+    # compute for matches
+    n_matches = len(cons_unit) - len(set(var_pos))
+    p_match = n_matches * len(obs_units) * np.log10(1 - p_error)
+    
+    # compute for variants
+    var_freqs = defaultdict(Counter)   # {(pos, index): Counter('A': n_A, ..., '-': n_-)} for each variant column
+    for (pos, index, op, base), count in var_counts.items():   # list up frequencies of each variant for each position
+        var_freqs[(pos, index)][base] = count
+    log_factorial_N = log_factorial(len(obs_units))
+    p_var = 0.
+    for key, counts in var_freqs.items():   # for each variant position
+        p_var += log_factorial_N
+        for base, count in counts.items():
+            p_var -= log_factorial(count)
+            p_var += count * np.log10(p_error)
+        n_match = len(obs_units) - np.sum(list(counts.values()))   # number of units having base same as seed
+        p_var -= log_factorial(n_match)
+        p_var += n_match * np.log10(1 - p_error)
+
+    return p_match + p_var
+
+
+def normalize_assignments(assignments):
+    """Convert a clustering state <assignments> so that all essentially equal states can be
+    same array. Return value type is Tuple so that it can be hashed as a dict key.
+    """
+    convert_table = {}
+    new_id = 0
+    for cluster_id in assignments:
+        if cluster_id not in convert_table:
+            convert_table[cluster_id] = new_id
+            new_id += 1
+    return tuple([convert_table[cluster_id] for cluster_id in assignments])
+
+
+@dataclass(eq=False)
+class SplitMergeClustering:
+    units: List[str]
+    quals: np.ndarray
+    alpha: float
+    read_id: int
+    
+    def __post_init__(self):
+        self.N = len(self.units)   # number of data
+        self.assignments = np.zeros([self.N], dtype=np.int16)   # cluster assignments
+
+        # Compute all-vs-all unit alignment likelihood
+        #self.log_p_mat = np.zeros([self.N, self.N], dtype=np.float32)
+        #for i in range(self.N):
+        #    for j in range(i + 1, self.N):
+        #        self.log_p_mat[i][j] = self.log_p_mat[j][i] = log_prob_align(self.units[i], self.units[j],
+        #                                                                    self.quals[i], self.quals[j])
+        
+        # Cache for values computationally expensive
+        self.cache_log_prob_clustering = {}   # {normalized_assignments: probability}
+        self.cache_cluster_cons = {}   # {unit_ids: cluster_cons}
+        
+        # Pre-compute some constants
+        self.const_ewens = -np.sum([np.log10(self.alpha + i) for i in range(self.N)])
+        self.const_gibbs = -np.log10(self.N - 1 + self.alpha)
+        
+        # Compute consensus unit of the whole units so that comparing clusters can be easy
+        self.template_unit = self.cluster_cons(0)
+        
+    def show_clustering(self):
+        er = EdlibRunner("global", revcomp=False)
+        for cluster_id in np.unique(self.assignments):
+            print(f"Cluster {cluster_id} ({len(self.cluster_units(cluster_id))} units):\n"
+                  f"{self.cluster_unit_ids(cluster_id)}\n"
+                  f"{self.cluster_cons(cluster_id)}\n"
+                  f"{er.align(self.cluster_cons(cluster_id), self.template_unit).cigar.flatten().string}")
+            print("---")
+            for unit in self.cluster_units(cluster_id):
+                print(f"{er.align(unit, self.cluster_cons(cluster_id)).cigar.flatten().string}")
+                
+    def n_units(self, cluster_id, assignments=None, exclude_unit=None):
+        """Return the number of units in the cluster <cluster_id> given a clustering state <assignments>,
+        while excluding a unit <exclude_unit> if provided."""
+        return len(self.cluster_unit_ids(cluster_id, assignments, exclude_unit))
+            
+    def cluster_unit_ids(self, cluster_id, assignments=None, exclude_unit=None):
+        """Return indices of the units belonging to the cluster <cluster_id> given a clustering state <assignments>,
+        while excluding a unit <exclude_unit> if provided."""
+        if assignments is None:
+            assignments = self.assignments
+        unit_ids = np.where(assignments == cluster_id)[0]
+        if exclude_unit is not None:
+            unit_ids = unit_ids[np.where(unit_ids != exclude_unit)]
+        return unit_ids
+
+    def cluster_units(self, cluster_id, assignments=None, exclude_unit=None):
+        """Return unit sequences belonging to the cluster <cluster_id> given a clustering state <assignments>,
+        while excluding a unit <exclude_unit> if provided."""
+        return [self.units[i] for i in self.cluster_unit_ids(cluster_id, assignments, exclude_unit)]
+    
+    def n_clusters(self, assignments=None):
+        """Return the number of clusters."""
+        return len(self.cluster_ids(self.assignments if assignments is None else assignments))
+
+    def cluster_ids(self, assignments=None):
+        """Return a list of cluster indices."""
+        return np.unique(self.assignments if assignments is None else assignments)
+
+    def cluster_cons(self, cluster_id, assignments=None, exclude_unit=None):
+        """Return the consensus sequence of the units belonging to the cluster <cluster_id> given a clustering state <assignments>,
+        while excluding a unit <exclude_unit> if provided."""
+        # Check the cache
+        cluster_units = set(self.cluster_units(cluster_id, assignments))
+        excluded = False
+        if exclude_unit is None or exclude_unit not in cluster_units:
+            if tuple(sorted(cluster_units)) in self.cache_cluster_cons:
+                return self.cache_cluster_cons[tuple(sorted(cluster_units))]
+        else:
+            cluster_units.remove(exclude_unit)
+            excluded = True
+        cluster_units = sorted(cluster_units)
+
+        #cluster_units = self.cluster_units(cluster_id, assignments, exclude_unit)   # units belonging to the cluster
+        if len(cluster_units) == 0:   # cluster with single unit which is excluded
+            cons = ""
+        elif len(cluster_units) == 1:   # cluster with single unit
+            cons = cluster_units[0]   # TODO: NOTE: single data cluster can be harmful!
+        else:
+            cons = consed.consensus(cluster_units,
+                                    seed_choice="median",
+                                    error_msg=f"read {self.read_id}")
+
+        if not excluded:
+            self.cache_cluster_cons[tuple(cluster_units)] = cons
+        return cons
+        
+    def log_prob_ewens(self, assignments=None):
+        """Return the probability of partition."""
+        p = self.n_clusters() * np.log10(self.alpha)
+        for cluster_id in self.cluster_ids(assignments):
+            p += log_factorial(self.n_units(cluster_id, assignments) - 1)
+        return p + self.const_ewens
+    
+    def log_prob_cluster_composition(self, cluster_id, assignments=None, p_error=0.001):
+        """Return log probability of the composition of the cluster <cluster_id> given a clustering state <assignments>"""
+        return log_prob_composition(self.cluster_cons(cluster_id, assignments),
+                                    self.cluster_units(cluster_id, assignments))
+
+    def log_prob_units_generation(self, cluster_id, assignments=None):
+        """Return log probability of generating the units belonging to a cluster <cluster_id> from the cluster
+        given a clustering state <assignments>."""
+        cons = self.cluster_cons(cluster_id, assignments)
+        return np.sum([log_prob_gen(cons, unit) for unit in self.cluster_units(cluster_id, assignments)])
+        
+    def log_prob_clustering(self, assignments=None):
+        """Compute the joint probability of the current clustering state."""
+        # Check the cache
+        normalized_assignments = normalize_assignments(self.assignments if assignments is None else assignments)
+        if normalized_assignments in self.cache_log_prob_clustering:
+            #logger.debug(f"Found in cache")
+            return self.cache_log_prob_clustering[normalized_assignments]
+        
+        # First of all, check if consensus sequence exists for every cluster
+        for cluster_id in self.cluster_ids(assignments):
+            cons = self.cluster_cons(cluster_id, assignments)
+            if cons == "":   # Consed did not return
+                logger.warn(f"No consensus @ read {self.read_id}, cluster {cluster_id}")
+                return -np.inf
+
+        p_ewens = self.log_prob_ewens(assignments)
+        p_cluster_compositions = np.sum([self.log_prob_cluster_composition(cluster_id, assignments)
+                                         for cluster_id in self.cluster_ids(assignments)])
+        p_gen_units = np.sum([self.log_prob_units_generation(cluster_id, assignments)
+                              for cluster_id in self.cluster_ids(assignments)])
+
+        p = p_ewens + p_cluster_compositions + p_gen_units
+        self.cache_log_prob_clustering[normalized_assignments] = p
+        return p
+        
+    def gibbs_sampling_single(self, unit_id, cluster_ids, assignments):
+        """Compute probability of the unit assignment for each cluster while excluding the unit."""
+        # NOTE: here assignment to a new cluster is not considered because of its very low probability
+        #weights = tuple(map(lambda log_p: np.power(10, log_p),
+        #                    [(np.log10(self.n_units(cluster_id, assignments, exclude_unit=unit_id))
+        #                      - np.log10(self.N - 1 + self.alpha)
+        #                      + log_prob_gen(self.cluster_cons(cluster_id, assignments, exclude_unit=unit_id),
+        #                                  self.units[unit_id]))
+        #                     for cluster_id in cluster_ids]))
+        #new_assignment = random.choices(cluster_ids, weights=weights)[0]   # sample a new cluster assignment based on the probabilities
+        #logger.debug(f"weights: {weights}, {assignments[unit_id]} -> {new_assignment}")
+        #return new_assignment
+        
+        # NOTE: below is a proxy of Gibbs sampling; deterministically decide the nearest cluster as assignment
+        max_prob = 0.
+        max_cluster_id = -1
+        #logger.debug(f"Unit {unit_id}")
+        for cluster_id in cluster_ids:
+            #logger.debug(f"Cluster {cluster_id}")
+            log_p = (np.log10(self.n_units(cluster_id, assignments, exclude_unit=unit_id))
+                     + self.const_gibbs
+                     + log_prob_gen(self.cluster_cons(cluster_id, assignments, exclude_unit=unit_id),
+                                    self.units[unit_id]))
+            p = np.power(10, log_p)
+            if p > max_prob:
+                max_prob = p
+                max_cluster_id = cluster_id
+        return max_cluster_id
+
+    def gibbs_sampling(self, unit_ids, cluster_ids, assignments, n_iter=1):
+        """Re-assign each unit of <unit_ids> into one of the clusters <cluster_ids>,
+        Given a clustering state <assignments>.
+        """
+        for t in range(n_iter):
+            #logger.debug(f"Round {t}")
+            for unit_id in unit_ids:
+                #logger.debug(assignments)
+                #old_assignment = assignments[unit_id]
+                assignments[unit_id] = self.gibbs_sampling_single(unit_id, cluster_ids, assignments)
+                #new_assignment = assignments[unit_id]
+                #logger.debug(f"Unit {unit_id}: {old_assignment} -> {new_assignment}")
+        return assignments
+    
+    def do_gibbs(self, n_iter=2):
+        """Run a single iteration of Gibbs sampling with all units."""
+        p_old = self.log_prob_clustering()
+        self.assignments = self.gibbs_sampling(list(range(self.N)), self.cluster_ids(), self.assignments, n_iter)
+        p_new = self.log_prob_clustering()
+        if p_old != -np.inf and p_new != -np.inf:
+            logger.debug(f"State prob by Gibbs: {int(p_old)} -> {int(p_new)}")
+        else:
+            logger.debug(f"-inf @ {self.read_id}")
+        #logger.debug(self.assignments)
+    
+    def do_proposal(self, n_iter=30):
+        """Propose a new state by choosing random two units."""
+        p_old = self.log_prob_clustering()
+        for t in range(n_iter):
+            x, y = random.sample(list(range(self.N)), 2)
+            #logger.debug(f"Selected: {x}({self.assignments[x]}) and {y}({self.assignments[y]})")
+            if self.assignments[x] == self.assignments[y]:
+                #logger.debug("Split")
+                self.propose_split(x, y)
+            else:
+                pass
+                #logger.debug("Merge")
+                self.propose_merge(x, y)
+        p_new = self.log_prob_clustering()
+        if p_old != -np.inf and p_new != -np.inf:
+            logger.debug(f"State prob by split: {int(p_old)} -> {int(p_new)}")
+        else:
+            logger.debug(f"-inf @ {self.read_id}")
+
+    def propose_split(self, x, y, n_gibbs_iter=2):
+        # Split cluster <old_cluster_id> into <old_cluster_id> and <new_cluster_id>
+        old_cluster_id = self.assignments[x]
+        new_cluster_id = np.max(self.assignments) + 1
+        new_assignments = np.copy(self.assignments)
+        
+        # Assign each unit to one of x and y randomly   # TODO: random assignment or sequential [Dahl]?
+        new_assignments[y] = new_cluster_id
+        for i in range(self.N):
+            if i != x and i != y and new_assignments[i] == old_cluster_id:
+                new_assignments[i] = random.choice((old_cluster_id, new_cluster_id))
+                #if self.log_p_mat[i][x] < self.log_p_mat[i][y]:
+                #    new_assignments[i] = new_cluster_id
+        #logger.debug(f"\nCurrent state:\n{self.assignments}\nProposed state (init):\n{new_assignments}")
+        
+        # Re-assign each unit to one of the new clusters (= Gibbs sampling)
+        self.gibbs_sampling(self.cluster_unit_ids(old_cluster_id),
+                            (old_cluster_id, new_cluster_id),
+                            new_assignments, n_iter=n_gibbs_iter)
+        #logger.debug(f"\nCurrent state:\n{self.assignments}\nProposed state (Gibbs):\n{new_assignments}")
+        
+        # Compare the probability of the current state and the proposed state
+        p_current = self.log_prob_clustering()
+        p_new = self.log_prob_clustering(new_assignments)
+        #logger.debug(f"Current prob: {int(p_current)}, Proposed prob: {int(p_new)}")
+        if p_current < p_new:
+            #logger.debug("Accepted")
+            self.assignments = new_assignments
+        else:
+            #logger.debug("Rejected")
+            pass
+            
+    def propose_merge(self, x, y):
+        # Merge two clusters if the consensus sequences are same   # TODO: allow some diff when noise exists?
+        if self.cluster_cons(self.assignments[x]) == self.cluster_cons(self.assignments[y]):
+            logger.debug("Merge Accepted")
+            for i in range(self.N):
+                if self.assignments[i] == self.assignments[y]:
+                    self.assignments[i] = self.assignments[x]
+        else:
+            #logger.debug("Rejected")
+            pass
+        
+        """
+        # Merge cluster <old_cluster_id_x> and <old_cluster_id_y> into <old_cluster_id_x>
+        old_cluster_id_x = self.assignments[x]
+        old_cluster_id_y = self.assignments[y]
+        new_assignments = np.copy(self.assignments)
+        
+        # Change cluster assignment of the units in the cluster which units[y] belongs to
+        for i in range(self.N):
+            if new_assignments[i] == old_cluster_id_y:
+                new_assignments[i] = old_cluster_id_x
+        logger.debug(f"\nCurrent state:\n{self.assignments}\nProposed state:\n{new_assignments}")
+        
+        # Compare the probability of the current state and the proposed state
+        p_current = self.log_prob_clustering()
+        p_new = self.log_prob_clustering(new_assignments)
+        logger.debug(f"Current state prob: {p_current}, Proposed state prob: {p_new}")
+        if p_current < p_new:
+            logger.debug("Accepted")
+            self.assignments = new_assignments
+        else:
+            logger.debug("Rejected")
+        """
+
+
+def sync_reads_to_smc_inputs(sync_reads):
+    # units/quals = [read1_unit1, read1_unit2, ..., read1_unitN, read2_unit1, ..., read_L_unit_M]
+    units = [unit for read in sync_reads for unit in read.unit_seqs]
+    quals = []
+    for read in sync_reads:
+        quals += [read.quals[unit.start:unit.end] for unit in read.units]
+    return (units, quals)
+
+
+def smc_outputs_to_reads(smc, sync_reads):
+    repr_units = {cluster_id: smc.cluster_cons(cluster_id) for cluster_id in smc.cluster_ids()}
+    labeled_reads = [deepcopy(read) for read in sync_reads]
+    assignment_index = 0
+    for read in labeled_reads:
+        read.repr_units = repr_units
+        for unit in read.units:
+            unit.repr_id = smc.assignments[assignment_index]
+            assignment_index += 1
+    return labeled_reads
+
+
+def filter_overlaps_by_smc(sync_reads, read_id, plot=False):
+    logger.debug(f"Start read {read_id}")
+
+    smc = SplitMergeClustering(*sync_reads_to_smc_inputs(sync_reads), alpha=1, read_id=read_id)
+
+    # Initial clustering
+    c = ClusteringSeq(smc.units, revcomp=False)
+    c.calc_dist_mat()
+    if plot:
+        c.show_dendrogram()
+    c.cluster_hierarchical(threshold=0.01)
+    smc.assignments = c.assignment
+    smc.do_gibbs()
+
+    # Do samplings until convergence
+    prev_p = smc.log_prob_clustering()
+    p_counts = Counter()   # for oscillation
+    count = 0
+    inf_count = 0
+    while count < 2:
+        smc.do_proposal(smc.n_clusters() * 100)
+        smc.do_gibbs()
+        p = smc.log_prob_clustering()
+
+        if p == -np.inf or prev_p == -np.inf:
+            logger.debug(f"Read {read_id}: -inf prob. Retry.")
+            inf_count += 1
+            if inf_count >= 5:
+                logger.warn(f"Read {read_id}: Non-resolvable -inf prob. Abort.")
+                break
+            continue
+
+        logger.debug(f"Read {read_id}: {smc.n_clusters()} clusters, prob {int(prev_p)} -> {int(p)} ({count})")
+
+        if p_counts[int(p)] >= 5:   # oscillation
+            logger.debug(f"Oscillation at read {read_id}. Stop.")
+            break
+
+        if int(p) == int(prev_p):
+            count += 1
+        else:
+            count = 0
+
+        prev_p = p
+        p_counts[int(p)] += 1
+
+    logger.debug(f"Finished read {read_id}")
+
+    return smc_outputs_to_reads(smc, sync_reads)
+
+
+def convert_overlaps(overlaps, centromere_reads_by_id, max_diff=0.01, min_len=1000):
+    converted_overlaps = []
+
+    for a_read, b_read, strand, a_align_start, b_align_start, diff in overlaps:
+        if diff > max_diff:
+            continue
+        
+        a_len = centromere_reads_by_id[a_read].length
+        b_len = centromere_reads_by_id[b_read].length
+        
+        prefix_overlap_len = min(a_align_start, b_align_start)
+        a_start = a_align_start - prefix_overlap_len   # NOTE: this is approximate, actually we have to compute alignment
+        b_start = b_align_start - prefix_overlap_len
+        
+        a_suffix_len = a_len - a_align_start
+        b_suffix_len = b_len - b_align_start
+        suffix_overlap_len = min(a_suffix_len, b_suffix_len)
+        a_end = a_align_start + suffix_overlap_len
+        b_end = b_align_start + suffix_overlap_len
+
+        if prefix_overlap_len + suffix_overlap_len < min_len:
+            continue
+        
+        diff = round(diff * 100, 2)
+        
+        strand = 'n' if strand == 0 else 'c'
+        
+        converted_overlaps.append((a_read, b_read, strand, a_start, a_end, a_len, b_start, b_end, b_len, diff))
+
+    return converted_overlaps
+
+
+def run_single(read_id, overlaps, centromere_reads_by_id):
+    sync_reads, strands = synchronize_reads(overlaps, read_id, centromere_reads_by_id)
+    return (read_id, filter_overlaps_by_smc(sync_reads, read_id))
+
+
+if __name__ == "__main__":
+    p = argparse.ArgumentParser()
+    p.add_argument("centromere_reads_fname", type=str)
+    p.add_argument("out_fname", type=str)
+    p.add_argument("n_distribute", type=int)
+    p.add_argument("n_core", type=int)
+    p.add_argument("index", type=int)
+    args = p.parse_args()
+
+    centromere_reads = load_pickle(args.centromere_reads_fname)
+    centromere_reads_by_id = {read.id: read for read in centromere_reads}
+
+    overlaps = convert_overlaps(load_pickle("centromere_reads_unsync_overlaps.pkl"),
+                                centromere_reads_by_id)
+
+    read_ids = set()
+    for overlap in overlaps:
+        read_ids.add(overlap[0])
+        read_ids.add(overlap[1])
+    read_ids = sorted(read_ids)
+
+    unit_n = -(-len(read_ids) // args.n_distribute)
+    read_ids = read_ids[args.index * unit_n:(args.index + 1) * unit_n]
+    results = {}
+    with NoDaemonPool(args.n_core) as pool:
+        for ret in pool.starmap(run_single, [(read_id, overlaps, centromere_reads_by_id)
+                                             for read_id in read_ids]):
+            read_id, labeled_reads = ret
+            results[read_id] = labeled_reads
+
+    save_pickle(results, args.out_fname)
