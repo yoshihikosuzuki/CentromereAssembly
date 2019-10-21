@@ -47,9 +47,13 @@ class UnsyncReadsOverlapper:
             index = str(i + 1).zfill(int(np.log10(self.n_distribute) + 1))
             out_fname = f"{out_dir}/{out_prefix}.{index}.pkl"
             script_fname = f"{out_dir}/{scatter_prefix}.{index}.sh"
-            script = (f"python -m vca.ava_unsync_reads {self.centromere_reads_fname} "
-                      f"{out_fname} {self.n_distribute} {self.n_core} {i}")
-            
+            script = ' '.join(map(str, ["python -m vca.overlapper.ava_unsync_reads",
+                                        self.centromere_reads_fname,
+                                        out_fname,
+                                        self.n_distribute,
+                                        self.n_core,
+                                        i]))
+
             jids.append(self.scheduler.submit(script,
                                               script_fname,
                                               job_name="ava_unsync",
@@ -193,7 +197,8 @@ def sva_overlap(a_read, centromere_reads_by_id, read_specs, boundary_k_units, k=
                 if diff < max_diff:
                     overlaps.add(Overlap(a_read.id, b_read_id, strand,
                                          a_start, a_end, a_read.length,
-                                         b_start, b_end, b_read.length, diff))
+                                         b_start, b_end, b_read.length,
+                                         round(diff * 100, 2)))
     return overlaps
 
 

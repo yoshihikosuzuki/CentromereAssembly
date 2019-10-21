@@ -26,21 +26,25 @@ class SplitMergeClusteringOverlapper:
     """Class for overlap filtering by split-merge clustering.
     
     positional arguments:
-      @ n_distribute <int>       : Number of jobs
-      @ n_core       <int>       : Number of cores per job
+      @ n_distribute <int> : Number of jobs.
+      @ n_core       <int> : Number of cores per job.
 
     optional arguments:
       @ scheduler              <Scheduler> [Scheduler("sge", "qsub", "all.q")]
-                                 : Job scheduler
+          : Job scheduler.
       @ centromere_reads_fname <str>       ["centromere_reads.pkl"]
-                                 : File of centromere reads
+          : File of centromere reads.
+      @ overlaps_fname         <str>       ["centromere_reads_unsync_overlaps.pkl"]
+          : File of initial overlap candidates. Filtering by overlap length, sequence identity, etc. must
+            be performed in advance.
       @ out_fname              <str>       ["labeled_reads.pkl"]
-                                 : Output file name
+          : Output file name.
     """
     n_distribute          : int
     n_core                : int
     scheduler             : Scheduler = Scheduler("sge", "qsub", "all.q")
     centromere_reads_fname: str       = "centromere_reads.pkl"
+    overlaps_fname        : str       = "centromere_reads_unsync_overlaps.pkl"
     out_fname             : str       = "labeled_reads.pkl"
 
     def __post_init__(self):
@@ -52,8 +56,13 @@ class SplitMergeClusteringOverlapper:
             index = str(i + 1).zfill(int(np.log10(self.n_distribute) + 1))
             out_fname = f"{out_dir}/{out_prefix}.{index}.pkl"
             script_fname = f"{out_dir}/{scatter_prefix}.{index}.sh"
-            script = (f"python -m vca.split_merge_clustering_units {self.centromere_reads_fname} "
-                      f"{out_fname} {self.n_distribute} {self.n_core} {i}")
+            script = ' '.join(map(str, ["python -m vca.overlapper.split_merge_clustering_units",
+                                        self.centromere_reads_fname,
+                                        self.overlaps_fname,
+                                        out_fname,
+                                        self.n_distribute,
+                                        self.n_core,
+                                        i]))
         
             jids.append(self.scheduler.submit(script,
                                               script_fname,
@@ -98,8 +107,6 @@ def calc_sync_units(read, map_threshold):
         mapping, repr_id = mappings[np.argmin(diffs)]
 
         flatten_cigar = mapping.cigar.flatten().string
-        #logger.debug(mapping, repr_id)
-        #logger.debug(flatten_cigar)
 
         start, end = mapping.t_start, mapping.t_end
         
@@ -154,7 +161,6 @@ def calc_sync_units(read, map_threshold):
             max_score = 0
             for x in range(overlap_len + 1):
                 score = Counter(up_seq[:x])['='] + Counter(down_seq[x:])['=']
-                logger.debug(f"pos {x}, score {score}")
                 if (max_score < score) or (max_score == score and up_seq[x - 1] > down_seq[x - 1]):
                     max_score = score
                     max_pos = x
@@ -172,35 +178,33 @@ def calc_sync_units(read, map_threshold):
     return sync_units
 
 
-def synchronize_reads(overlaps, target_read_id, centromere_reads_by_id):
-    # List up reads overlapping to <target_read_id>
-    filtered_overlaps = set()
-    filtered_overlaps.add((target_read_id, 'n'))
-    for overlap in overlaps:
-        q, t, strand = overlap[:3]
-        assert q != t, "Intra-read overlap must be filtered"
-        if q == target_read_id:
-            filtered_overlaps.add((t, strand))
-        elif t == target_read_id:
-            filtered_overlaps.add((q, strand))
-    logger.info(f"Reads: {filtered_overlaps}")
+def synchronize_reads(overlaps, target_read_id, centromere_reads_by_id,
+                      ward_threshold=0.15, map_threshold=0.1):
+    # List up reads overlapping to `target_read_id`
+    involved_reads = set([(target_read_id, 0)])
+    for o in overlaps:
+        if o.a_read_id == target_read_id:
+            involved_reads.add((o.b_read_id, o.strand))
+        elif o.b_read_id == target_read_id:
+            involved_reads.add((o.a_read_id, o.strand))
+
+    reads = [deepcopy(centromere_reads_by_id[read_id] if strand == 0
+                      else revcomp_read(centromere_reads_by_id[read_id]))
+             for read_id, strand in involved_reads]
+
+    logger.info(f"Reads: {involved_reads}")
 
     # Compute representative units (just for phase synchronization) within the overlap
-    reads = [deepcopy(centromere_reads_by_id[read_id] if strand == 'n'
-                      else revcomp_read(centromere_reads_by_id[read_id]))
-             for read_id, strand in filtered_overlaps]
-    units = [unit for read in reads for unit in read.unit_seqs]
-    repr_units = calc_repr_units(units, ward_threshold=0.15)
+    repr_units = calc_repr_units([unit_seq for read in reads for unit_seq in read.unit_seqs],
+                                 ward_threshold=ward_threshold)
     
     # Synchronize the units involved in the overlap
     for read in reads:
         read.repr_units = repr_units
-        read.units = calc_sync_units(read, map_threshold=0.1)
+        read.units = calc_sync_units(read, map_threshold=map_threshold)
         read.synchronized = True
-        
-    strands = [strand for read_id, strand in filtered_overlaps]
 
-    return (reads, strands)
+    return reads
 
 
 class PairwiseAlignment:
@@ -673,10 +677,8 @@ class SplitMergeClustering:
 
 def sync_reads_to_smc_inputs(sync_reads):
     # units/quals = [read1_unit1, read1_unit2, ..., read1_unitN, read2_unit1, ..., read_L_unit_M]
-    units = [unit for read in sync_reads for unit in read.unit_seqs]
-    quals = []
-    for read in sync_reads:
-        quals += [read.quals[unit.start:unit.end] for unit in read.units]
+    units = [unit_seq for read in sync_reads for unit_seq in read.unit_seqs]
+    quals = [qual for read in sync_reads for qual in read.unit_quals]
     return (units, quals)
 
 
@@ -703,6 +705,8 @@ def filter_overlaps_by_smc(sync_reads, read_id, plot=False):
     if plot:
         c.show_dendrogram()
     c.cluster_hierarchical(threshold=0.01)
+    # TODO: remove single "outlier" units (probably from regions covered only once by these reads right here)
+
     smc.assignments = c.assignment
     smc.do_gibbs()
 
@@ -743,46 +747,16 @@ def filter_overlaps_by_smc(sync_reads, read_id, plot=False):
     return smc_outputs_to_reads(smc, sync_reads)
 
 
-def convert_overlaps(overlaps, centromere_reads_by_id, max_diff=0.01, min_len=1000):
-    converted_overlaps = []
-
-    for a_read, b_read, strand, a_align_start, b_align_start, diff in overlaps:
-        if diff > max_diff:
-            continue
-        
-        a_len = centromere_reads_by_id[a_read].length
-        b_len = centromere_reads_by_id[b_read].length
-        
-        prefix_overlap_len = min(a_align_start, b_align_start)
-        a_start = a_align_start - prefix_overlap_len   # NOTE: this is approximate, actually we have to compute alignment
-        b_start = b_align_start - prefix_overlap_len
-        
-        a_suffix_len = a_len - a_align_start
-        b_suffix_len = b_len - b_align_start
-        suffix_overlap_len = min(a_suffix_len, b_suffix_len)
-        a_end = a_align_start + suffix_overlap_len
-        b_end = b_align_start + suffix_overlap_len
-
-        if prefix_overlap_len + suffix_overlap_len < min_len:
-            continue
-        
-        diff = round(diff * 100, 2)
-        
-        strand = 'n' if strand == 0 else 'c'
-        
-        converted_overlaps.append((a_read, b_read, strand, a_start, a_end, a_len, b_start, b_end, b_len, diff))
-
-    return converted_overlaps
-
-
 def run_single(read_id, overlaps, centromere_reads_by_id):
-    sync_reads, strands = synchronize_reads(overlaps, read_id, centromere_reads_by_id)
-    return (read_id, filter_overlaps_by_smc(sync_reads, read_id))
+    sync_reads = synchronize_reads(overlaps, read_id, centromere_reads_by_id)
+    labeled_reads = filter_overlaps_by_smc(sync_reads, read_id)
+    return (read_id, labeled_reads)
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("centromere_reads_fname", type=str)
+    p.add_argument("overlaps_fname", type=str)
     p.add_argument("out_fname", type=str)
     p.add_argument("n_distribute", type=int)
     p.add_argument("n_core", type=int)
@@ -792,22 +766,13 @@ if __name__ == "__main__":
     centromere_reads = load_pickle(args.centromere_reads_fname)
     centromere_reads_by_id = {read.id: read for read in centromere_reads}
 
-    overlaps = convert_overlaps(load_pickle("centromere_reads_unsync_overlaps.pkl"),
-                                centromere_reads_by_id)
-
-    read_ids = set()
-    for overlap in overlaps:
-        read_ids.add(overlap[0])
-        read_ids.add(overlap[1])
-    read_ids = sorted(read_ids)
+    overlaps = load_pickle(args.overlaps_fname)
+    read_ids = sorted(set([read_id for o in overlaps for read_id in (o.a_read_id, o.b_read_id)]))
 
     unit_n = -(-len(read_ids) // args.n_distribute)
     read_ids = read_ids[args.index * unit_n:(args.index + 1) * unit_n]
-    results = {}
     with NoDaemonPool(args.n_core) as pool:
-        for ret in pool.starmap(run_single, [(read_id, overlaps, centromere_reads_by_id)
-                                             for read_id in read_ids]):
-            read_id, labeled_reads = ret
-            results[read_id] = labeled_reads
+        labeled_reads = list(pool.starmap(run_single, [(read_id, overlaps, centromere_reads_by_id)
+                                                       for read_id in read_ids]))
 
-    save_pickle(results, args.out_fname)
+    save_pickle(labeled_reads, args.out_fname)
