@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, astuple
 from typing import List, Dict
 import numpy as np
 from BITS.seq.utils import revcomp
@@ -107,3 +107,34 @@ class TRRead(Read):
         return [self.quals[unit.start:unit.end] if not forward or unit.strand == 0
                 else np.flip(self.quals[unit.start:unit.end])
                 for unit in self.units]
+
+
+@dataclass
+class Overlap:
+    """Class for an overlap between two reads.
+
+    positional arguments:
+      @ a_read_id <int>   : `a_read[a_start:a_end]` is the overlapping sequence.
+      @ b_read_id <int>   : `strand(b_read)[b_start:b_end]` is the overlapping sequence.
+      @ strand    <int>   : Must be 0 or 1
+      @ a_start   <int>   : Start position of the overlap on `a_read`. 0-indexed.
+      @ a_end     <int>   : End position on `a_read`.
+      @ a_len     <int>   : Length of the `a_read`.
+      @ b_start   <int>   : NOTE: `[a|b]_[start|end]` are always defined for FORWARD overlapping sequences.
+      @ b_end     <int>
+      @ b_len     <int>
+      @ diff      <float> : Percent dissimilarity at the overlap.
+    """
+    a_read_id: int
+    b_read_id: int
+    strand   : int
+    a_start  : int
+    a_end    : int
+    a_len    : int
+    b_start  : int
+    b_end    : int
+    b_len    : int
+    diff     : float
+
+    def astuple(self):
+        return astuple(self)
