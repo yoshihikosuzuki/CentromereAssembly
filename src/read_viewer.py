@@ -4,7 +4,7 @@ import matplotlib.cm as cm
 from matplotlib.colors import rgb2hex, XKCD_COLORS
 from BITS.clustering.seq import ClusteringSeq
 from BITS.seq.align import EdlibRunner
-from BITS.seq.utils import revcomp
+from BITS.seq.utils import revcomp_seq
 from BITS.seq.plot import DotPlot
 from BITS.plot.plotly import make_line, make_rect, make_scatter, make_layout, show_plot
 from BITS.util.proc import run_command
@@ -137,7 +137,7 @@ class ReadViewer:
                                       [unit.start for unit in read.units],
                                       text=[f"unit {i} (id={unit.repr_id if read.synchronized else ''}; strand={unit.strand if read.synchronized else ''})<br>"
                                             f"[{unit.start}:{unit.end}] ({unit.length} bp; "
-                                            f"{round(100 * (er.align(read.repr_units[unit.repr_id], read.seq[unit.start:unit.end] if unit.strand == 0 else revcomp(read.seq[unit.start:unit.end])).diff), 2) if read.synchronized else '-'}% diff)"
+                                            f"{round(100 * (er.align(read.repr_units[unit.repr_id], read.seq[unit.start:unit.end] if unit.strand == 0 else revcomp_seq(read.seq[unit.start:unit.end])).diff), 2) if read.synchronized else '-'}% diff)"
                                             for i, unit in enumerate(read.units)],
                                       col=([id_to_col[unit.repr_id] for unit in read.units]
                                            if read.synchronized else "black"),

@@ -1,7 +1,7 @@
 from dataclasses import dataclass, astuple
 from typing import List, Dict
 import numpy as np
-from BITS.seq.utils import revcomp
+from BITS.seq.utils import revcomp_seq
 
 
 @dataclass(eq=False)
@@ -115,7 +115,7 @@ class TRRead(Read):
         """Return TR unit sequences. If <forward> is True, the orientations of the units are modified 
         so that these are same as those of <repr_units>."""
         return [self.seq[unit.start:unit.end] if not forward or unit.strand == 0
-                else revcomp(self.seq[unit.start:unit.end])
+                else revcomp_seq(self.seq[unit.start:unit.end])
                 for unit in self.units]
 
     @property
@@ -128,7 +128,7 @@ class TRRead(Read):
 def revcomp_read(read):
     """Return reverse complement of <read> as a new object."""
     # TODO: revcomp `alignments` and `trs`
-    return TRRead(seq=revcomp(read.seq), id=read.id, name=read.name, strand=1 - read.strand,
+    return TRRead(seq=revcomp_seq(read.seq), id=read.id, name=read.name, strand=1 - read.strand,
                   units=[TRUnit(start=read.length - unit.end,
                                 end=read.length - unit.start,
                                 repr_id=unit.repr_id,

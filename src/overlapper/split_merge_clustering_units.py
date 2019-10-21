@@ -9,6 +9,7 @@ from logzero import logger
 import consed
 from BITS.clustering.seq import ClusteringSeq
 from BITS.seq.align import EdlibRunner
+from BITS.seq.utils import phred_to_log10_p_error, phred_to_log10_p_correct
 from BITS.util.io import save_pickle, load_pickle
 from BITS.util.proc import run_command, NoDaemonPool
 from BITS.util.scheduler import Scheduler
@@ -279,14 +280,6 @@ def list_variations(template_unit, cluster_cons_unit):
     return list(count_variants(template_unit, [cluster_cons_unit]).keys())
 
 
-def phred_to_log_p_correct(phred):
-    return np.log10(1 - np.power(10, -phred / 10))
-
-
-def phred_to_log_p_error(phred):
-    return -phred / 10
-
-
 def log_prob_gen(cons_unit, obs_unit, obs_qual=None, p_non_match=0.01):
     """Log likelihood of generating <obs_unit> from <cons_unit>.
     <obs_qual> is positional QVs of <obs_unit> and if not given,
@@ -309,8 +302,8 @@ def log_prob_gen(cons_unit, obs_unit, obs_qual=None, p_non_match=0.01):
         p = 0.
         pos = 0
         for c in fcigar:
-            p += (phred_to_log_p_correct(obs_qual[pos]) if c == '='
-                  else phred_to_log_p_error(obs_qual[pos]))
+            p += (phred_to_log10_p_correct(obs_qual[pos]) if c == '='
+                  else phred_to_log10_p_error(obs_qual[pos]))
             if c in ('=', 'X', 'D'):
                 pos += 1
         assert pos == len(obs_unit) == len(obs_qual), "Invalid length"
@@ -337,7 +330,7 @@ def log_prob_align(unit_x, unit_y, qual_x=None, qual_y=None, p_error=0.01):
         p = 0.
         pos_x = pos_y = 0
         for c in fcigar:   # fcigar(unit_y) = unit_x
-            p_match = phred_to_log_p_correct(qual_x[pos_x]) + phred_to_log_p_correct(qual_y[pos_y])
+            p_match = phred_to_log10_p_correct(qual_x[pos_x]) + phred_to_log10_p_correct(qual_y[pos_y])
             p += (p_match if c == '='
                   else np.log10(1 - np.power(10, p_match)))
             if c in ('=', 'X', 'I'):
