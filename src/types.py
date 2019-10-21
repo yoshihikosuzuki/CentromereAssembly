@@ -136,5 +136,8 @@ class Overlap:
     b_len    : int
     diff     : float
 
+    def __post_init__(self):
+        assert self.strand == 0 or self.strand == 1, "`strand` must be 0 or 1"
+
     def astuple(self):
         return astuple(self)

@@ -1,10 +1,12 @@
 import igraph as ig
 import plotly.graph_objs as go
+from logzero import logger
 from BITS.plot.plotly import make_line, show_plot
 
 
 def overlaps_to_string_graph(overlaps):
     """Construct a string graph from `overlaps` <List[Overlap]>."""
+    edges = set()
     for overlap in overlaps:
         f_id, g_id, strand, f_start, f_end, f_len, g_start, g_end, g_len, diff = overlap.astuple()
 
@@ -64,36 +66,27 @@ def overlaps_to_string_graph(overlaps):
                         overlap_type = "prefix-prefix"
 
         # Convert an overlap to nodes and edges in the string graph
-        nodes, edges = set(), set()
         if overlap_type in ["contains", "contained"]:   # contained removal
             continue
         elif overlap_type == "suffix-prefix":
-            nodes.update(["%s:B" % g_id, "%s:B" % f_id,
-                          "%s:E" % f_id, "%s:E" % g_id])
-            edges.update([("%s:B" % g_id, "%s:B" % f_id, f_start, diff),
-                          ("%s:E" % f_id, "%s:E" % g_id, g_len - g_end, diff)])
+            edges.update([(f"{g_id}:B", f"{f_id}:B", f_start, diff),
+                          (f"{f_id}:E", f"{g_id}:E", g_len - g_end, diff)])
         elif overlap_type == "suffix-suffix":
-            nodes.update(["%s:E" % g_id, "%s:B" % f_id,
-                          "%s:E" % f_id, "%s:B" % g_id])
-            edges.update([("%s:E" % g_id, "%s:B" % f_id, f_start, diff),
-                          ("%s:E" % f_id, "%s:B" % g_id, g_start, diff)])
+            edges.update([(f"{g_id}:E", f"{f_id}:B", f_start, diff),
+                          (f"{f_id}:E", f"{g_id}:B", g_start, diff)])
         elif overlap_type == "prefix-suffix":
-            nodes.update(["%s:B" % f_id, "%s:B" % g_id,
-                          "%s:E" % g_id, "%s:E" % f_id])
-            edges.update([("%s:B" % f_id, "%s:B" % g_id, g_start, diff),
-                          ("%s:E" % g_id, "%s:E" % f_id, f_len - f_end, diff)])
+            edges.update([(f"{f_id}:B", f"{g_id}:B", g_start, diff),
+                          (f"{g_id}:E", f"{f_id}:E", f_len - f_end, diff)])
         else:   # prefix-prefix
-            nodes.update(["%s:B" % f_id, "%s:E" % g_id,
-                          "%s:B" % g_id, "%s:E" % f_id])
-            edges.update([("%s:B" % f_id, "%s:E" % g_id, g_len - g_end, diff),
-                          ("%s:B" % g_id, "%s:E" % f_id, f_len - f_end, diff)])
+            edges.update([(f"{f_id}:B", f"{g_id}:E", g_len - g_end, diff),
+                          (f"{g_id}:B", f"{f_id}:E", f_len - f_end, diff)])
 
     return ig.Graph.DictList(edges=(dict(source=s, target=t, length=l, diff=d) for s, t, l, d in edges),
                              vertices=None,
                              directed=True)
 
 
-def transitive_reduction(sg, fuzz=100):
+def reduce_transitive_edges(sg, fuzz=100):
     """Perform the transitive edge reduction introduced in [Myers, 2005].
     `fuzz` [bp] determines the degree of fluctuation of overlap start/end positions the algorithm accepts.
     """
@@ -142,7 +135,7 @@ def transitive_reduction(sg, fuzz=100):
                              directed=True)
 
 
-def draw_graph(sg, reads_by_id=None, size=1000):
+def draw_string_graph(sg, reads_by_id=None, size=1000):
     # Layout the nodes
     pos = sg.layout('kk')   # {node: (x_coord, y_coord)}
 
@@ -189,6 +182,6 @@ def draw_graph(sg, reads_by_id=None, size=1000):
                        hovermode='closest',
                        margin=go.layout.Margin(l=0, r=0, b=0, t=0),
                        showlegend=False)
-    show_plot(data=[trace_edge, trace_node], layout=layout)
+    show_plot([trace_edge, trace_node], layout)
 
     return pos
