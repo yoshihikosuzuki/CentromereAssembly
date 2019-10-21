@@ -109,6 +109,19 @@ class TRRead(Read):
                 for unit in self.units]
 
 
+def revcomp_read(read):
+    """Return reverse complement of <read> as a new object. <trs> and <alignments> are not copied."""
+    return TRRead(seq=revcomp(read.seq), id=read.id, name=read.name,
+                  units=[TRUnit(start=read.length - unit.end,
+                                end=read.length - unit.start,
+                                repr_id=unit.repr_id,
+                                strand=(None if unit.strand is None else 1 - unit.strand))
+                         for unit in reversed(read.units)],
+                  synchronized=read.synchronized,
+                  repr_units=read.repr_units,
+                  quals=None if read.quals is None else np.flip(read.quals))
+
+
 @dataclass
 class Overlap:
     """Class for an overlap between two reads.

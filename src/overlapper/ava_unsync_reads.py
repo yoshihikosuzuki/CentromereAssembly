@@ -3,11 +3,11 @@ from dataclasses import dataclass
 import numpy as np
 from logzero import logger
 from BITS.seq.align import EdlibRunner
-from BITS.seq.utils import revcomp, reverse_seq
+from BITS.seq.utils import reverse_seq
 from BITS.util.io import save_pickle, load_pickle
 from BITS.util.proc import NoDaemonPool, run_command
 from BITS.util.scheduler import Scheduler
-from vca.types import TRUnit, TRRead
+from vca.types import Overlap, revcomp_read
 
 out_dir        = "ava_unsync"
 out_prefix     = "ovlps"
@@ -21,16 +21,16 @@ class UnsyncReadsOverlapper:
     """Class for executing all-vs-all overlap between unsynchronized TR reads.
 
     positional arguments:
-      @ n_distribute <int>       : Number of jobs
-      @ n_core       <int>       : Number of cores per job
+      @ n_distribute <int> : Number of jobs
+      @ n_core       <int> : Number of cores per job
 
     optional arguments:
       @ scheduler              <Scheduler> [Scheduler("sge", "qsub", "all.q")]
-                                 : Job scheduler
+          : Job scheduler
       @ centromere_reads_fname <str>       ["centromere_reads.pkl"]
-                                 : File of centromere reads
+          : File of centromere reads
       @ out_fname              <str>       ["centromere_reads_unsync_overlaps.pkl"]
-                                 : Output file name
+          : Output file name
     """
     n_distribute          : int
     n_core                : int
@@ -74,17 +74,6 @@ def seq_to_spectrum(seq, k=13):
     return set([seq[i:i + k] for i in range(len(seq) - k + 1)])
 
 
-def revcomp_read(read):
-    """Return reverse complement of <read> as a new object. <trs> and <alignments> are not copied."""
-    return TRRead(seq=revcomp(read.seq), id=read.id, name=read.name,
-                  units=[TRUnit(start=read.length - unit.end,
-                                end=read.length - unit.start,
-                                repr_id=unit.repr_id,
-                                strand=(None if unit.strand is None else 1 - unit.strand))
-                         for unit in reversed(read.units)],
-                  synchronized=read.synchronized, repr_units=read.repr_units)
-
-
 def read_to_boundary_k_monomers(read, k=2, offset=1):
     """Extract <k>-monomers (including sequences between monomers) of the boundaries.
     Sequences of both orientations are returned. Therefore, the total number of <k>-monomers are 4.
@@ -110,11 +99,14 @@ er_prefix = EdlibRunner("local", revcomp=False, cyclic=False)
 
 
 def _calc_dovetail_alignment(a_read, b_read, a_index, b_index, k, max_init_diff=0.02):
+    """Compute dovetail alignment between two reads starting by mapping `k`-units of `b_read` to (`k+1`)-units of `a_read`.
+    If the initla unit global alignment
+    """
     a_seq = a_read.seq[a_read.units[a_index].start:a_read.units[a_index + k].end]
     b_seq = b_read.seq[b_read.units[b_index].start:b_read.units[b_index + k - 1].end]
 
     alignment = er_glocal.align(b_seq, a_seq)
-    if alignment.diff > max_init_diff:
+    if alignment.diff > max_init_diff:   # initial screening
         return (-1, -1, 100.)
     a_start = a_read.units[a_index].start + alignment.t_start
     b_start = b_read.units[b_index].start
@@ -123,26 +115,29 @@ def _calc_dovetail_alignment(a_read, b_read, a_index, b_index, k, max_init_diff=
     tot_alignment_diff = 0
 
     # Compute forward dovetail overlap staring at (ab, bb) = (a_start, b_start)
-    
     logger.debug("###")
     logger.debug(f"a_units[{a_index}-{a_index + k}] ({a_read.id}[{a_read.units[a_index].start}:{a_read.units[a_index + k].end}]) vs "
                  f"b_unit[{b_index}-{b_index + k - 1}] ({b_read.id}[{b_read.units[b_index].start}:{b_read.units[b_index + k - 1].end}])")
     logger.debug(f"a_start @ {a_start} ~ b_start @ {b_start} "
                  f"({round(100 * alignment.diff, 1)} %diff, {alignment.length} bp)")
 
-    if a_start > 0 and b_start > 0:
-        # First, up to the start position
+    # First, up to the start position
+    if a_start == 0 and b_start == 0:
+        a_start_pos, b_start_pos = 0, 0
+    else:
         a_seq = reverse_seq(a_read.seq[:a_start])   # reverse sequences so that prefix alignment can be taken
         b_seq = reverse_seq(b_read.seq[:b_start])
         query, target = f"rev(a[0:{a_start}])", f"rev(b[0:{b_start}])"
         prefix_alignment = None
         if len(a_seq) < len(b_seq) * (1 + max_init_diff):   # a_seq can be query
             prefix_alignment = er_prefix.align(a_seq, b_seq)
+            a_start_pos, b_start_pos = 0, b_start - prefix_alignment.t_end
         if prefix_alignment is None or len(b_seq) < len(a_seq) * (1 + max_init_diff):   # b_seq can be query; both can hold simultaneously
             swap_prefix_alignment = er_prefix.align(b_seq, a_seq)
             if prefix_alignment is None or prefix_alignment.diff > swap_prefix_alignment.diff:
-                prefix_alignment = swap_prefix_alignment
                 query, target = target, query
+                prefix_alignment = swap_prefix_alignment
+                a_start_pos, b_start_pos = a_start - prefix_alignment.t_end, 0
         tot_alignment_length += prefix_alignment.length
         tot_alignment_diff += int(prefix_alignment.diff * prefix_alignment.length)
         logger.debug(f"prefix {query} -> {target}[{prefix_alignment.t_start}:{prefix_alignment.t_end}] "
@@ -155,11 +150,13 @@ def _calc_dovetail_alignment(a_read, b_read, a_index, b_index, k, max_init_diff=
     suffix_alignment = None
     if len(a_seq) < len(b_seq) * (1 + max_init_diff):   # a_seq can be query
         suffix_alignment = er_prefix.align(a_seq, b_seq)
+        a_end_pos, b_end_pos = a_read.length, b_start + suffix_alignment.t_end
     if suffix_alignment is None or len(b_seq) < len(a_seq) * (1 + max_init_diff):   # b_seq can be query; both can hold simultaneously
         swap_suffix_alignment = er_prefix.align(b_seq, a_seq)
         if suffix_alignment is None or suffix_alignment.diff > swap_suffix_alignment.diff:
-            suffix_alignment = swap_suffix_alignment
             query, target = target, query
+            suffix_alignment = swap_suffix_alignment
+            a_end_pos, b_end_pos = a_start + suffix_alignment.t_end, b_read.length
     tot_alignment_length += suffix_alignment.length
     tot_alignment_diff += int(suffix_alignment.diff * suffix_alignment.length)
     logger.debug(f"suffix {query} -> {target}[{suffix_alignment.t_start}:{suffix_alignment.t_end}] "
@@ -167,7 +164,7 @@ def _calc_dovetail_alignment(a_read, b_read, a_index, b_index, k, max_init_diff=
 
     tot_diff = tot_alignment_diff / tot_alignment_length
     logger.debug(f"{round(100 * tot_diff, 1)} %diff, {tot_alignment_length} bp")
-    return (a_start, b_start, tot_diff)
+    return (a_start_pos, a_end_pos, b_start_pos, b_end_pos, tot_diff)
 
 
 def align_b_to_a(a_read, b_read, b_index, k):
@@ -192,9 +189,11 @@ def sva_overlap(a_read, centromere_reads_by_id, read_specs, boundary_k_units, k=
             if strand == 1:
                 b_read = revcomp_read(b_read)
             # map b_read.seq[b_read.units[k_unit_start].start:b_read.units[k_unit_start + k - 1].end] to a_read.seq
-            for a_start, b_start, diff in align_b_to_a(a_read, b_read, k_unit_start, k):
+            for a_start, a_end, b_start, b_end, diff in align_b_to_a(a_read, b_read, k_unit_start, k):
                 if diff < max_diff:
-                    overlaps.add((a_read.id, b_read_id, strand, a_start, b_start, diff))
+                    overlaps.add(Overlap(a_read.id, b_read_id, strand,
+                                         a_start, a_end, a_read.length,
+                                         b_start, b_end, b_read.length, diff))
     return overlaps
 
 

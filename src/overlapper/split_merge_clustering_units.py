@@ -3,17 +3,16 @@ from dataclasses import dataclass
 from collections import Counter, defaultdict
 from typing import List
 import random
-from copy import copy, deepcopy
+from copy import deepcopy
 import numpy as np
 from logzero import logger
 import consed
 from BITS.clustering.seq import ClusteringSeq
 from BITS.seq.align import EdlibRunner
-from BITS.seq.utils import revcomp
 from BITS.util.io import save_pickle, load_pickle
 from BITS.util.proc import run_command, NoDaemonPool
-from vca.types import TRUnit, TRRead
 from BITS.util.scheduler import Scheduler
+from vca.types import TRUnit, revcomp_read
 
 out_dir        = "smc_encode"
 out_prefix     = "labeled_reads"
@@ -76,18 +75,6 @@ class SplitMergeClusteringOverlapper:
         save_pickle(labeled_reads, self.out_fname)
 
 
-def revcomp_read(read):
-    """Return reverse complement of <read> as a new object. <trs> and <alignments> are not copied."""
-    return TRRead(seq=revcomp(read.seq), id=read.id, name=read.name,
-                  units=[TRUnit(start=read.length - unit.end,
-                                end=read.length - unit.start,
-                                repr_id=unit.repr_id,
-                                strand=(None if unit.strand is None else 1 - unit.strand))
-                         for unit in reversed(read.units)],
-                  synchronized=read.synchronized, repr_units=read.repr_units,
-                  quals=np.flip(read.quals))
-
-
 def calc_repr_units(units, ward_threshold):
     """Calculate representative units using hierarchical clustering."""
     c = ClusteringSeq(units, revcomp=False, cyclic=True)
@@ -101,7 +88,7 @@ def calc_sync_units(read, map_threshold):
     """Compute synchronized units by mapping the representative units to the read iteratively."""
     er = EdlibRunner("glocal", revcomp=False, cyclic=False)
     sync_units = []
-    read_seq = copy(read.seq)
+    read_seq = read.seq
     while True:
         mappings = [(er.align(repr_unit, read_seq), repr_id)
                     for repr_id, repr_unit in sorted(read.repr_units.items())]

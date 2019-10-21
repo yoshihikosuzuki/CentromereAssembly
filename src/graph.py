@@ -1,6 +1,5 @@
 import igraph as ig
 import plotly.graph_objs as go
-from logzero import logger
 from BITS.plot.plotly import make_line, show_plot
 
 
@@ -143,7 +142,7 @@ def draw_string_graph(sg, reads_by_id=None, size=1000):
     cover_rates = None
     if reads_by_id is not None:
         reads = [reads_by_id[int(v["name"].split(':')[0])] for v in sg.vs]
-        cover_rates = [sum([len(unit_seq) for unit_seq in read.unit_seqs]) / read.length for read in reads]
+        cover_rates = [sum([unit.length for unit in read.units]) / read.length for read in reads]
         
     trace_node = go.Scatter(x=[pos[v.index][0] for v in sg.vs],
                             y=[pos[v.index][1] for v in sg.vs],
