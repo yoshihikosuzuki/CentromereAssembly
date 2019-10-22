@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from logzero import logger
+from BITS.seq.dazz import db_to_n_blocks
 from BITS.util.proc import run_command
 from BITS.util.scheduler import Scheduler
 
@@ -37,7 +37,7 @@ class DatanderRunner:
         #       self alignments so that sequence diversity of the tandem repeats can be captured.
         options = "" if self.read_type == "CLR" else "-k20 -w5 -h50 -e.90 -s500"
         script = run_command(f"HPC.TANmask {options} -T{self.n_core} {self.db_prefix}.db")
-        if calc_n_blocks(f"{self.db_prefix}.db") > 1:
+        if db_to_n_blocks(f"{self.db_prefix}.db") > 1:
             script += '\n'.join([f"Catrack -v {self.db_prefix} tan",
                                  f"rm .{self.db_prefix}.*.tan.*"])
 
@@ -53,12 +53,3 @@ class DatanderRunner:
                                   log_fname=log_fname,
                                   n_core=self.n_core,
                                   wait=True)
-
-
-def calc_n_blocks(db_fname):
-    """Extract the number of blocks from the db file."""
-    with open(db_fname, 'r') as f:
-        for line in f:
-            if line.startswith("blocks"):
-                return int(line.split('=')[1].strip())
-    logger.error(f"No information on the number of blocks in {db_fname}")

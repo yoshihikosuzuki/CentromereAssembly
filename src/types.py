@@ -139,7 +139,7 @@ def revcomp_read(read):
                   quals=None if read.quals is None else np.flip(read.quals))
 
 
-@dataclass
+@dataclass(frozen=True, order=True)
 class Overlap:
     """Class for an overlap between two reads.
 

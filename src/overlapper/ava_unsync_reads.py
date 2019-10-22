@@ -1,11 +1,12 @@
 import argparse
 from dataclasses import dataclass
+from multiprocessing import Pool
 import numpy as np
 from logzero import logger
 from BITS.seq.align import EdlibRunner
 from BITS.seq.utils import reverse_seq
 from BITS.util.io import save_pickle, load_pickle
-from BITS.util.proc import NoDaemonPool, run_command
+from BITS.util.proc import run_command
 from BITS.util.scheduler import Scheduler
 from vca.types import Overlap, revcomp_read
 
@@ -103,15 +104,15 @@ er_prefix = EdlibRunner("local", revcomp=False, cyclic=False)
 
 
 def _calc_dovetail_alignment(a_read, b_read, a_index, b_index, k, max_init_diff=0.02):
-    """Compute dovetail alignment between two reads starting by mapping `k`-units of `b_read` to (`k+1`)-units of `a_read`.
-    If the initla unit global alignment
+    """Compute dovetail alignment between two reads starting by mapping `k`-units of `b_read` to (`k+1`)-units
+    of `a_read`.
     """
     a_seq = a_read.seq[a_read.units[a_index].start:a_read.units[a_index + k].end]
     b_seq = b_read.seq[b_read.units[b_index].start:b_read.units[b_index + k - 1].end]
 
     alignment = er_glocal.align(b_seq, a_seq)
     if alignment.diff > max_init_diff:   # initial screening
-        return (-1, -1, 100.)
+        return None
     a_start = a_read.units[a_index].start + alignment.t_start
     b_start = b_read.units[b_index].start
 
@@ -126,8 +127,8 @@ def _calc_dovetail_alignment(a_read, b_read, a_index, b_index, k, max_init_diff=
                  f"({round(100 * alignment.diff, 1)} %diff, {alignment.length} bp)")
 
     # First, up to the start position
-    if a_start == 0 and b_start == 0:
-        a_start_pos, b_start_pos = 0, 0
+    if a_start == 0 or b_start == 0:
+        a_start_pos, b_start_pos = a_start, b_start
     else:
         a_seq = reverse_seq(a_read.seq[:a_start])   # reverse sequences so that prefix alignment can be taken
         b_seq = reverse_seq(b_read.seq[:b_start])
@@ -192,8 +193,11 @@ def sva_overlap(a_read, centromere_reads_by_id, read_specs, boundary_k_units, k=
             b_read = centromere_reads_by_id[b_read_id]
             if strand == 1:
                 b_read = revcomp_read(b_read)
-            # map b_read.seq[b_read.units[k_unit_start].start:b_read.units[k_unit_start + k - 1].end] to a_read.seq
-            for a_start, a_end, b_start, b_end, diff in align_b_to_a(a_read, b_read, k_unit_start, k):
+            # Map k-units of `b_read` to `a_read`
+            for alignment in align_b_to_a(a_read, b_read, k_unit_start, k):
+                if alignment is None:
+                    continue
+                a_start, a_end, b_start, b_end, diff = alignment
                 if diff < max_diff:
                     overlaps.add(Overlap(a_read.id, b_read_id, strand,
                                          a_start, a_end, a_read.length,
@@ -221,10 +225,11 @@ if __name__ == "__main__":
 
     overlaps = set()
     unit_n = -(-len(centromere_reads) // args.n_distribute)
-    with NoDaemonPool(args.n_core) as pool:
+    reads = centromere_reads[args.index * unit_n:(args.index + 1) * unit_n]
+    with Pool(args.n_core) as pool:
         for ret in pool.starmap(sva_overlap,
                                 [(read, centromere_reads_by_id, read_specs, boundary_k_units)
-                                 for read in centromere_reads[args.index * unit_n:(args.index + 1) * unit_n]]):
+                                 for read in reads]):
             overlaps.update(ret)
 
     save_pickle(overlaps, args.out_fname)
