@@ -79,7 +79,7 @@ class SplitMergeClusteringOverlapper:
                               wait=True)
 
         labeled_reads = {}
-        fnames = run_command("find {out_dir} -name '{out_prefix}.*.pkl' | sort").strip().split('\n')
+        fnames = run_command(f"find {out_dir} -name '{out_prefix}.*.pkl' | sort").strip().split('\n')
         for fname in fnames:
             labeled_reads.update(load_pickle(fname))
         save_pickle(labeled_reads, self.out_fname)
