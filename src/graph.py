@@ -134,7 +134,7 @@ def reduce_transitive_edges(sg, fuzz=100):
                              directed=True)
 
 
-def draw_string_graph(sg, reads_by_id=None, size=1000):
+def draw_string_graph(sg, reads_by_id=None, width=1000, height=1000, out_fname=None):
     # Layout the nodes
     pos = sg.layout('kk')   # {node: (x_coord, y_coord)}
 
@@ -170,7 +170,7 @@ def draw_string_graph(sg, reads_by_id=None, size=1000):
               for s, t in edges]
 
     # Draw the graph
-    layout = go.Layout(width=size, height=size,
+    layout = go.Layout(width=width, height=height,
                        xaxis=dict(showgrid=False,
                                   zeroline=False,
                                   showticklabels=True),
@@ -181,6 +181,6 @@ def draw_string_graph(sg, reads_by_id=None, size=1000):
                        hovermode='closest',
                        margin=go.layout.Margin(l=0, r=0, b=0, t=0),
                        showlegend=False)
-    show_plot([trace_edge, trace_node], layout)
+    show_plot([trace_edge, trace_node], layout, out_fname=out_fname)
 
     return pos

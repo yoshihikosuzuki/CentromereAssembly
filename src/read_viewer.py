@@ -2,6 +2,8 @@ from dataclasses import dataclass
 import numpy as np
 import matplotlib.cm as cm
 from matplotlib.colors import rgb2hex, XKCD_COLORS
+import plotly.graph_objs as go
+from logzero import logger
 from BITS.clustering.seq import ClusteringSeq
 from BITS.seq.align import EdlibRunner
 from BITS.seq.utils import revcomp_seq
@@ -14,16 +16,40 @@ from .types import TRRead
 
 
 @dataclass(eq=False)
-class ReadViewer:
-    """Class for plotting reads in Jupyter Notebook.
-    First create an instance of this class with .db and .las files,
-    and then show plot by specifying a read ID or TRRead object.
-    You can draw self dot plot with Gepard by giving its command.
+class TRReadViewer:
+    """Class for plotting reads with tandem repeats in Jupyter Notebook.
 
-    Usage example (in Jupyter Notebook):
-      > from vca import ReadViewer
+    Basic usage (in Jupyter Notebook):
+      > from vca import TRReadViewer
       > v = ReadViewer(db_fname, las_fname)
-      > v.show(read_id)
+      > v.show(read)
+
+
+    positional arguments of `TRReadViewer`:
+      @ db_fname  <str> : DAZZ_DB `.db` file of the reads.
+      @ las_fname <str> : `TAN.*.las` 
+
+    optional arguments of `TRReadViewer`:
+      @ gepard  <str> [None]  : Command to run Gepard. It would be like `f"java -cp {gepard_jar}
+                                org.gepard.client.cmdline.CommandLine -matrix {gepard_mat}"`.
+                                This is required if `dot_plot=True` in the `show()` method.
+      @ out_dir <str> ["tmp"] : Directory for outputting intermediate files.
+
+
+    positional arguments of the `show()` method:
+      @ a_read <int|TRRead> : Read ID used in `db_fname` (int) or a `vca.types.TRRead` object.
+
+    optional arguments of the `show()` method:
+      @ b_read         <int|TRRead> [None]
+          : If specified, show not self-vs-self plots but `a_read`-vs-`b_read` plots.
+      @ dot_plot       <bool>       [False]
+          : If `True`, show a dot plot with Gepard. `gepard` must not be `None`.
+      @ alignment_plot <bool>       [True]
+          : If `True`, show an alignment plot.
+      @ plot_size      <int>        [800]
+          : Size of the alignment plot.
+      @ out_fname      <str>        [None]
+          : If specified, alignment plot is output to this file.
     """
     db_fname  : str
     las_fname : str
@@ -33,36 +59,47 @@ class ReadViewer:
     def __post_init__(self):
         run_command(f"mkdir -p {self.out_dir}")
 
-    def show(self, read_id=None, read=None,
-             dot_plot=False, alignment_plot=True, plot_size=800, out_html=None):
-        """Exactly one of the <read_id> (DAZZ_DB read ID) or <read_obj> (TRRead instance)
-        must be given."""
-        assert (read_id is None) ^ (read is None), "Specify one of <read_id> [int] or <read> [TRRead]"
-
-        # If <read_id> is specified, create a TRRead object using that.
-        if read_id is not None:
-            assert isinstance(read_id, int), "<read_id> must be int"
-            read = load_tr_reads(read_id, read_id, self.db_fname, self.las_fname, return_all=True)[0]
-        else:
-            assert isinstance(read, TRRead), "<read> must be TRRead"
+    def show(self, a_read, b_read=None, dot_plot=False, alignment_plot=True, plot_size=800, out_fname=None):
+        a_read = self.load_read(a_read)
+        if b_read is not None:
+            b_read = self.load_read(b_read)
 
         if dot_plot:
-            self._dot_plot(read)
+            self._dot_plot(a_read, b_read)
         if alignment_plot:
-            self._alignment_plot(read, plot_size, out_html)
+            if b_read is None:
+                self._alignment_plot_self(a_read, plot_size, out_fname)
+            else:
+                self._alignment_plot_other(a_read, b_read, plot_size, out_fname)
 
-    def _dot_plot(self, read):
-        assert self.gepard is not None, "<gepard> command string must be given"
-        assert read.id is not None, "<read>.id must not be None"
+    def load_read(self, read):
+        assert isinstance(read, (int, TRRead)), "Type of `read` must be int or TRRead"
 
+        if isinstance(read, int):   # read ID is specified
+            read = load_tr_reads(read, read, self.db_fname, self.las_fname, return_all=True)[0]
+        assert read.id is not None, "`read.id` must be specified"
+        return read
+
+    def read_to_fasta(self, read):
         out_fasta = f"{self.out_dir}/{read.id}.fasta"
         run_command(f"DBshow {self.db_fname} {read.id} > {out_fasta}")
-        DotPlot(self.gepard, self.out_dir).plot_fasta(out_fasta, out_fasta)
+        return out_fasta
 
-    def _alignment_plot(self, read, plot_size, out_html):
-        # <shapes> is a list of (non-interactive) line objects
-        shapes = [make_line(0, 0, read.length, read.length, "grey", 3)]   # read
-        traces = []
+    def _dot_plot(self, a_read, b_read):
+        assert self.gepard is not None, "`gepard` must be specified"
+
+        a_out_fasta = self.read_to_fasta(a_read)
+        if b_read is None:   # self-vs-self of `a_read`
+            DotPlot(self.gepard, self.out_dir).plot_fasta(a_out_fasta, a_out_fasta)
+        else:   # `a_read` vs `b_read`
+            b_out_fasta = self.read_to_fasta(b_read)
+            DotPlot(self.gepard, self.out_dir).plot_fasta(a_out_fasta, b_out_fasta)
+
+    def _alignment_plot_self(self, read, plot_size, out_fname):
+        traces, shapes = [], []
+
+        # Read as a shape on the diagonal
+        shapes += [make_line(0, 0, read.length, read.length, "grey", 3)]
 
         # Add shapes and traces of TR intervals and self alignments if exist
         if read.trs is not None and read.alignments is not None:
@@ -76,7 +113,7 @@ class ReadViewer:
                                       else "yellow"),   # abnormal slope (= noisy)
                                  width=3 if aln in inner_alignments else 1)
                        for aln in read.alignments]
-            
+
             # Create traces of start/end positions of the self alignments and TR intervals
             trace_start = make_scatter([aln.ab for aln in read.alignments],
                                        [aln.bb for aln in read.alignments],
@@ -93,14 +130,41 @@ class ReadViewer:
 
         # Add shapes and traces of TR units if exist
         if read.units is not None:
-            # Global sequence dissimilarity
-            c = ClusteringSeq([read.seq[unit.start:unit.end] for unit in read.units],
-                              revcomp=False, cyclic=False if read.synchronized else True)
-            c.calc_dist_mat()
+            logger.warn(f"Distances are inaccurate for unsynchronized units.")
+            d_to_c = np.vectorize(lambda x: rgb2hex(cm.Blues_r(x)))
+
+            # Sequence dissimilarity between the raw units
+            c_raw = ClusteringSeq(read.unit_seqs, revcomp=False, cyclic=False if read.synchronized else True)
+            c_raw.calc_dist_mat()
+            raw_dist = [[round(c_raw.s_dist_mat[i][j] * 100, 2) for j in range(len(read.units))]
+                        for i in range(len(read.units))]
+
+            # Sequence dissimilarity between repr units assigned to the units
+            if read.synchronized:   # units must be encoded with repr units if synchronized
+                c_repr = ClusteringSeq([read.repr_units[unit.repr_id] for unit in read.units],
+                                       revcomp=False, cyclic=False)
+                c_repr.calc_dist_mat()
+                repr_dist = [[round(c_repr.s_dist_mat[i][j] * 100, 2) for j in range(len(read.units))]
+                             for i in range(len(read.units))]
+                cols = d_to_c(c_repr.s_dist_mat / np.max(c_repr.s_dist_mat))
+            else:
+                repr_dist = [['-' for j in range(len(read.units))] for i in range(len(read.units))]
+                cols = d_to_c(c_raw.s_dist_mat / np.max(c_raw.s_dist_mat))
+
+            repr_ids = [unit.repr_id if unit.repr_id is not None else '-' for unit in read.units]
+            
+            unit_texts = [f"Unit {i} (repr={repr_ids[i]}) vs Unit {j} (repr={repr_ids[j]})<br>"
+                          f"{raw_dist[i][j]}% diff (raw), {repr_dist[i][j]}% diff (repr)"
+                          for i in range(len(read.units))
+                          for j in range(i + 1, len(read.units))]
+            unit_cols = [cols[i][j]
+                         for i in range(len(read.units))
+                         for j in range(i + 1, len(read.units))]
+
+            # Distance matrix
             shapes += [make_rect(read.units[i].start, read.units[j].start,
                                  read.units[i].end, read.units[j].end,
-                                 fill_col=rgb2hex(cm.YlGnBu(c.s_dist_mat[i][j] * (1 / np.max(c.s_dist_mat)))),
-                                 opacity=1.)
+                                 fill_col=cols[i][j])
                        for i in range(len(read.units)) for j in range(i + 1, len(read.units))]
 
             traces += [make_scatter([((read.units[i].start + read.units[i].end) / 2)
@@ -109,14 +173,7 @@ class ReadViewer:
                                     [((read.units[j].start + read.units[j].end) / 2)
                                      for i in range(len(read.units))
                                      for j in range(i + 1, len(read.units))],
-                                    text=[f"unit {i}(id={read.units[i].repr_id if read.synchronized else ''}) "
-                                          f"vs {j}(id={read.units[j].repr_id if read.synchronized else ''}) "
-                                          f"({round(c.s_dist_mat[i][j] * 100, 2)}% diff)"
-                                          for i in range(len(read.units))
-                                          for j in range(i + 1, len(read.units))],
-                                    col=[rgb2hex(cm.YlGnBu(c.s_dist_mat[i][j] * (1 / np.max(c.s_dist_mat))))
-                                         for i in range(len(read.units))
-                                         for j in range(i + 1, len(read.units))],
+                                    text=unit_texts, col=unit_cols,
                                     marker_size=3, show_scale=True, show_legend=False)]
             
             # Units on diagonal
@@ -132,21 +189,62 @@ class ReadViewer:
                                       text=[f"{i} " for i in range(len(read.units))],
                                       text_pos="bottom left", text_size=10, text_col="black", mode="text",
                                       name="TR unit")
-            er = EdlibRunner("global", revcomp=False, cyclic=False)
+
+            er_global = EdlibRunner("global", revcomp=False, cyclic=False)
+            diff_from_repr = [round(100 * er_global.align(read.repr_units[unit.repr_id],
+                                                          read.seq[unit.start:unit.end]).diff, 2)
+                              if read.synchronized else '-'
+                              for i, unit in enumerate(read.units)]
+
+            texts = [f"Unit {i} (repr={repr_ids[i]}; strand={unit.strand if read.synchronized else '-'})<br>"
+                     f"[{unit.start}:{unit.end}] ({unit.length} bp)<br>"
+                     f"{diff_from_repr[i]}% diff from repr unit"
+                     for i, unit in enumerate(read.units)]
+            
             trace_info = make_scatter([unit.start for unit in read.units],
                                       [unit.start for unit in read.units],
-                                      text=[f"unit {i} (id={unit.repr_id if read.synchronized else ''}; strand={unit.strand if read.synchronized else ''})<br>"
-                                            f"[{unit.start}:{unit.end}] ({unit.length} bp; "
-                                            f"{round(100 * (er.align(read.repr_units[unit.repr_id], read.seq[unit.start:unit.end] if unit.strand == 0 else revcomp_seq(read.seq[unit.start:unit.end])).diff), 2) if read.synchronized else '-'}% diff)"
-                                            for i, unit in enumerate(read.units)],
+                                      text=texts,
                                       col=([id_to_col[unit.repr_id] for unit in read.units]
                                            if read.synchronized else "black"),
                                       show_legend=False)
             traces += [trace_unit, trace_info]
 
         # Show plot
-        layout = make_layout(plot_size, plot_size, title=f"{read.id}",
+        layout = make_layout(plot_size, plot_size, title=f"Read {read.id}",
                              x_range=[-read.length * 0.05, read.length + 100],
                              y_range=[0, read.length],
                              x_grid=False, y_grid=False, y_reversed=True, shapes=shapes)
-        show_plot(traces, layout, out_html)
+        show_plot(traces, layout, out_fname)
+
+    def _alignment_plot_other(self, a_read, b_read, plot_size, out_fname):
+        assert a_read.units is not None and b_read.units is not None, "`[a|b]_read.units` must not be None"
+        assert a_read.synchronized and b_read.synchronized, "Both reads must be synchronized"
+
+        er_global = EdlibRunner("global", revcomp=False, cyclic=False)
+        raw_dist = np.array([[er_global.align(a_unit_seq, b_unit_seq).diff
+                              for b_unit_seq in b_read.unit_seqs]
+                             for a_unit_seq in a_read.unit_seqs],
+                            dtype=np.float32)
+        repr_dist = np.array([[er_global.align(a_read.repr_units[a_unit.repr_id],
+                                               b_read.repr_units[b_unit.repr_id]).diff
+                               for b_unit in b_read.units]
+                              for a_unit in a_read.units],
+                             dtype=np.float32)
+
+        text = [[f"Read {a_read.id} unit {i} (repr={a_read.units[i].repr_id}) vs "
+                 f"Read {b_read.id} unit {j} (repr={b_read.units[j].repr_id})<br>"
+                 f"{round(100 * raw_dist[i][j], 2)}% diff (raw), "
+                 f"{round(100 * repr_dist[i][j], 2)}% diff (repr)"
+                 for j in range(len(b_read.units))]
+                for i in range(len(a_read.units))]
+
+        trace = go.Heatmap(z=repr_dist, text=text, hoverinfo="text",
+                           colorscale="Blues", reversescale=True, zmin=0.)
+        
+        layout = make_layout(plot_size, plot_size,
+                             x_title=f"Read {a_read.id} (strand={a_read.strand})",
+                             y_title=f"Read {b_read.id} (strand={b_read.strand})",
+                             x_grid=False, y_grid=False, x_zeroline=False, y_zeroline=False, y_reversed=True)
+        layout["yaxis"]["scaleanchor"] = "x"
+
+        show_plot([trace], layout, out_fname)
