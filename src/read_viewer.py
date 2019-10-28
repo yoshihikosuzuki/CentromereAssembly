@@ -2,11 +2,10 @@ from dataclasses import dataclass
 import numpy as np
 import matplotlib.cm as cm
 from matplotlib.colors import rgb2hex, XKCD_COLORS
-import plotly.graph_objs as go
 from logzero import logger
 from BITS.clustering.seq import ClusteringSeq
+from BITS.seq.io import save_fasta
 from BITS.seq.align import EdlibRunner
-from BITS.seq.utils import revcomp_seq
 from BITS.seq.plot import DotPlot
 from BITS.plot.plotly import make_line, make_rect, make_scatter, make_layout, show_plot
 from BITS.util.proc import run_command
@@ -46,7 +45,7 @@ class TRReadViewer:
           : If `True`, show a dot plot with Gepard. `gepard` must not be `None`.
       @ alignment_plot <bool>       [True]
           : If `True`, show an alignment plot.
-      @ plot_size      <int>        [800]
+      @ plot_size      <int>        [700]
           : Size of the alignment plot.
       @ out_fname      <str>        [None]
           : If specified, alignment plot is output to this file.
@@ -59,7 +58,7 @@ class TRReadViewer:
     def __post_init__(self):
         run_command(f"mkdir -p {self.out_dir}")
 
-    def show(self, a_read, b_read=None, dot_plot=False, alignment_plot=True, plot_size=800, out_fname=None):
+    def show(self, a_read, b_read=None, dot_plot=False, alignment_plot=True, plot_size=700, out_fname=None):
         a_read = self.load_read(a_read)
         if b_read is not None:
             b_read = self.load_read(b_read)
@@ -82,7 +81,8 @@ class TRReadViewer:
 
     def read_to_fasta(self, read):
         out_fasta = f"{self.out_dir}/{read.id}.fasta"
-        run_command(f"DBshow {self.db_fname} {read.id} > {out_fasta}")
+        save_fasta({f"{read.id}{'' if read.strand == 0 else '_rc'}": read.seq},
+                   out_fasta, sort=False, width=100)
         return out_fasta
 
     def _dot_plot(self, a_read, b_read):
@@ -187,8 +187,8 @@ class TRReadViewer:
             trace_unit = make_scatter([unit.start for unit in read.units],
                                       [unit.start for unit in read.units],
                                       text=[f"{i} " for i in range(len(read.units))],
-                                      text_pos="bottom left", text_size=10, text_col="black", mode="text",
-                                      name="TR unit")
+                                      text_pos="bottom left", text_size=10, text_col="black",
+                                      mode="text", name="TR units")
 
             er_global = EdlibRunner("global", revcomp=False, cyclic=False)
             diff_from_repr = [round(100 * er_global.align(read.repr_units[unit.repr_id],
@@ -210,16 +210,58 @@ class TRReadViewer:
             traces += [trace_unit, trace_info]
 
         # Show plot
-        layout = make_layout(plot_size, plot_size, title=f"Read {read.id}",
+        layout = make_layout(plot_size * 1.05, plot_size, title=f"Read {read.id} (strand={read.strand})",
                              x_range=[-read.length * 0.05, read.length + 100],
                              y_range=[0, read.length],
                              x_grid=False, y_grid=False, y_reversed=True, shapes=shapes)
+        layout.update(dict(margin=dict(l=0, t=30, b=0)))
         show_plot(traces, layout, out_fname)
 
     def _alignment_plot_other(self, a_read, b_read, plot_size, out_fname):
         assert a_read.units is not None and b_read.units is not None, "`[a|b]_read.units` must not be None"
         assert a_read.synchronized and b_read.synchronized, "Both reads must be synchronized"
 
+        id_to_col = {}   # {repr_id: color}
+        for i, col in enumerate(XKCD_COLORS.values()):   # NOTE: up to ~1000 cols
+            id_to_col[i] = col
+
+        traces, shapes = [], []
+
+        # Unit encodings
+        er_global = EdlibRunner("global", revcomp=False, cyclic=False)
+        a_diff_from_repr = [round(100 * er_global.align(a_read.repr_units[unit.repr_id],
+                                                        a_read.seq[unit.start:unit.end]).diff, 2)
+                            for unit in a_read.units]
+        b_diff_from_repr = [round(100 * er_global.align(b_read.repr_units[unit.repr_id],
+                                                        b_read.seq[unit.start:unit.end]).diff, 2)
+                            for unit in b_read.units]
+
+        shapes += [make_line(0, -b_read.length * 0.01, a_read.length, -b_read.length * 0.01, "grey", 3),
+                   make_line(-a_read.length * 0.01, 0, -a_read.length * 0.01, b_read.length, "grey", 3)]
+        shapes += [make_line(unit.start, -b_read.length * 0.01, unit.end, -b_read.length * 0.01,
+                             id_to_col[unit.repr_id], 5)
+                   for unit in a_read.units]
+        shapes += [make_line(-a_read.length * 0.01, unit.start, -a_read.length * 0.01, unit.end,
+                             id_to_col[unit.repr_id], 5)
+                   for unit in b_read.units]
+        traces += [make_scatter([(unit.start + unit.end) / 2 for unit in a_read.units],
+                                [-b_read.length * 0.01 for unit in a_read.units],
+                                text=[f"Unit {i} (repr={unit.repr_id})"
+                                      f"[{unit.start}:{unit.end}] ({unit.length} bp)<br>"
+                                      f"{a_diff_from_repr[i]}% diff from repr unit"
+                                      for i, unit in enumerate(a_read.units)],
+                                col=[id_to_col[unit.repr_id] for unit in a_read.units],
+                                show_legend=False),
+                   make_scatter([-a_read.length * 0.01 for unit in b_read.units],
+                                [(unit.start + unit.end) / 2 for unit in b_read.units],
+                                text=[f"Unit {i} (repr={unit.repr_id})"
+                                      f"[{unit.start}:{unit.end}] ({unit.length} bp)<br>"
+                                      f"{b_diff_from_repr[i]}% diff from repr unit"
+                                      for i, unit in enumerate(b_read.units)],
+                                col=[id_to_col[unit.repr_id] for unit in b_read.units],
+                                show_legend=False)]
+
+        # Distance matrix
         er_global = EdlibRunner("global", revcomp=False, cyclic=False)
         raw_dist = np.array([[er_global.align(a_unit_seq, b_unit_seq).diff
                               for b_unit_seq in b_read.unit_seqs]
@@ -230,21 +272,39 @@ class TRReadViewer:
                                for b_unit in b_read.units]
                               for a_unit in a_read.units],
                              dtype=np.float32)
+        d_to_c = np.vectorize(lambda x: rgb2hex(cm.Blues_r(x)))
+        cols = d_to_c(repr_dist / np.max(repr_dist))
 
-        text = [[f"Read {a_read.id} unit {i} (repr={a_read.units[i].repr_id}) vs "
-                 f"Read {b_read.id} unit {j} (repr={b_read.units[j].repr_id})<br>"
-                 f"{round(100 * raw_dist[i][j], 2)}% diff (raw), "
-                 f"{round(100 * repr_dist[i][j], 2)}% diff (repr)"
-                 for j in range(len(b_read.units))]
-                for i in range(len(a_read.units))]
+        # Heatmap of the distance matrix
+        text = [f"Read {a_read.id} unit {i} (repr={a_read.units[i].repr_id}) vs "
+                f"Read {b_read.id} unit {j} (repr={b_read.units[j].repr_id})<br>"
+                f"{round(100 * raw_dist[i][j], 2)}% diff (raw), "
+                f"{round(100 * repr_dist[i][j], 2)}% diff (repr)"
+                for i in range(len(a_read.units)) for j in range(len(b_read.units))]
+        col = [cols[i][j] for i in range(len(a_read.units)) for j in range(len(b_read.units))]
 
-        trace = go.Heatmap(z=repr_dist, text=text, hoverinfo="text",
-                           colorscale="Blues", reversescale=True, zmin=0.)
-        
-        layout = make_layout(plot_size, plot_size,
+        shapes += [make_rect(a_read.units[i].start, b_read.units[j].start,
+                             a_read.units[i].end, b_read.units[j].end,
+                             fill_col=cols[i][j])
+                   for i in range(len(a_read.units)) for j in range(len(b_read.units))]
+
+        traces += [make_scatter([(a_read.units[i].start + a_read.units[i].end) / 2
+                                 for i in range(len(a_read.units))
+                                 for j in range(len(b_read.units))],
+                                 [(b_read.units[j].start + b_read.units[j].end) / 2
+                                  for i in range(len(a_read.units))
+                                  for j in range(len(b_read.units))],
+                                  text=text, col=col, marker_size=3,
+                                show_scale=True, show_legend=False)]
+
+        layout = make_layout(plot_size * 1.05, plot_size,
                              x_title=f"Read {a_read.id} (strand={a_read.strand})",
                              y_title=f"Read {b_read.id} (strand={b_read.strand})",
-                             x_grid=False, y_grid=False, x_zeroline=False, y_zeroline=False, y_reversed=True)
+                             x_range=(-a_read.length * 0.05, a_read.length),
+                             y_range=(0, b_read.length),
+                             x_grid=False, y_grid=False, x_zeroline=False, y_zeroline=False,
+                             y_reversed=True, shapes=shapes)
         layout["yaxis"]["scaleanchor"] = "x"
+        layout.update(dict(margin=dict(l=50, t=0, b=50)))
 
-        show_plot([trace], layout, out_fname)
+        show_plot(traces, layout, out_fname)
