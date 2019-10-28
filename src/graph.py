@@ -1,73 +1,97 @@
 import igraph as ig
 import plotly.graph_objs as go
 from BITS.plot.plotly import make_line, show_plot
+from vca.types import Overlap
+
+
+def convert_overlap(overlap):
+    """Add overlap type after adjusting `g_[start|end]` so that `strand(g.seq[g_start:g_end])`
+    is the overlapping sequence.
+    """
+    f_id, g_id, strand, f_start, f_end, f_len, g_start, g_end, g_len, diff = overlap.astuple()
+    assert f_id != g_id, "Self overlap is not allowed"
+
+    if strand == 1:
+        g_start, g_end = g_len - g_end, g_len - g_start
+
+    if f_start > 0:
+        if strand == 0:
+            if g_end == g_len:
+                #    f.B            f.E
+                #  f  -------------->
+                #  g     ------->
+                #      g.B      g.E
+                overlap_type = "contains"
+            else:
+                #    f.B       f.E
+                #  f  --------->
+                #  g      ---------->
+                #        g.B        g.E
+                overlap_type = "suffix-prefix"
+        else:
+            if g_start == 0:
+                #    f.B            f.E
+                #  f  -------------->
+                #  g     <-------
+                #      g.E      g.B
+                overlap_type = "contains"
+            else:
+                #    f.B       f.E
+                #  f  --------->
+                #  g      <----------
+                #        g.E        g.B
+                overlap_type = "suffix-suffix"
+    else:
+        if f_end == f_len:
+            overlap_type = "contained"
+        else:
+            if strand == 0:
+                if g_start == 0:
+                    overlap_type = "contains"
+                else:
+                    #        f.B        f.E
+                    #  f      ---------->
+                    #  g  --------->
+                    #    g.B       g.E
+                    overlap_type = "prefix-suffix"
+            else:
+                if g_end == g_len:
+                    overlap_type = "contains"
+                else:
+                    #        f.B       f.E
+                    #  f      --------->
+                    #  g  <---------
+                    #    g.E       g.B
+                    overlap_type = "prefix-prefix"
+
+    return (f_id, g_id, strand, f_start, f_end, f_len, g_start, g_end, g_len, diff, overlap_type)
 
 
 def overlaps_to_string_graph(overlaps):
-    """Construct a string graph from `overlaps` <List[Overlap]>."""
+    """Construct a string graph from `overlaps` <List[Overlap]>. All the overlaps given here are
+    treated as true overlaps. That is, filtering of the overlaps must be finished in advance.
+    """
+    # Modify `g_[start|end]` and list up contained reads
+    converted_overlaps = [convert_overlap(overlap) for overlap in overlaps]
+    contained_reads = set()
+    for overlap in converted_overlaps:
+        if overlap[-1] == "contains":
+            contained_reads.add(overlap[1])
+        elif overlap[-1] == "contained":
+            contained_reads.add(overlap[0])
+
+    # Convert an overlap to nodes and edges in the string graph
     edges = set()
-    for overlap in overlaps:
-        f_id, g_id, strand, f_start, f_end, f_len, g_start, g_end, g_len, diff = overlap.astuple()
-
-        # Convert g_[start|end] so that `strand(g.seq[g_start:g_end])` is the overlapping sequence.
-        if strand == 1:
-            g_start, g_end = g_len - g_end, g_len - g_start
-
-        # Determine the overlap type
-        if f_start > 0:
-            if strand == 0:
-                if g_end == g_len:
-                    #    f.B            f.E
-                    #  f  -------------->
-                    #  g     ------->
-                    #      g.B      g.E
-                    overlap_type = "contains"
-                else:
-                    #    f.B       f.E
-                    #  f  --------->
-                    #  g      ---------->
-                    #        g.B        g.E
-                    overlap_type = "suffix-prefix"
-            else:
-                if g_start == 0:
-                    #    f.B            f.E
-                    #  f  -------------->
-                    #  g     <-------
-                    #      g.E      g.B
-                    overlap_type = "contains"
-                else:
-                    #    f.B       f.E
-                    #  f  --------->
-                    #  g      <----------
-                    #        g.E        g.B
-                    overlap_type = "suffix-suffix"
-        else:
-            if f_end == f_len:
-                overlap_type = "contained"
-            else:
-                if strand == 0:
-                    if g_start == 0:
-                        overlap_type = "contains"
-                    else:
-                        #        f.B        f.E
-                        #  f      ---------->
-                        #  g  --------->
-                        #    g.B       g.E
-                        overlap_type = "prefix-suffix"
-                else:
-                    if g_end == g_len:
-                        overlap_type = "contains"
-                    else:
-                        #        f.B       f.E
-                        #  f      --------->
-                        #  g  <---------
-                        #    g.E       g.B
-                        overlap_type = "prefix-prefix"
-
-        # Convert an overlap to nodes and edges in the string graph
-        if overlap_type in ["contains", "contained"]:   # contained removal
+    for overlap in converted_overlaps:
+        f_id, g_id, strand, f_start, f_end, f_len, g_start, g_end, g_len, diff, overlap_type = overlap
+        
+        if f_id in contained_reads or g_id in contained_reads:
             continue
-        elif overlap_type == "suffix-prefix":
+
+        # TODO: best overlap logic?
+
+        assert overlap_type not in ("contains", "contained"), "Unremoved contained reads"
+        if overlap_type == "suffix-prefix":
             edges.update([(f"{g_id}:B", f"{f_id}:B", f_start, diff),
                           (f"{f_id}:E", f"{g_id}:E", g_len - g_end, diff)])
         elif overlap_type == "suffix-suffix":
