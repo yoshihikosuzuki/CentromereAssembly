@@ -6,7 +6,7 @@ from logzero import logger
 from BITS.clustering.seq import ClusteringSeq
 from BITS.seq.io import save_fasta
 from BITS.seq.align import EdlibRunner
-from BITS.seq.plot import DotPlot
+from BITS.seq.dot_plot import DotPlot
 from BITS.plot.plotly import make_line, make_rect, make_scatter, make_layout, show_plot
 from BITS.util.proc import run_command
 from .datruf.io import load_tr_reads
@@ -305,6 +305,6 @@ class TRReadViewer:
                              x_grid=False, y_grid=False, x_zeroline=False, y_zeroline=False,
                              y_reversed=True, shapes=shapes)
         layout["yaxis"]["scaleanchor"] = "x"
-        layout.update(dict(margin=dict(l=50, t=0, b=50)))
+        layout["margin"] = dict(l=50, t=0, b=50)
 
         show_plot(traces, layout, out_fname)

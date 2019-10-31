@@ -14,17 +14,20 @@ class DatanderRunner:
     In VCA, slightly customized datander is used (alignment will NOT be extended to the ends of a read).
 
     positional arguments:
-      - db_prefix <str> : Prefix of the DB file created with DAZZ_DB. DB file must be in CWD
+      @ db_prefix <str> : Prefix of the DB file created with DAZZ_DB put at CWD.
 
     optional arguments:
-      - read_type <str>       ["CLR"] : Input read type. Must be one of {"CLR", "CCS"}.
-      - n_core    <int>       [1]     : Number of cores used in datader
-      - scheduler <Scheduler> [None]  : Scheduler object
+      @ read_type <str>       ["CLR"]
+          : Input read type. Must be "CLR" or "CCS".
+      @ n_core    <int>       [1]
+          : Number of cores used in datader.
+      @ scheduler <Scheduler> [Scheduler("sge", "qsub", "all.q")]
+          : Scheduler object.
     """
     db_prefix    : str
     read_type    : str       = "CLR"
     n_core       : int       = 1
-    scheduler    : Scheduler = None
+    scheduler    : Scheduler = Scheduler("sge", "qsub", "all.q")
 
     def __post_init__(self):
         assert self.read_type in ("CLR", "CCS"), "Invalid read type"
@@ -35,7 +38,7 @@ class DatanderRunner:
         # Prepare a script to run datander
         # NOTE: error rate of CCS is normally much smaller than 10%, but here it accepts somewhat noisy
         #       self alignments so that sequence diversity of the tandem repeats can be captured.
-        options = "" if self.read_type == "CLR" else "-k20 -w5 -h50 -e.90 -s500"
+        options = "" if self.read_type == "CLR" else "-k20 -h50 -e.85 -s500"
         script = run_command(f"HPC.TANmask {options} -T{self.n_core} {self.db_prefix}.db")
         if db_to_n_blocks(f"{self.db_prefix}.db") > 1:
             script += '\n'.join([f"Catrack -v {self.db_prefix} tan",
