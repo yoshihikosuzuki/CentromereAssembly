@@ -2,6 +2,7 @@ import argparse
 from dataclasses import dataclass
 from multiprocessing import Pool
 import numpy as np
+from logzero import logger
 from BITS.seq.kmer import seq_to_forward_kmer_spectrum
 from BITS.util.io import save_pickle, load_pickle
 from BITS.util.proc import run_command
@@ -13,7 +14,7 @@ out_dir        = "ava_unsync"
 out_prefix     = "ovlps"
 scatter_prefix = "run_ava_unsync"
 gather_fname   = f"{out_dir}/gather.sh"
-log_fname      = f"{out_dir}/log"
+log_prefix      = f"{out_dir}/log"
 
 
 @dataclass(eq=False)
@@ -83,13 +84,13 @@ class UnsyncReadsOverlapper:
             jids.append(self.scheduler.submit(script,
                                               script_fname,
                                               job_name="ava_unsync",
-                                              log_fname=log_fname,
+                                              log_fname=f"{log_prefix}.{index}",
                                               n_core=self.n_core))
 
         self.scheduler.submit("sleep 1s",
                               gather_fname,
                               job_name="ava_unsync_gather",
-                              log_fname=log_fname,
+                              log_fname=log_prefix,
                               depend=jids,
                               wait=True)
 
@@ -110,9 +111,9 @@ if __name__ == "__main__":
     p.add_argument("offset", type=int)
     p.add_argument("k_for_unit", type=int)
     p.add_argument("k_for_spectrum", type=int)
-    p.add_argument("min_kmer_ovlp", type=int)
-    p.add_argument("max_init_diff", type=int)
-    p.add_argument("max_diff", type=int)
+    p.add_argument("min_kmer_ovlp", type=float)
+    p.add_argument("max_init_diff", type=float)
+    p.add_argument("max_diff", type=float)
     p.add_argument("index", type=int)
     args = p.parse_args()
 
@@ -122,7 +123,7 @@ if __name__ == "__main__":
                   for a_read in centromere_reads
                   for b_read in centromere_reads
                   if a_read.id < b_read.id]
-    unit_n = -(-len(centromere_reads) // args.n_distribute)
+    unit_n = -(-len(read_pairs) // args.n_distribute)
     read_pairs = read_pairs[args.index * unit_n:(args.index + 1) * unit_n]
 
     # Precompute k-mer spectrums of the reads

@@ -10,7 +10,7 @@ def _svs_overlap_forward(boundary_read, whole_read, boundary_start, boundary_end
                          k_for_unit, min_kmer_ovlp, max_init_diff,
                          read_forward_specs, read_boundary_specs):
     match_poss = set()
-    
+
     # Filter by k-mer spectrum
     boundary_spec = read_boundary_specs[(boundary_read.id, boundary_read.strand,
                                          boundary_start, boundary_end)]
@@ -50,12 +50,14 @@ def svs_overlap_forward(boundary_read, whole_read, offset, k_for_unit, min_kmer_
     match_poss = _svs_overlap_forward(boundary_read, whole_read,
                                       boundary_read.units[offset].start,
                                       boundary_read.units[offset + k_for_unit - 1].end,
-                                      k_for_unit, min_kmer_ovlp, max_init_diff)
+                                      k_for_unit, min_kmer_ovlp, max_init_diff,
+                                      read_forward_specs, read_boundary_specs)
     # suffix boundary
     match_poss.update(_svs_overlap_forward(boundary_read, whole_read,
                                            boundary_read.units[-offset - k_for_unit].start,
                                            boundary_read.units[-offset - 1].end,
-                                           k_for_unit, min_kmer_ovlp, max_init_diff))
+                                           k_for_unit, min_kmer_ovlp, max_init_diff,
+                                           read_forward_specs, read_boundary_specs))
     return match_poss
 
 
@@ -63,13 +65,25 @@ def svs_overlap(a_read, b_read, a_read_rc, b_read_rc,
                 offset, k_for_unit, min_kmer_ovlp, max_init_diff, max_diff,
                 read_forward_specs, read_boundary_specs):
     match_pos_a_to_b = set([(a_match_pos, b_match_pos, 0)
-                            for a_match_pos, b_match_pos in svs_overlap_forward(a_read, b_read)])
+                            for a_match_pos, b_match_pos
+                            in svs_overlap_forward(a_read, b_read, offset, k_for_unit,
+                                                   min_kmer_ovlp, max_init_diff,
+                                                   read_forward_specs, read_boundary_specs)])
     match_pos_b_to_a = set([(a_match_pos, b_match_pos, 0)
-                            for b_match_pos, a_match_pos in svs_overlap_forward(b_read, a_read)])
+                            for b_match_pos, a_match_pos
+                            in svs_overlap_forward(b_read, a_read, offset, k_for_unit,
+                                                   min_kmer_ovlp, max_init_diff,
+                                                   read_forward_specs, read_boundary_specs)])
     match_pos_ar_to_b = set([(a_read.length - a_match_pos, b_read.length - b_match_pos, 1)
-                             for a_match_pos, b_match_pos in svs_overlap_forward(a_read_rc, b_read)])
+                             for a_match_pos, b_match_pos
+                             in svs_overlap_forward(a_read_rc, b_read, offset, k_for_unit,
+                                                    min_kmer_ovlp, max_init_diff,
+                                                    read_forward_specs, read_boundary_specs)])
     match_pos_br_to_a = set([(a_match_pos, b_match_pos, 1)
-                             for b_match_pos, a_match_pos in svs_overlap_forward(b_read_rc, a_read)])
+                             for b_match_pos, a_match_pos
+                             in svs_overlap_forward(b_read_rc, a_read, offset, k_for_unit,
+                                                    min_kmer_ovlp, max_init_diff,
+                                                    read_forward_specs, read_boundary_specs)])
     match_poss = match_pos_a_to_b | match_pos_b_to_a | match_pos_ar_to_b | match_pos_br_to_a
 
     overlaps = set()
