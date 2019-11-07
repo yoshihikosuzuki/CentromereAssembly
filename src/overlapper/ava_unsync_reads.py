@@ -101,6 +101,15 @@ class UnsyncReadsOverlapper:
         save_pickle(sorted(merged), self.out_fname)
 
 
+def svs_overlap_mult(read_id_pairs,
+                     offset, k_for_unit, min_kmer_ovlp, max_init_diff, max_diff):
+    return [svs_overlap(reads[a_read_id], reads[b_read_id],
+                        rc_reads[a_read_id], rc_reads[b_read_id],
+                        offset, k_for_unit, min_kmer_ovlp, max_init_diff, max_diff,
+                        read_forward_specs, read_boundary_specs)
+            for a_read_id, b_read_id in read_id_pairs]
+
+
 if __name__ == "__main__":
     """Only for internal usage."""
     p = argparse.ArgumentParser()
@@ -117,22 +126,30 @@ if __name__ == "__main__":
     p.add_argument("index", type=int)
     args = p.parse_args()
 
-    # List up read pairs assigned to this job
+    # Load all reads
     centromere_reads = load_pickle(args.centromere_reads_fname)
-    read_pairs = [(a_read, b_read)
-                  for a_read in centromere_reads
-                  for b_read in centromere_reads
-                  if a_read.id < b_read.id]
-    unit_n = -(-len(read_pairs) // args.n_distribute)
-    read_pairs = read_pairs[args.index * unit_n:(args.index + 1) * unit_n]
+    centromere_reads_by_id = {read.id: read for read in centromere_reads}
 
-    # Precompute k-mer spectrums of the reads
-    reads = set([read for read_pair in read_pairs for read in read_pair])
-    rc_reads = {read.id: revcomp_read(read) for read in reads}
+    # List up read ID pairs assigned to this job
+    read_id_pairs = [(a_read.id, b_read.id)
+                     for a_read in centromere_reads
+                     for b_read in centromere_reads
+                     if a_read.id < b_read.id]
+    unit_n = -(-len(read_id_pairs) // args.n_distribute)
+    read_id_pairs = read_id_pairs[args.index * unit_n:(args.index + 1) * unit_n]
+
+    # Precompute reads involved in this job and k-mer spectrums of the reads
+    read_ids = set([read_id for read_id_pair in read_id_pairs for read_id in read_id_pair])
+    global reads
+    global rc_reads
+    global read_forward_specs
+    global read_boundary_specs
+    reads = {read_id: centromere_reads_by_id[read_id] for read_id in read_ids}
+    rc_reads = {read_id: revcomp_read(centromere_reads_by_id[read_id]) for read_id in read_ids}
     read_forward_specs = {read.id: seq_to_forward_kmer_spectrum(read.seq, k=args.k_for_spectrum)
-                          for read in reads}
+                          for read in reads.values()}
     read_boundary_specs = {}
-    for read in reads:
+    for read in reads.values():
         for strand in (0, 1):
             if strand == 1:
                 read = revcomp_read(read)
@@ -145,14 +162,17 @@ if __name__ == "__main__":
             read_boundary_specs[(read.id, strand, start, end)] = \
                 seq_to_forward_kmer_spectrum(read.seq[start:end], k=args.k_for_spectrum)
 
+    # Divide into read_pairs for each core
+    unit_n = -(-len(read_id_pairs) // args.n_core)
+    read_id_pairs_list = [(read_id_pairs[i * unit_n:(i + 1) * unit_n],
+                           args.offset, args.k_for_unit, args.min_kmer_ovlp,
+                           args.max_init_diff, args.max_diff)
+                          for i in range(args.n_core)]
+
     overlaps = set()
     with Pool(args.n_core) as pool:
-        for ret in pool.starmap(svs_overlap,
-                                [(a_read, b_read, rc_reads[a_read.id], rc_reads[b_read.id],
-                                  args.offset, args.k_for_unit, args.min_kmer_ovlp,
-                                  args.max_init_diff, args.max_diff,
-                                  read_forward_specs, read_boundary_specs)
-                                 for a_read, b_read in read_pairs]):
-            overlaps.update(ret)
+        for ret_list in pool.starmap(svs_overlap_mult, read_id_pairs_list):
+            for ret in ret_list:
+                overlaps.update(ret)
 
     save_pickle(sorted(overlaps), args.out_fname)

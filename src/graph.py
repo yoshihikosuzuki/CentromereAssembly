@@ -1,7 +1,6 @@
 import igraph as ig
 import plotly.graph_objs as go
-from BITS.plot.plotly import make_line, show_plot
-from vca.types import Overlap
+from BITS.plot.plotly import make_line, make_scatter, show_plot
 
 
 def convert_overlap(overlap):
@@ -182,16 +181,21 @@ def draw_string_graph(sg, reads_by_id=None, width=1000, height=1000, out_fname=N
                                 line=dict(width=2)))
 
     # Edge objects
-    edges = [e.tuple for e in sg.es]   # List[(source, target)]
-    trace_edge = go.Scatter(x=[x for s, t in edges for x in (pos[s][0], pos[t][0], None)],
-                            y=[x for s, t in edges for x in (pos[s][1], pos[t][1], None)],
-                            mode="lines", line=dict(width=0.5, color='black'))
-    shapes = [make_line(pos[s][0] + (pos[t][0] - pos[s][0]) * 0.7,
-                        pos[s][1] + (pos[t][1] - pos[s][1]) * 0.7,
-                        pos[t][0],
-                        pos[t][1],
-                        "black", 4, "below")
-              for s, t in edges]
+    trace_edge = make_scatter(x=[x for e in sg.es for x in (pos[e.source][0], pos[e.target][0], None)],
+                              y=[x for e in sg.es for x in (pos[e.source][1], pos[e.target][1], None)],
+                              mode="lines", col="black")
+    trace_annot = make_scatter(x=[(pos[e.source][0] + pos[e.target][0]) / 2 for e in sg.es],
+                               y=[(pos[e.source][1] + pos[e.target][1]) / 2 for e in sg.es],
+                               text=[f"{e['length']} bp, {e['diff']}% diff" for e in sg.es],
+                               mode="markers", marker_size=1, col="black")
+    shapes = [make_line(pos[e.source][0] + (pos[e.target][0] - pos[e.source][0]) * 0.7,
+                        pos[e.source][1] + (pos[e.target][1] - pos[e.source][1]) * 0.7,
+                        pos[e.target][0],
+                        pos[e.target][1],
+                        "black",
+                        max(e["length"] // 1000, 3),
+                        "below")
+              for e in sg.es]
 
     # Draw the graph
     layout = go.Layout(width=width, height=height,
@@ -205,6 +209,6 @@ def draw_string_graph(sg, reads_by_id=None, width=1000, height=1000, out_fname=N
                        hovermode='closest',
                        margin=go.layout.Margin(l=0, r=0, b=0, t=0),
                        showlegend=False)
-    show_plot([trace_edge, trace_node], layout, out_fname=out_fname)
+    show_plot([trace_edge, trace_annot, trace_node], layout, out_fname=out_fname)
 
     return pos
