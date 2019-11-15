@@ -1,8 +1,6 @@
 consed*/
 data/
-develop/
-work*
-work*/
+notebooks/
 *.ipynb
 
 

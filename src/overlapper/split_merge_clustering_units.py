@@ -562,13 +562,13 @@ class SplitMergeClustering:
         Given a clustering state <assignments>.
         """
         for t in range(n_iter):
-            #logger.debug(f"Round {t}")
+            logger.debug(f"Round {t}")
             for unit_id in unit_ids:
                 #logger.debug(assignments)
-                #old_assignment = assignments[unit_id]
+                old_assignment = assignments[unit_id]
                 assignments[unit_id] = self.gibbs_sampling_single(unit_id, cluster_ids, assignments)
-                #new_assignment = assignments[unit_id]
-                #logger.debug(f"Unit {unit_id}: {old_assignment} -> {new_assignment}")
+                new_assignment = assignments[unit_id]
+                logger.debug(f"Unit {unit_id}: {old_assignment} -> {new_assignment}")
         return assignments
     
     def do_gibbs(self, n_iter=2):
@@ -614,18 +614,18 @@ class SplitMergeClustering:
                 new_assignments[i] = random.choice((old_cluster_id, new_cluster_id))
                 #if self.log_p_mat[i][x] < self.log_p_mat[i][y]:
                 #    new_assignments[i] = new_cluster_id
-        #logger.debug(f"\nCurrent state:\n{self.assignments}\nProposed state (init):\n{new_assignments}")
+        logger.debug(f"\nCurrent state:\n{self.assignments}\nProposed state (init):\n{new_assignments}")
         
         # Re-assign each unit to one of the new clusters (= Gibbs sampling)
         self.gibbs_sampling(self.cluster_unit_ids(old_cluster_id),
                             (old_cluster_id, new_cluster_id),
                             new_assignments, n_iter=n_gibbs_iter)
-        #logger.debug(f"\nCurrent state:\n{self.assignments}\nProposed state (Gibbs):\n{new_assignments}")
+        logger.debug(f"\nCurrent state:\n{self.assignments}\nProposed state (Gibbs):\n{new_assignments}")
         
         # Compare the probability of the current state and the proposed state
         p_current = self.log_prob_clustering()
         p_new = self.log_prob_clustering(new_assignments)
-        #logger.debug(f"Current prob: {int(p_current)}, Proposed prob: {int(p_new)}")
+        logger.debug(f"Current prob: {int(p_current)}, Proposed prob: {int(p_new)}")
         if p_current < p_new:
             #logger.debug("Accepted")
             self.assignments = new_assignments

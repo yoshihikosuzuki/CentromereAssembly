@@ -58,7 +58,8 @@ class TRReadViewer:
     def __post_init__(self):
         run_command(f"mkdir -p {self.out_dir}")
 
-    def show(self, a_read, b_read=None, dot_plot=False, alignment_plot=True, plot_size=700, out_fname=None):
+    def show(self, a_read, b_read=None, dot_plot=False, alignment_plot=True, dist="repr",
+             plot_size=700, out_fname=None):
         a_read = self.load_read(a_read)
         if b_read is not None:
             b_read = self.load_read(b_read)
@@ -69,7 +70,7 @@ class TRReadViewer:
             if b_read is None:
                 self._alignment_plot_self(a_read, plot_size, out_fname)
             else:
-                self._alignment_plot_other(a_read, b_read, plot_size, out_fname)
+                self._alignment_plot_other(a_read, b_read, plot_size, out_fname, dist)
 
     def load_read(self, read):
         assert isinstance(read, (int, TRRead)), "Type of `read` must be int or TRRead"
@@ -217,9 +218,10 @@ class TRReadViewer:
         layout.update(dict(margin=dict(l=0, t=30, b=0)))
         show_plot(traces, layout, out_fname)
 
-    def _alignment_plot_other(self, a_read, b_read, plot_size, out_fname):
+    def _alignment_plot_other(self, a_read, b_read, plot_size, out_fname, dist="repr"):
         assert a_read.units is not None and b_read.units is not None, "`[a|b]_read.units` must not be None"
         assert a_read.synchronized and b_read.synchronized, "Both reads must be synchronized"
+        assert dist in ("repr", "raw"), "Invalid `dist` option"
 
         id_to_col = {}   # {repr_id: color}
         for i, col in enumerate(XKCD_COLORS.values()):   # NOTE: up to ~1000 cols
@@ -273,7 +275,8 @@ class TRReadViewer:
                               for a_unit in a_read.units],
                              dtype=np.float32)
         d_to_c = np.vectorize(lambda x: rgb2hex(cm.Blues_r(x)))
-        cols = d_to_c(repr_dist / np.max(repr_dist))
+        cols = (d_to_c(repr_dist / np.max(repr_dist)) if dist == "repr"
+                else d_to_c(raw_dist / np.max(raw_dist)))
 
         # Heatmap of the distance matrix
         text = [f"Read {a_read.id} unit {i} (repr={a_read.units[i].repr_id}) vs "
