@@ -1,5 +1,5 @@
 from collections import Counter
-from BITS.plot.plotly import make_scatter, make_layout, show_plot
+from BITS.plot.plotly import make_hist, make_scatter, make_layout, show_plot
 
 
 def read_to_ulen_comp(read):
@@ -27,10 +27,41 @@ def scatter_ulen_comps(reads):
                           y_title="Total length of the units of the length [bp]"))
 
 
-def show_ulen_dist(read):
-    """Draw a positional distribution of unit lengths on `read`."""
+def plot_ulen_transition(read):
     show_plot([make_scatter([unit.start for unit in read.units],
                             [unit.length for unit in read.units],
                             show_legend=False)],
-               make_layout(x_title="Start position",
-                           y_title="Unit length [bp]"))
+               make_layout(title=f"Read {read.id} (strand={read.strand})",
+                           x_title="Start position on the read",
+                           y_title="Unit length [bp]",
+                           x_range=(0, read.length)))
+
+
+def reads_to_ulens_count(reads):
+    return Counter([unit.length for read in reads for unit in read.units])
+
+
+def reads_to_ulens_tot(reads):
+    ulens = reads_to_ulens_count(reads)
+    return sorted([(ulen, ulen * count) for ulen, count in ulens.items()])
+
+
+def plot_ulens_count(reads, min_ulen=50):
+    show_plot(make_hist([unit.length for read in reads for unit in read.units
+                         if unit.length >= min_ulen],
+                        bin_size=1, show_legend=False),
+              make_layout(title=f"Unit count for each unit length (>50 bp unit)",
+                          x_title="Unit length [bp]",
+                          y_title="Unit count",
+                          x_range=(1, None)))
+
+
+def plot_ulens_tot(reads):
+    ulens = reads_to_ulens_tot(reads)
+    show_plot(make_scatter([x[0] for x in ulens],
+                           [x[1] for x in ulens],
+                           mode="lines", show_legend=False),
+              make_layout(title="Total length for each unit length",
+                          x_title="Unit length [bp]",
+                          y_title="Unit length * unit count [bp]",
+                          x_range=(1, None)))
