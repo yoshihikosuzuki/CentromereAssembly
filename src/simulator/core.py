@@ -16,7 +16,7 @@ def gen_unique_seq(length):
     return ''.join(random.choices(nucleotides, k=length))
 
 
-def gen_edit_script(length, edit_weights):
+def gen_stochastic_edit_script(length, edit_weights):
     """Generate a random edit script whose query length is `length`
     based on the weights of the edit operations `edit_weights`."""
     s = ""
@@ -27,6 +27,20 @@ def gen_edit_script(length, edit_weights):
         if c in set(['=', 'X', 'D']):
             query_len += 1
     return s
+
+
+def gen_deterministic_edit_script(length, edit_weights):
+    """Generate an edit script which has each edit operation whose number is exactly proportional
+    to `edit_weights`."""
+    # Calculate the number of each edit operation to be inserted
+    weight_sum = sum(edit_weights)
+    edit_nums = [int(length * weight / weight_sum) for weight in edit_weights[1:]]   # for X, I, D
+    # Determine the positions of the edit operations to be inserted
+    s = ('X' * edit_nums[0]
+         + 'I' * edit_nums[1]
+         + 'D' * edit_nums[2]
+         + '=' * (length - edit_nums[0] - edit_nums[2]))
+    return ''.join(random.sample(s, len(s)))
 
 
 def apply_edit_script(true_seq, edit_script):
@@ -48,7 +62,13 @@ def apply_edit_script(true_seq, edit_script):
     return obs_seq
 
 
-def mutate_seq(true_seq, edit_weights):
-    """Insert random mutations to `true_seq` given a list of weights (= probabilities)
+def sequence_seq(true_seq, edit_weights):
+    """Insert stochastic errors to `true_seq` given a list of weights (= probabilities)
     for each edit operation, i.e., {=, X, I, D} in this order."""
-    return apply_edit_script(true_seq, gen_edit_script(len(true_seq), edit_weights))
+    return apply_edit_script(true_seq, gen_stochastic_edit_script(len(true_seq), edit_weights))
+
+
+def mutate_seq(true_seq, edit_weights):
+    """Insert deterministic mutations to `true_seq` given a list of weights (= proportions)
+    into random positions."""
+    return apply_edit_script(true_seq, gen_deterministic_edit_script(len(true_seq), edit_weights))
