@@ -27,14 +27,15 @@ def scatter_ulen_comps(reads):
                           y_title="Total length of the units of the length [bp]"))
 
 
-def plot_ulen_transition(read):
+def plot_ulen_transition(read, out_fname=None):
     show_plot([make_scatter([unit.start for unit in read.units],
                             [unit.length for unit in read.units],
                             show_legend=False)],
                make_layout(title=f"Read {read.id} (strand={read.strand})",
                            x_title="Start position on the read",
                            y_title="Unit length [bp]",
-                           x_range=(0, read.length)))
+                           x_range=(0, read.length)),
+              out_fname=out_fname)
 
 
 def reads_to_ulens_count(reads):
@@ -56,7 +57,7 @@ def plot_ulens_count(reads, min_ulen=50):
                           x_range=(1, None)))
 
 
-def plot_ulens_tot(reads):
+def plot_ulens_tot(reads, x_range=(1, None), out_fname=None):
     ulens = reads_to_ulens_tot(reads)
     show_plot(make_scatter([x[0] for x in ulens],
                            [x[1] for x in ulens],
@@ -64,4 +65,4 @@ def plot_ulens_tot(reads):
               make_layout(title="Total length for each unit length",
                           x_title="Unit length [bp]",
                           y_title="Unit length * unit count [bp]",
-                          x_range=(1, None)))
+                          x_range=x_range), out_fname=out_fname)

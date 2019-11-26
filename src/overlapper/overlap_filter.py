@@ -60,7 +60,10 @@ def best_overlaps_per_pair(overlaps):
     ovlp_by_pair = {}
     for o in overlaps:
         read_pair = (o.a_read_id, o.b_read_id, o.strand)
-        if read_pair not in ovlp_by_pair or o.diff < ovlp_by_pair[read_pair].diff:
+        if (read_pair not in ovlp_by_pair
+            or o.diff < ovlp_by_pair[read_pair].diff
+            or (o.diff == ovlp_by_pair[read_pair].diff
+                and o.a_end - o.a_start > ovlp_by_pair[read_pair].a_end - ovlp_by_pair[read_pair].a_start)):
             ovlp_by_pair[read_pair] = o
     best_overlaps = sorted(ovlp_by_pair.values())
     logger.info(f"#Overlaps: {len(overlaps)} -> {len(best_overlaps)}")

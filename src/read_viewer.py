@@ -91,10 +91,10 @@ class TRReadViewer:
 
         a_out_fasta = self.read_to_fasta(a_read)
         if b_read is None:   # self-vs-self of `a_read`
-            DotPlot(self.gepard, self.out_dir).plot_fasta(a_out_fasta, a_out_fasta)
+            DotPlot(self.gepard, out_dir=self.out_dir).plot_fasta(a_out_fasta, a_out_fasta)
         else:   # `a_read` vs `b_read`
             b_out_fasta = self.read_to_fasta(b_read)
-            DotPlot(self.gepard, self.out_dir).plot_fasta(a_out_fasta, b_out_fasta)
+            DotPlot(self.gepard, out_dir=self.out_dir).plot_fasta(a_out_fasta, b_out_fasta)
 
     def _alignment_plot_self(self, read, plot_size, out_fname):
         traces, shapes = [], []
@@ -294,11 +294,15 @@ class TRReadViewer:
         traces += [make_scatter([(a_read.units[i].start + a_read.units[i].end) / 2
                                  for i in range(len(a_read.units))
                                  for j in range(len(b_read.units))],
-                                 [(b_read.units[j].start + b_read.units[j].end) / 2
-                                  for i in range(len(a_read.units))
-                                  for j in range(len(b_read.units))],
-                                  text=text, col=col, marker_size=3,
-                                show_scale=True, show_legend=False)]
+                                [(b_read.units[j].start + b_read.units[j].end) / 2
+                                 for i in range(len(a_read.units))
+                                 for j in range(len(b_read.units))],
+                                text=text,
+                                col=[100 * (repr_dist[i][j] if dist == "repr" else raw_dist[i][j])
+                                     for i in range(len(a_read.units))
+                                     for j in range(len(b_read.units))],
+                                marker_size=3,
+                                col_scale="Blues", reverse_scale=True, show_scale=True, show_legend=False)]
 
         layout = make_layout(plot_size * 1.05, plot_size,
                              x_title=f"Read {a_read.id} (strand={a_read.strand})",

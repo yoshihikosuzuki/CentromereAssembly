@@ -1,4 +1,6 @@
 import random
+from BITS.seq.utils import revcomp_seq
+
 random.seed(111)
 
 nucleotides = ('a', 'c', 'g', 't')
@@ -72,3 +74,21 @@ def mutate_seq(true_seq, edit_weights):
     """Insert deterministic mutations to `true_seq` given a list of weights (= proportions)
     into random positions."""
     return apply_edit_script(true_seq, gen_deterministic_edit_script(len(true_seq), edit_weights))
+
+
+def sample_read(genome_seq, read_length=10000, error_rate=1):
+    # Randomly choose sampling position
+    pos = random.randint(0, len(genome_seq) - 1)
+    # Determine strand
+    strand = random.randint(0, 1)
+    if strand == 0:
+        read_seq = genome_seq[pos:min(pos + read_length, len(genome_seq))]
+    else:
+        read_seq = revcomp_seq(genome_seq[max(pos - read_length, 0):pos + 1])
+    # Load sequencing error
+    return sequence_seq(read_seq, (100 - error_rate, error_rate / 3, error_rate / 3, error_rate / 3))
+
+
+def sample_reads(genome_seq, depth=10, read_length=10000, error_rate=1):
+    return [sample_read(genome_seq, read_length=read_length, error_rate=error_rate)
+            for i in range(len(genome_seq) * depth // read_length)]

@@ -1,6 +1,7 @@
 consed*/
 data/
 notebooks/
+assets/
 *.ipynb
 
 

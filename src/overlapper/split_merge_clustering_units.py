@@ -47,6 +47,7 @@ class SplitMergeClusteringOverlapper:
     centromere_reads_fname: str       = "centromere_reads.pkl"
     overlaps_fname        : str       = "centromere_reads_unsync_overlaps.pkl"
     out_fname             : str       = "labeled_reads.pkl"
+    ward_th               : float     = 0.01
 
     def __post_init__(self):
         run_command(f"mkdir -p {out_dir}; rm -f {out_dir}/*")
@@ -63,6 +64,7 @@ class SplitMergeClusteringOverlapper:
                                         out_fname,
                                         self.n_distribute,
                                         self.n_core,
+                                        self.ward_th,
                                         i]))
         
             jids.append(self.scheduler.submit(script,
@@ -416,8 +418,8 @@ class SplitMergeClustering:
         self.const_gibbs = -np.log10(self.N - 1 + self.alpha)
         
         # Compute consensus unit of the whole units so that comparing clusters can be easy
-        self.template_unit = self.cluster_cons(0)
-        
+        #self.template_unit = self.cluster_cons(0)
+
     def show_clustering(self):
         er = EdlibRunner("global", revcomp=False)
         for cluster_id in np.unique(self.assignments):
@@ -562,13 +564,13 @@ class SplitMergeClustering:
         Given a clustering state <assignments>.
         """
         for t in range(n_iter):
-            logger.debug(f"Round {t}")
+            #logger.debug(f"Round {t}")
             for unit_id in unit_ids:
                 #logger.debug(assignments)
-                old_assignment = assignments[unit_id]
+                #old_assignment = assignments[unit_id]
                 assignments[unit_id] = self.gibbs_sampling_single(unit_id, cluster_ids, assignments)
-                new_assignment = assignments[unit_id]
-                logger.debug(f"Unit {unit_id}: {old_assignment} -> {new_assignment}")
+                #new_assignment = assignments[unit_id]
+                #logger.debug(f"Unit {unit_id}: {old_assignment} -> {new_assignment}")
         return assignments
     
     def do_gibbs(self, n_iter=2):
@@ -586,6 +588,7 @@ class SplitMergeClustering:
         """Propose a new state by choosing random two units."""
         p_old = self.log_prob_clustering()
         for t in range(n_iter):
+            logger.debug(f"Proposal {t}/{n_iter}")
             x, y = random.sample(list(range(self.N)), 2)
             #logger.debug(f"Selected: {x}({self.assignments[x]}) and {y}({self.assignments[y]})")
             if self.assignments[x] == self.assignments[y]:
@@ -687,7 +690,7 @@ def smc_outputs_to_reads(smc, sync_reads):
     return labeled_reads
 
 
-def filter_overlaps_by_smc(sync_reads, read_id, plot=False):
+def filter_overlaps_by_smc(sync_reads, ward_th, read_id, plot=False):
     logger.debug(f"Start read {read_id}")
 
     smc = SplitMergeClustering(*sync_reads_to_smc_inputs(sync_reads), alpha=1, read_id=read_id)
@@ -697,7 +700,7 @@ def filter_overlaps_by_smc(sync_reads, read_id, plot=False):
     c.calc_dist_mat()
     if plot:
         c.show_dendrogram()
-    c.cluster_hierarchical(threshold=0.01)
+    c.cluster_hierarchical(threshold=ward_th)
     # TODO: remove single "outlier" units (probably from regions covered only once by these reads right here)
 
     smc.assignments = c.assignment
@@ -709,7 +712,7 @@ def filter_overlaps_by_smc(sync_reads, read_id, plot=False):
     count = 0
     inf_count = 0
     while count < 2:
-        smc.do_proposal(smc.n_clusters() * 100)
+        smc.do_proposal(max(smc.n_clusters() * 10, 100))
         smc.do_gibbs()
         p = smc.log_prob_clustering()
 
@@ -740,9 +743,9 @@ def filter_overlaps_by_smc(sync_reads, read_id, plot=False):
     return smc_outputs_to_reads(smc, sync_reads)
 
 
-def run_single(read_id, overlaps, centromere_reads_by_id):
+def run_single(read_id, overlaps, centromere_reads_by_id, ward_th):
     sync_reads = synchronize_reads(overlaps, read_id, centromere_reads_by_id)
-    labeled_reads = filter_overlaps_by_smc(sync_reads, read_id)
+    labeled_reads = filter_overlaps_by_smc(sync_reads, ward_th, read_id)
     return (read_id, labeled_reads)
 
 
@@ -753,6 +756,7 @@ if __name__ == "__main__":
     p.add_argument("out_fname", type=str)
     p.add_argument("n_distribute", type=int)
     p.add_argument("n_core", type=int)
+    p.add_argument("ward_th", type=float)
     p.add_argument("index", type=int)
     args = p.parse_args()
 
@@ -765,7 +769,9 @@ if __name__ == "__main__":
     unit_n = -(-len(read_ids) // args.n_distribute)
     read_ids = read_ids[args.index * unit_n:(args.index + 1) * unit_n]
     with NoDaemonPool(args.n_core) as pool:
-        labeled_reads = list(pool.starmap(run_single, [(read_id, overlaps, centromere_reads_by_id)
+        # TODO: change to global variables same as ava_unsync
+        labeled_reads = list(pool.starmap(run_single, [(read_id, overlaps, centromere_reads_by_id,
+                                                        args.ward_th)
                                                        for read_id in read_ids]))
 
     save_pickle(labeled_reads, args.out_fname)

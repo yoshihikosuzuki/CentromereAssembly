@@ -85,16 +85,19 @@ class TRReadFilter:
         logger.info(f"{len(tr_reads)} TR reads -> {len(centromere_reads)} centromere reads")
         return centromere_reads
     
-    def hist_unit_lengths(self, tr_reads, x_min, x_max, log_scale=False):
+    def hist_unit_lengths(self, tr_reads, x_min, x_max, bin_size=1,
+                          width=None, height=None, x_range=None, y_range=None,
+                          log_scale=False, out_fname=None):
         """Show histogram of the unit length. Counts are stratified by the total length of
         `min_ulen`-`max_ulen` bp units in a read. Only [`x_min`..`x_max`] bp units are plotted.
         """
         # Stacked histogram of unit length for each list of stratified reads
         stratified_reads = stratify_by_covered_length(tr_reads, self.min_ulen, self.max_ulen)
         traces = [make_hist([ulen for read in sreads for ulen in read_to_ulens(read, x_min, x_max)],
-                            bin_size=1,
+                            bin_size=bin_size,
                             name=f"{covered_kb}-{covered_kb + 1}kb-covered reads")
-                  for covered_kb, sreads in sorted(stratified_reads.items())]
+                  for covered_kb, sreads in sorted(stratified_reads.items())
+                  if covered_kb >= self.min_covered_length // 1000]
     
         # Show peak intervals if given
         shapes = []
@@ -104,14 +107,16 @@ class TRReadFilter:
                        for peak_intvl in self.peak_intvls.components
                        for start, end in peak_intvl]
 
-        layout = make_layout(title=(f"Stratified by reads according to the total length of "
+        layout = make_layout(width=width, height=height,
+                             title=(f"Stratified by reads according to the total length of "
                                     f"units of {self.min_ulen}-{self.max_ulen} bp"),
                              x_title="Unit length [bp]", y_title="Unit count",
+                             x_range=x_range, y_range=y_range,
                              shapes=shapes)
         layout["barmode"] = "stack"
         if log_scale:
             layout["yaxis_type"] = "log"
-        show_plot(traces, layout)
+        show_plot(traces, layout, out_fname=out_fname)
 
     def find_peak_ulens(self, tr_reads, show_density=True):
         # Aggregate all unit lengths of [`min_ulen`..`max_ulen`] bp from reads covered

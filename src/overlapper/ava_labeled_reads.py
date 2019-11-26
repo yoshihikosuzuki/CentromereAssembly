@@ -62,7 +62,7 @@ def svs_labeled_reads(a_read, b_read, repr_alignments,
     return overlaps
 
 
-def _ava_labeled_reads(labeled_reads):
+def _ava_labeled_reads(labeled_reads, min_n_units=3, max_units_diff=0.01, max_seq_diff=0.02):
     # Precompute all-vs-all global alignments between the representative units
     for i in range(len(labeled_reads) - 1):
         assert labeled_reads[i].repr_units == labeled_reads[i + 1].repr_units, \
@@ -81,13 +81,20 @@ def _ava_labeled_reads(labeled_reads):
         for read_j in labeled_reads:
             if read_i.id >= read_j.id:
                 continue
-            overlaps.update(svs_labeled_reads(read_i, read_j, repr_alignments))
+            overlaps.update(svs_labeled_reads(read_i, read_j, repr_alignments,
+                                              min_n_units=min_n_units,
+                                              max_units_diff=max_units_diff,
+                                              max_seq_diff=max_seq_diff))
     return overlaps
 
 
-def ava_labeled_reads(labeled_reads_by_id, n_core=1):
+def ava_labeled_reads(labeled_reads_by_id, n_core=1, min_n_units=3, max_units_diff=0.01, max_seq_diff=0.02):
     overlaps = set()
     with Pool(n_core) as pool:
-        for ovlps in pool.map(_ava_labeled_reads, list(labeled_reads_by_id.values())):
+        for ovlps in pool.starmap(_ava_labeled_reads, [(reads,
+                                                        min_n_units,
+                                                        max_units_diff,
+                                                        max_seq_diff)
+                                                       for reads in labeled_reads_by_id.values()]):
             overlaps.update(ovlps)
     return sorted(overlaps)
