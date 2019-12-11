@@ -1,8 +1,8 @@
 consed*/
+assets/
 data/
 notebooks/
-assets/
-*.ipynb
+jupyter_nbs_for_submission_1210*
 
 
 .DS_Store

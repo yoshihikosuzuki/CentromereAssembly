@@ -2,6 +2,8 @@
 
 A bundle of modules for centromere assembly only with PacBio long reads.
 
+Jupyter Notebooks used for Drosophila CCS reads are available [here](https://mlab.cb.k.u-tokyo.ac.jp/~yoshihiko_s/jupyter_nbs_for_submission_1210.zip). Note that our implementation currently depends on Consed, an unpublished work by Dr. Gene Myers, to compute consensus sequences, and thus one cannot directly run these codes. We will prepare alternative codes for it soon.
+
 ## Requirements
 
 * Python3
