@@ -1,32 +1,8 @@
 from dataclasses import dataclass, astuple
 from typing import List, Dict
 import numpy as np
+from BITS.seq.types import Read
 from BITS.seq.utils import revcomp_seq
-
-
-@dataclass(eq=False)
-class Read:
-    """Class for a read.
-
-    positional instance variables:
-      @ seq <str>
-
-    optional instance variables:
-      @ id     <int> [None] : DAZZ_DB id
-      @ name   <str> [None] : Fasta header
-      @ strand <int> [0]    : 0 (forward) or 1 (revcomp)
-    """
-    seq   : str
-    id    : int = None
-    name  : str = None
-    strand: int = 0
-
-    def __post_init__(self):
-        assert self.strand == 0 or self.strand == 1, "Strand must be 0 or 1"
-
-    @property
-    def length(self):
-        return len(self.seq)
 
 
 @dataclass(frozen=True)
@@ -137,37 +113,3 @@ def revcomp_read(read):
                   synchronized=read.synchronized,
                   repr_units=read.repr_units,
                   quals=None if read.quals is None else np.flip(read.quals))
-
-
-@dataclass(frozen=True, order=True)
-class Overlap:
-    """Class for an overlap between two reads.
-
-    positional instance variables:
-      @ a_read_id <int>   : `a_read[a_start:a_end]` is the overlapping sequence.
-      @ b_read_id <int>   : `strand(b_read)[b_start:b_end]` is the overlapping sequence.
-      @ strand    <int>   : 0 (forward) or 1 (revcomp)
-      @ a_start   <int>   : Start position of the overlap on `a_read`. 0-indexed.
-      @ a_end     <int>   : End position on `a_read`.
-      @ a_len     <int>   : Length of the `a_read`.
-      @ b_start   <int>   : NOTE: `[a|b]_[start|end]` are always defined for FORWARD overlapping sequences.
-      @ b_end     <int>   : 
-      @ b_len     <int>   : 
-      @ diff      <float> : Percent dissimilarity at the overlap.
-    """
-    a_read_id: int
-    b_read_id: int
-    strand   : int
-    a_start  : int
-    a_end    : int
-    a_len    : int
-    b_start  : int
-    b_end    : int
-    b_len    : int
-    diff     : float
-
-    def __post_init__(self):
-        assert self.strand == 0 or self.strand == 1, "`strand` must be 0 or 1"
-
-    def astuple(self):
-        return astuple(self)
