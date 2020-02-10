@@ -85,7 +85,7 @@ def overlaps_to_string_graph(overlaps):
     edges = set()
     for overlap in converted_overlaps:
         f_id, g_id, strand, f_start, f_end, f_len, g_start, g_end, g_len, diff, overlap_type = overlap
-        
+
         if f_id in contained_reads or g_id in contained_reads:
             continue
 
@@ -126,13 +126,15 @@ def reduce_transitive_edges(sg, fuzz=100):
 
         for oe in oes:
             if v_mark[oe.target] == "inplay":
-                ooes = sorted(sg.es.select(_source=oe.target), key=lambda x: x["length"])
+                ooes = sorted(sg.es.select(_source=oe.target),
+                              key=lambda x: x["length"])
                 for ooe in ooes:
                     if oe["length"] + ooe["length"] <= longest and v_mark[ooe.target] == "inplay":
                         v_mark[ooe.target] = "eliminated"
 
         for oe in oes:
-            ooes = sorted(sg.es.select(_source=oe.target), key=lambda x: x["length"])
+            ooes = sorted(sg.es.select(_source=oe.target),
+                          key=lambda x: x["length"])
             if len(ooes) > 1:
                 shortest = ooes[0].target
                 if v_mark[shortest] == "inplay":
@@ -170,7 +172,7 @@ def trace_edges(e, sg, direction, traced_edges=None):
     in_edges = sg.incident(e.tuple[0 if direction == "up" else 1], mode="IN")
     out_edges = sg.incident(e.tuple[0 if direction == "up" else 1], mode="OUT")
     if (len(in_edges if direction == "up" else out_edges) != 1
-        or len(out_edges if direction == "up" else in_edges) > 1):
+            or len(out_edges if direction == "up" else in_edges) > 1):
         return traced_edges
 
     next_edge = sg.es[in_edges[0] if direction == "up" else out_edges[0]]
@@ -232,8 +234,9 @@ def draw_string_graph(sg, reads_by_id=None, width=1000, height=1000, out_fname=N
     cover_rates = None
     if reads_by_id is not None:
         reads = [reads_by_id[int(v["name"].split(':')[0])] for v in sg.vs]
-        cover_rates = [sum([unit.length for unit in read.units]) / read.length for read in reads]
-        
+        cover_rates = [sum([unit.length for unit in read.units]
+                           ) / read.length for read in reads]
+
     trace_node = go.Scatter(x=[pos[v.index][0] for v in sg.vs],
                             y=[pos[v.index][1] for v in sg.vs],
                             text=[f"{v['name']}<br>{round(cover_rates[v.index] * 100, 1) if cover_rates is not None else '-'}% covered"
@@ -276,6 +279,7 @@ def draw_string_graph(sg, reads_by_id=None, width=1000, height=1000, out_fname=N
                        hovermode='closest',
                        margin=go.layout.Margin(l=0, r=0, b=0, t=0),
                        showlegend=False)
-    show_plot([trace_edge, trace_annot, trace_node], layout, out_fname=out_fname)
+    show_plot([trace_edge, trace_annot, trace_node],
+              layout, out_fname=out_fname)
 
     return pos
