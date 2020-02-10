@@ -2,7 +2,7 @@
 
 A bundle of modules for centromere assembly with long reads. It currently supports only PacBio CCS reads, although we are planning to adapt to more noisy reads.
 
-Jupyter Notebooks used for assembly with _Drosophila_ CCS reads are available [here](https://mlab.cb.k.u-tokyo.ac.jp/~yoshihiko_s/jupyter_nbs_for_submission_1210.zip). Note that our implementation currently depends on software named Consed, an unpublished work by Dr. Gene Myers (be careful there is a distinct program with the same name), to compute consensus sequences, and thus one cannot directly run these codes. We will prepare alternative codes for it soon.
+Jupyter Notebooks used for assembly with _Drosophila_ CCS reads are available [here](https://mlab.cb.k.u-tokyo.ac.jp/~yoshihiko_s/jupyter_nbs_for_submission_1210.zip) (commit: `c2f199e`). Note that our implementation currently depends on software named Consed, an unpublished work by Dr. Gene Myers (be careful there is a distinct program with the same name), to compute consensus sequences, and thus one cannot directly run these codes. We will prepare alternative codes for it soon.
 
 ## Requirements
 
@@ -75,16 +75,26 @@ The required input is a [DAZZ_DB](https://github.com/thegenemyers/DAZZ_DB) file 
 1. Polish the overlaps via inference of a repeat model.
 1. Construct a string graph and generate contigs from it.
 
-### Modules
+### Step-by-step running example (headings are links to Jupyter Notebooks)
 
-#### datander ([Jupyter Notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/notebooks/usage/1.%20datander.ipynb))
+#### 1. [Detect tandem repeats from the reads](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/1.%20datander.ipynb)
 
-Datander has been developed by Dr. Gene Myers as a program in his module named [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER).
+This is performed with datander, a program in the modified [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER) module that is originally developed by Dr. Gene Myers.
 
-#### datruf ([Jupyter Notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/notebooks/usage/2.%20%20datruf.ipynb))
+#### 2. [Detect tandem repeat units from the tandem repeats](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/2.%20datruf.ipynb)
 
-Datruf detects tandem repeat units with the output of datander. Minimum required unit length to be accurately inferred by datruf is approximately >50 bp due to the resolution of long-read alignment on which datander relies. The size of centromeric tandem repeat units is, however, known to be generally longer than it (e.g. ~120 bp and ~360 bp in _Drosophila_).
+This module recieves the output of datander, and split each tandem repeat into a set of unit sequences. Several filterings, e.g. removing noisy units, are applied during it.
 
-#### ReadViewer ([Jupyter Notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/notebooks/usage/3.%20ReadViewer.ipynb))
+#### [Visualize how tandem repeats are detected from reads](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/3.%20ReadViewer.ipynb)
 
-This submodule offers a class for visualizing reads with tandem repeats found by datander and units by datruf.
+This module offers a visualization of reads with annotations of tandem repeats detected above.
+
+#### 3. [Extract reads having tandem repeat units to be assembled](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/4.%20TRReadFilter.ipynb)
+
+Through looking at distributions of unit length, unit count, and/or cooccurrence, determine which tandem repeats you assemble. And by specifying some parameters, this module extracts a subset of reads that contain the focal tandem repeat units.
+
+#### 4. Compute overlaps between the filtered reads
+
+#### 5. Polish the overlaps via repeat model inference
+
+#### 6. Generate contigs
