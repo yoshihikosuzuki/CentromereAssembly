@@ -1,8 +1,8 @@
 from multiprocessing import Pool
 from logzero import logger
 from BITS.seq.align import EdlibRunner
-from vca.overlapper.dovetail_overlap import dovetail_alignment
-from vca.types import Overlap
+from .dovetail_overlap import dovetail_alignment
+from ..types import Overlap
 
 er_global = EdlibRunner("global", revcomp=False, cyclic=False)
 

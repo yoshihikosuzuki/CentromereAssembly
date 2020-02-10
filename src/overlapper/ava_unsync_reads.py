@@ -7,7 +7,7 @@ from BITS.seq.kmer import seq_to_forward_kmer_spectrum
 from BITS.util.io import save_pickle, load_pickle
 from BITS.util.proc import run_command
 from BITS.util.scheduler import Scheduler
-from vca.types import revcomp_read
+from ..types import revcomp_read
 from .svs_unsync_reads import svs_overlap
 
 out_dir        = "ava_unsync"
@@ -68,7 +68,7 @@ class UnsyncReadsOverlapper:
             out_fname = f"{out_dir}/{out_prefix}.{index}.pkl"
             script_fname = f"{out_dir}/{scatter_prefix}.{index}.sh"
 
-            script = ' '.join(map(str, ["python -m vca.overlapper.ava_unsync_reads",
+            script = ' '.join(map(str, ["python -m eca.overlapper.ava_unsync_reads",
                                         self.centromere_reads_fname,
                                         out_fname,
                                         self.n_distribute,

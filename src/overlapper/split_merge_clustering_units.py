@@ -13,7 +13,7 @@ from BITS.seq.utils import phred_to_log10_p_error, phred_to_log10_p_correct
 from BITS.util.io import save_pickle, load_pickle
 from BITS.util.proc import run_command, NoDaemonPool
 from BITS.util.scheduler import Scheduler
-from vca.types import TRUnit, revcomp_read
+from ..types import TRUnit, revcomp_read
 
 out_dir        = "smc_encode"
 out_prefix     = "labeled_reads"
@@ -58,7 +58,7 @@ class SplitMergeClusteringOverlapper:
             index = str(i + 1).zfill(int(np.log10(self.n_distribute) + 1))
             out_fname = f"{out_dir}/{out_prefix}.{index}.pkl"
             script_fname = f"{out_dir}/{scatter_prefix}.{index}.sh"
-            script = ' '.join(map(str, ["python -m vca.overlapper.split_merge_clustering_units",
+            script = ' '.join(map(str, ["python -m eca.overlapper.split_merge_clustering_units",
                                         self.centromere_reads_fname,
                                         self.overlaps_fname,
                                         out_fname,

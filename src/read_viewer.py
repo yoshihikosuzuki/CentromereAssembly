@@ -19,7 +19,7 @@ class TRReadViewer:
     """Class for plotting reads with tandem repeats in Jupyter Notebook.
 
     Basic usage (in Jupyter Notebook):
-      > from vca import TRReadViewer
+      > from eca import TRReadViewer
       > v = ReadViewer(db_fname, las_fname)
       > v.show(read)
 
@@ -36,7 +36,7 @@ class TRReadViewer:
 
 
     positional arguments of the `show()` method:
-      @ a_read <int|TRRead> : Read ID used in `db_fname` (int) or a `vca.types.TRRead` object.
+      @ a_read <int|TRRead> : Read ID used in `db_fname` (int) or a `eca.types.TRRead` object.
 
     optional arguments of the `show()` method:
       @ b_read         <int|TRRead> [None]

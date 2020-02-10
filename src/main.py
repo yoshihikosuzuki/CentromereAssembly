@@ -11,13 +11,13 @@ tasks = ["all", "datander", "datruf", "dacmaster", "dalayout"]
 
 
 @dataclass(repr=False, eq=False)
-class VCA:
+class ECA:
     """Config file must be TOML-formatted.
 
     A simple example from REPL:
-      > from vca import VCA
-      > v = VCA("all", "/path/to/config")
-      > v.run()
+      > from eca import ECA
+      > e = ECA("all", "/path/to/config")
+      > e.run()
     """
     task_name    : str
     config_fname : InitVar[str]
@@ -66,7 +66,7 @@ class VCA:
 
 
 def load_args():
-    p = argparse.ArgumentParser(description="VCA: Vertebrate Centromere Assembler.")
+    p = argparse.ArgumentParser(description="ECA: Experimental Centromere Assembler.")
     p.add_argument("task_name", type=str, nargs="?", default="all",
                    help=f"Task name. {{{', '.join(tasks)}}} [all]")
     p.add_argument("config_fname", type=str, nargs="?", default="config",
@@ -76,5 +76,5 @@ def load_args():
 
 def main():
     args = load_args()
-    v = VCA(args.task_name, args.config_fname)
-    v.run()
+    e = ECA(args.task_name, args.config_fname)
+    e.run()

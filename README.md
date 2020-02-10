@@ -1,90 +1,90 @@
-# CentromereAssembly
+# ECA: Experimental Centromere Assembler
 
-A bundle of modules for centromere assembly only with PacBio long reads.
+A bundle of modules for centromere assembly with long reads. It currently supports only PacBio CCS reads, although we are planning to adapt to more noisy reads.
 
-Jupyter Notebooks used for Drosophila CCS reads are available [here](https://mlab.cb.k.u-tokyo.ac.jp/~yoshihiko_s/jupyter_nbs_for_submission_1210.zip). Note that our implementation currently depends on Consed, an unpublished work by Dr. Gene Myers, to compute consensus sequences, and thus one cannot directly run these codes. We will prepare alternative codes for it soon.
+Jupyter Notebooks used for assembly with _Drosophila_ CCS reads are available [here](https://mlab.cb.k.u-tokyo.ac.jp/~yoshihiko_s/jupyter_nbs_for_submission_1210.zip). Note that our implementation currently depends on software named Consed, an unpublished work by Dr. Gene Myers (be careful there is a distinct program with the same name), to compute consensus sequences, and thus one cannot directly run these codes. We will prepare alternative codes for it soon.
 
 ## Requirements
 
-* Python3
-* [`DAZZ_DB`](https://github.com/thegenemyers/DAZZ_DB) and [`DALIGNER`](https://github.com/thegenemyers/DALIGNER)
-* [`DAMASKER`](https://github.com/yoshihikosuzuki/DAMASKER) (submodule of this Git repository)
-* Python package [`cython`](https://cython.readthedocs.io/en/latest/src/quickstart/install.html)
-   * Other Python packages required will be automatically installed
+- Python3
+- [`cython`](https://cython.readthedocs.io/en/latest/src/quickstart/install.html)
+  - Usually by `$ pip install Cython`
+  - Other Python packages required will be automatically installed below
 
 ## Installation
 
-After you satisfy all the requirements above, the typical installation by `setuptools` is available:
+First clone this repository including submodules:
+
+```bash
+$ git clone --recursive https://github.com/yoshihikosuzuki/CentromereAssembly
+```
+
+Change the cloned directory to an individual environment uing `virtualenv`:
+
+```bash
+$ virtualenv -p python3 CentromereAssembly
+$ source CentromereAssembly/bin/activate   # enter the virtual enviroment
+```
+
+Install [`DAZZ_DB`](https://github.com/thegenemyers/DAZZ_DB) and [`DALIGNER`](https://github.com/thegenemyers/DALIGNER) by Dr. Gene Myers:
+
+```bash
+$ cd CentromereAssembly
+$ git clone https://github.com/thegenemyers/DAZZ_DB; cd DAZZ_DB
+$ sed 's|~/bin|../bin|' Makefile > .Makefile; mv .Makefile Makefile   # change install dir
+$ make -j; make install -j; cd ..
+$ git clone https://github.com/thegenemyers/DALIGNER; cd DALIGNER
+$ sed 's|~/bin|../bin|' Makefile > .Makefile; mv .Makefile Makefile   # change install dir
+$ make -j; make install -j; cd ..
+```
+
+Install modified [`DAMASKER`](https://github.com/yoshihikosuzuki/DAMASKER) (original repository by Dr. Gene Myers is [here](https://github.com/thegenemyers/DAMASKER)):
+
+```bash
+$ cd DAMASKER
+$ make -j; make install -j; cd ..
+```
+
+You need to reload the environment (or re-enter it) to use the executables installed above:
+
+```bash
+$ source bin/activate
+```
+
+Then install required python packages:
 
 ```bash
 $ python setup.py install
 ```
 
-VCA offers two ways of executions: 1) via command-line or 2) as python modules (I recommend using Jupyter Notebook).
+(You will not be able to install `consed_python` because it is for now a private repository as described above.)
 
-## Command-line execution
+## How to use
 
-The command to run VCA is:
+ECA currently supports only exploratory execution via Jupyter Notebook. That is, ECA offers a bundle of modules and functions for centromere assembly, and one will assemble their focal tandem repeat sequences interactively while looking at some plots. We are planning to implement an integrated single command executable from Terminal in the future.
 
-```bash
-usage: vca [-h] [-c CONFIG_FNAME] [task_name]
+### Input file
 
-VCA: Vertebrate Centromere Assembler.
+The required input is a [DAZZ_DB](https://github.com/thegenemyers/DAZZ_DB) file (`.db` file) of PacBio CCS reads. One can convert to it from different file formats like FASTA.
 
-positional arguments:
-  task_name             Task name. This must be one of {'all', 'datruf',
-                        'dacmaster', 'dalayout'}. [all]
+### Workflow overview
 
-optional arguments:
-  -h, --help            show this help message and exit
-  -c CONFIG_FNAME, --config_fname CONFIG_FNAME
-                        Config file name. [config]
-```
+1. Detect tandem repeats and tandem repeat units from the reads.
+1. Pick up tandem repeats one wishs to assemble, and extract reads that contain such tandem repeats.
+1. Compute overlaps between the filtered reads naively by original sequence identity.
+1. Polish the overlaps via inference of a repeat model.
+1. Construct a string graph and generate contigs from it.
 
-### DAZZ_DB file
+### Modules
 
-As input data, a `.db` file of your sequence data is required. See [DAZZ_DB](https://github.com/thegenemyers/DAZZ_DB) for details.
-
-### Config file
-
-To prepare the config file required by VCA, first copy `config.template` in the root directory of this repository while renaming as `config`. The template is written in TOML format as follows:
-
-```ini
-# Config file must be TOML-formatted [https://github.com/toml-lang/toml].
-
-db_prefix = "DMEL"   # <db_prefix>.db and its related files must exist in the execution firectory
-
-[job_scheduler]
-
-enabled = false   # Use a job scheduler if true
-
-  [job_scheduler.params]
-
-  scheduler_name = "sge"   # Only "sge" or "slurm"; Name of job scheduler
-  submit_command = "qsub"  # e.g. "qsub" for SGE and "sbatch" for SLURM
-  #queue_name     =        # You can specify the queue name (for SGE) or partition name (for SLURM)
-
-...
-```
-
-And then edit `config` according to your data and environment.
-
-### What is `task_name`?
-
-The `all` mode (default) will execute all the tasks of VCA, and the other task names are mainly for development and debug.
-
-## Jupyter Notebook execution
-
-Instead of command-line execution, you can import functions/classes of VCA submodules and run them inside REPL or Jupyter Notebook. Every module of VCA can be used separatedly in a more exploratory and customizable manner through some visualizations. Details of each VCA submodule along with Jupyter Notebook examples are described below.
-
-### datander ([Jupyter Notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/notebooks/usage/1.%20datander.ipynb))
+#### datander ([Jupyter Notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/notebooks/usage/1.%20datander.ipynb))
 
 Datander has been developed by Dr. Gene Myers as a program in his module named [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER).
 
-### datruf ([Jupyter Notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/notebooks/usage/2.%20%20datruf.ipynb))
+#### datruf ([Jupyter Notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/notebooks/usage/2.%20%20datruf.ipynb))
 
-Datruf detects tandem repeat units with the output of datander. Minimum required unit length to be accurately inferred by datruf is approximately >50 bp due to the resolution of long-read alignment on which datander relies. The size of centromeric tandem repeat units is, however, known to be generally longer than it (e.g. ~120 bp and ~360 bp in *Drosophila*).
+Datruf detects tandem repeat units with the output of datander. Minimum required unit length to be accurately inferred by datruf is approximately >50 bp due to the resolution of long-read alignment on which datander relies. The size of centromeric tandem repeat units is, however, known to be generally longer than it (e.g. ~120 bp and ~360 bp in _Drosophila_).
 
-### ReadViewer ([Jupyter Notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/notebooks/usage/3.%20ReadViewer.ipynb))
+#### ReadViewer ([Jupyter Notebook](https://nbviewer.jupyter.org/github/yoshihikosuzuki/CentromereAssembly/blob/master/notebooks/usage/3.%20ReadViewer.ipynb))
 
 This submodule offers a class for visualizing reads with tandem repeats found by datander and units by datruf.

@@ -54,7 +54,7 @@ class DatrufRunner:
             index = str(i + 1).zfill(int(np.log10(self.n_distribute) + 1))
             start = 1 + i * unit_n
             end = min([1 + (i + 1) * unit_n - 1, n_reads])
-            script = (f"python -m vca.datruf.main {self.db_fname} {self.las_fname} "
+            script = (f"python -m eca.datruf.main {self.db_fname} {self.las_fname} "
                       f"{dir_name}/{out_fname}.{index} {start} {end} {self.n_core}")
 
             jids.append(self.scheduler.submit(script,
