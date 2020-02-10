@@ -3,6 +3,7 @@ assets/
 data/
 notebooks/
 jupyter_nbs_for_submission_1210*
+ECA_docs/
 
 
 .DS_Store
