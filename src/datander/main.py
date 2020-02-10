@@ -11,7 +11,7 @@ log_fname    = f"{dir_name}/log"
 @dataclass(eq=False)
 class DatanderRunner:
     """Entry point of datander, a commandline tool for detecting tandem repeat regions from (noisy) reads.
-    In VCA, slightly customized datander is used (alignment will NOT be extended to the ends of a read).
+    In ECA, slightly customized datander is used (alignment will NOT be extended to the ends of a read).
 
     positional arguments:
       @ db_prefix <str> : Prefix of the DB file created with DAZZ_DB put at CWD.

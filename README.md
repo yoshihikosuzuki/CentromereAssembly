@@ -77,6 +77,10 @@ The required input is a [DAZZ_DB](https://github.com/thegenemyers/DAZZ_DB) file 
 
 ### Step-by-step running example (headings are links to Jupyter Notebooks)
 
+#### 0. [Generate a simulation dataset](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/0.%20Datasets.ipynb)
+
+One can start from a not real but simulation dataset.
+
 #### 1. [Detect tandem repeats from the reads](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/1.%20datander.ipynb)
 
 This is performed with datander, a program in the modified [DAMASKER](https://github.com/yoshihikosuzuki/DAMASKER) module that is originally developed by Dr. Gene Myers.
@@ -85,16 +89,22 @@ This is performed with datander, a program in the modified [DAMASKER](https://gi
 
 This module recieves the output of datander, and split each tandem repeat into a set of unit sequences. Several filterings, e.g. removing noisy units, are applied during it.
 
-#### [Visualize how tandem repeats are detected from reads](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/3.%20ReadViewer.ipynb)
+#### 3. [(Optional) Visualize how tandem repeats are detected from reads](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/3.%20ReadViewer.ipynb)
 
 This module offers a visualization of reads with annotations of tandem repeats detected above.
 
-#### 3. [Extract reads having tandem repeat units to be assembled](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/4.%20TRReadFilter.ipynb)
+#### 4. [Extract reads having tandem repeat units to be assembled](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/4.%20TRReadFilter.ipynb)
 
 Through looking at distributions of unit length, unit count, and/or cooccurrence, determine which tandem repeats you assemble. And by specifying some parameters, this module extracts a subset of reads that contain the focal tandem repeat units.
 
-#### 4. Compute overlaps between the filtered reads
+#### 5. [Compute overlaps between the filtered reads](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/5.%20Overlapper%20%28raw%20sequence%20similarity%29.ipynb)
 
-#### 5. Polish the overlaps via repeat model inference
+This module performs all-vs-all read overlap examination based on the raw sequence similarity. Overlaps whose length is larger than a threshold and whose sequence similarity is higher than a threshold is kept.
 
-#### 6. Generate contigs
+#### 6. [Polish the overlaps via repeat model inference](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/6.%20Overlapper%20%28corrected%20sequence%20similarity%29.ipynb)
+
+This module polishes the overlaps based on the raw sequence similarity because these contain many false-positives especially when assembling repreats. This is performed using a repeat model and Bayesian inference of the model.
+
+#### 7. [Generate contigs](https://nbviewer.jupyter.org/github/yoshihikosuzuki/ECA_docs/blob/master/7.%20Contig%20generation.ipynb)
+
+This module constructs a string graph from the remaining overlaps and output simple paths as contigs.
