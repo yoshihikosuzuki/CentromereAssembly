@@ -68,7 +68,7 @@ class UnsyncReadsOverlapper:
             out_fname = f"{out_dir}/{out_prefix}.{index}.pkl"
             script_fname = f"{out_dir}/{scatter_prefix}.{index}.sh"
 
-            script = ' '.join(map(str, ["python -m eca.overlapper.ava_unsync_reads",
+            script = ' '.join(map(str, ["python -m vca.overlapper.ava_unsync_reads",
                                         self.centromere_reads_fname,
                                         out_fname,
                                         self.n_distribute,

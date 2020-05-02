@@ -11,7 +11,7 @@ tasks = ["all", "datander", "datruf", "dacmaster", "dalayout"]
 
 
 @dataclass(repr=False, eq=False)
-class ECA:
+class VCA:
     """Config file must be TOML-formatted.
 
     A simple example from REPL:
@@ -76,5 +76,5 @@ def load_args():
 
 def main():
     args = load_args()
-    e = ECA(args.task_name, args.config_fname)
+    e = VCA(args.task_name, args.config_fname)
     e.run()

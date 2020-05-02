@@ -2,11 +2,11 @@
 
 A bundle of modules for centromere assembly with long reads. It currently supports only PacBio CCS reads, although we are planning to adapt to more noisy reads.
 
-Jupyter Notebooks used for assembly with _Drosophila_ CCS reads are available [here](https://mlab.cb.k.u-tokyo.ac.jp/~yoshihiko_s/jupyter_nbs_for_submission_1210.zip) (commit: `c2f199e`). Note that our implementation currently depends on software named Consed, an unpublished work by Dr. Gene Myers (be careful there is a distinct program with the same name), to compute consensus sequences, and thus one cannot directly run these codes. We will prepare alternative codes for it soon.
+Jupyter Notebooks used for assembly with _Drosophila_ CCS reads are available [here](https://mlab.cb.k.u-tokyo.ac.jp/~yoshihiko_s/jupyter_nbs_for_submission_1210.zip) (with commit `c2f199e`). Note that our implementation currently depends on software named Consed, an unpublished work by Dr. Gene Myers (be careful there is a distinct program with the same name), to compute consensus sequences, and thus one cannot directly run these codes. We will prepare alternative codes for it soon.
 
 ## Requirements
 
-- Python3
+- Python3.7 (not 3.8)
 - [`cython`](https://cython.readthedocs.io/en/latest/src/quickstart/install.html)
   - Usually by `$ pip install Cython`
   - Other Python packages required will be automatically installed below
@@ -22,7 +22,7 @@ $ git clone --recursive https://github.com/yoshihikosuzuki/CentromereAssembly
 Change the cloned directory to an individual environment uing `virtualenv`:
 
 ```bash
-$ virtualenv -p python3 CentromereAssembly
+$ virtualenv -p python3.7 CentromereAssembly
 $ source CentromereAssembly/bin/activate   # enter the virtual enviroment
 ```
 
